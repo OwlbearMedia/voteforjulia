@@ -1,0 +1,223 @@
+ /* ── Reset ── */
+ *,
+ *::before,
+ *::after {
+     box-sizing: border-box;
+     margin: 0;
+     padding: 0;
+ }
+
+ /* ── Base ── */
+ @font-face {
+     font-family: 'TheBoldFont';
+     src: url('../fonts/theboldfont.woff') format('woff');
+     font-weight: normal;
+     font-style: normal;
+ }
+
+ @font-face {
+     font-family: 'Mickle';
+     src: url('../fonts/Mickle.ttf') format('truetype');
+     font-weight: normal;
+     font-style: normal;
+ }
+
+ html {
+     --header-height: 7rem;
+     --header-offset-extra: -4rem;
+     --header-offset: calc(var(--header-height) + var(--header-offset-extra));
+     font-size: 16px;
+     letter-spacing: 0.05em;
+     scroll-behavior: smooth;
+     scroll-padding-top: var(--header-offset);
+ }
+
+ body {
+     font-family: "TheBoldFont", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+     line-height: 1.6;
+     color: #1a1a1a;
+     background-color: rgba(255, 255, 255, 0.96);
+     min-height: 100vh;
+     display: flex;
+     flex-direction: column;
+ }
+
+ /* ── Layout ── */
+ .container {
+     max-width: 960px;
+     margin: 0 auto;
+     padding: 2rem;
+ }
+
+ header {
+     position: sticky;
+     top: 0;
+     z-index: 1000;
+     padding: 0rem 2rem;
+     color: #102E24;
+     background-color: #468445;
+     backdrop-filter: blur(4px);
+     border-bottom: 1px solid #e9ecef;
+     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+     text-shadow: -1px 0px 2px #79CA5B;
+ }
+
+ header .container {
+     display: flex;
+     align-items: center;
+     justify-content: space-between;
+     gap: 1.5rem;
+     flex-wrap: wrap;
+ }
+
+ .menu-list {
+     display: flex;
+     list-style: none;
+     gap: 1rem;
+ }
+
+ .menu-list a {
+     color: #fff;
+     font-weight: 600;
+ }
+
+ main {
+     flex: 1;
+     max-width: 960px;
+     width: 100%;
+     margin: 0 auto;
+     padding: 0 2rem;
+     color: #0d3b66;
+ }
+
+ footer {
+     padding: 1.5rem 2rem;
+     background-color: #f8f9fa;
+     border-top: 1px solid #e9ecef;
+     text-align: center;
+     font-size: 0.875rem;
+     color: #6c757d;
+ }
+
+ /* ── Typography ── */
+
+
+ h1,
+ h2,
+ h3,
+ h4,
+ h5,
+ h6 {
+     line-height: 1.25;
+     margin-bottom: 0.75rem;
+     font-family: "Mickle", serif;
+     color: #102E24;
+     letter-spacing: 0.05em;
+ }
+
+ p {
+     margin-bottom: 1rem;
+ }
+
+ a {
+     color: #0070f3;
+     text-decoration: none;
+ }
+
+ a:hover {
+     text-decoration: underline;
+ }
+
+ section {
+     scroll-margin-top: var(--header-offset);
+     margin-bottom: 2rem;
+ }
+
+ .contact-form {
+     margin-top: 1rem;
+     max-width: 640px;
+     display: grid;
+     gap: 0.6rem;
+ }
+
+ .contact-form label {
+     font-weight: 600;
+ }
+
+ .contact-form input,
+ .contact-form textarea {
+     width: 100%;
+     border: 1px solid #b7c4d1;
+     border-radius: 0.4rem;
+     padding: 0.65rem 0.75rem;
+     font: inherit;
+     color: #1a1a1a;
+     background-color: rgba(255, 255, 255, 0.96);
+ }
+
+ .contact-form textarea {
+     resize: vertical;
+     min-height: 130px;
+ }
+
+ .contact-form button {
+     width: fit-content;
+     margin-top: 0.25rem;
+     border: 0;
+     border-radius: 999px;
+     padding: 0.6rem 1.1rem;
+     background-color: #0d3b66;
+     color: #ffffff;
+     font: inherit;
+     font-weight: 600;
+     cursor: pointer;
+ }
+
+ .contact-form button:hover {
+     background-color: #0a2f52;
+ }
+
+ .hero {
+     text-align: center;
+ }
+
+ .logo {
+     max-width: 60%;
+     height: auto;
+ }
+
+ @media (max-width: 700px) {
+     header {
+         padding: 1rem;
+     }
+
+     header .container {
+         align-items: flex-start;
+         gap: 0.75rem;
+         padding: 0;
+     }
+
+     .menu-list {
+         flex-wrap: wrap;
+         gap: 0.5rem;
+     }
+
+     .menu-list a {
+         display: block;
+         padding: 0.35rem 0.6rem;
+         border-radius: 999px;
+         background-color: rgba(13, 59, 102, 0.08);
+     }
+
+     main {
+         padding: 1.25rem;
+     }
+
+     section {
+         scroll-margin-top: var(--header-offset);
+     }
+
+     .contact-form button {
+         width: 100%;
+     }
+ }
