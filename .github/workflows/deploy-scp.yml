@@ -20,8 +20,36 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect changed deploy files
+        id: changed-files
+        shell: bash
+        run: |
+          before_sha="${{ github.event.before }}"
+          after_sha="${{ github.sha }}"
+
+          if [[ "$before_sha" == "0000000000000000000000000000000000000000" ]]; then
+            changed_files=$(git ls-files index.html css js img)
+          else
+            changed_files=$(git diff --name-only --diff-filter=ACMR "$before_sha" "$after_sha" -- index.html css js img)
+          fi
+
+          changed_files=$(printf '%s\n' "$changed_files" | sed '/^$/d')
+
+          if [[ -z "$changed_files" ]]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files_csv=$(printf '%s\n' "$changed_files" | paste -sd, -)
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          echo "files=$files_csv" >> "$GITHUB_OUTPUT"
 
       - name: Upload files to server
+        if: steps.changed-files.outputs.has_changes == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -29,7 +57,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
-          source: "index.html,css/**,js/**,img/**"
+          source: ${{ steps.changed-files.outputs.files }}
           target: ${{ secrets.SSH_TARGET_PATH }}
           overwrite: true
           strip_components: 0
