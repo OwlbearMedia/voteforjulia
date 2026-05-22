@@ -42,7 +42,6 @@ body {
     sans-serif;
   line-height: 1.6;
   color: #1a1a1a;
-  background-color: rgba(255, 255, 255, 0.96);
   background-color: rgba(123, 202, 91, 0.2);
   min-height: 100vh;
   display: flex;
@@ -74,11 +73,19 @@ header {
   z-index: 1000;
   padding: 0rem 2rem;
   color: #fff;
-  background-color: #468445;
+  background-color: #133F30;
   backdrop-filter: blur(4px);
-  border-bottom: 1px solid #e9ecef;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   text-shadow: -1px 0px 2px #79ca5b;
+}
+
+.logo-container {
+    font-family: "TheBoldFont", sans-serif;
+    letter-spacing: 0.13em;
+}
+
+.logo-container div {
+    margin-top: -0.25rem;
 }
 
 header .container {
@@ -96,7 +103,7 @@ header .container {
   border-radius: 6px;
   border: none;
   cursor: pointer;
-  padding: 1rem;
+  padding: 1.35rem 1rem;
   margin-left: auto;
   z-index: 1100;
 }
@@ -105,7 +112,7 @@ header .container {
   display: block;
   width: 28px;
   height: 3px;
-  background: #468445;
+  background: #133F30;
   position: relative;
   border-radius: 2px;
 }
@@ -117,7 +124,7 @@ header .container {
   left: 0;
   width: 28px;
   height: 3px;
-  background: #468445;
+  background: #133F30;
   border-radius: 2px;
   transition: 0.3s;
 }
@@ -168,7 +175,7 @@ main {
 
 footer {
   padding: 1.5rem 2rem;
-  background-color: #468445;
+  background-color: #133F30;
   border-top: 1px solid #e9ecef;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(4px);
@@ -189,7 +196,7 @@ h6 {
   line-height: 1.25;
   margin-bottom: 0.75rem;
   font-family: "Mickle", serif;
-  color: #102e24;
+  color: #133F30;
   letter-spacing: 0.05em;
 }
 
@@ -252,6 +259,7 @@ section {
 
 .contact-form label {
   font-weight: 600;
+  color: rgba(19, 63, 48, 1);
 }
 
 .contact-form input,
@@ -261,7 +269,7 @@ section {
   border-radius: 0.4rem;
   padding: 0.65rem 0.75rem;
   font: inherit;
-  color: #1a1a1a;
+  color: rgba(19, 63, 48, 1);
   background-color: rgba(255, 255, 255, 0.96);
 }
 
@@ -276,7 +284,7 @@ section {
   border: 0;
   border-radius: 999px;
   padding: 0.6rem 1.1rem;
-  background-color: #0d3b66;
+  background-color: rgba(19, 63, 48, 1);
   color: #ffffff;
   font: inherit;
   font-weight: 600;
@@ -284,7 +292,7 @@ section {
 }
 
 .contact-form button:hover {
-  background-color: #0a2f52;
+  background-color: rgba(19, 63, 48, 0.7);
 }
 
 .hero {
@@ -346,7 +354,7 @@ section {
     display: none;
     flex-direction: column;
     position: absolute;
-    top: 40px;
+    top: 47px;
     right: 10px;
     background: #468445;
     width: 220px;
