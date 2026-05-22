@@ -24,7 +24,7 @@
 
 html {
   --header-height: 7rem;
-  --header-offset-extra: -4rem;
+  --header-offset-extra: -6.5rem;
   --header-offset: calc(var(--header-height) + var(--header-offset-extra));
   font-size: 16px;
   letter-spacing: 0.05em;
