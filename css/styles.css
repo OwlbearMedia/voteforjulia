@@ -223,9 +223,13 @@ blockquote {
 }
 
 hr {
-  border: none;
-  border-top: 1px solid #468445;
+  border: 0;
+  height: 45px;
   margin: 2rem 0;
+  background-image: url("../img/sprout.png"), radial-gradient(circle, #e5f5de 0 20px, transparent 20px), linear-gradient(#468445, #468445);
+  background-size: 40px 40px, 40px 40px, 100% 1px;
+  background-position: center, center, center;
+  background-repeat: no-repeat;
 }
 
 section {
