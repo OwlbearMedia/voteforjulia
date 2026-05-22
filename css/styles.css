@@ -79,15 +79,6 @@ header {
   text-shadow: -1px 0px 2px #79ca5b;
 }
 
-.logo-container {
-    font-family: "TheBoldFont", sans-serif;
-    letter-spacing: 0.13em;
-}
-
-.logo-container div {
-    margin-top: -0.25rem;
-}
-
 header .container {
   display: flex;
   align-items: center;
