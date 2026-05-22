@@ -207,7 +207,7 @@ a:hover {
 }
 
 blockquote {
-  background-color: rgba(123, 202, 91, 0.75);
+  background-color: rgba(123, 202, 91, 0.5);
   border-left: 10px solid #468445;
   margin: 1.5em 10px;
   padding: 0.5em 10px;
@@ -215,9 +215,23 @@ blockquote {
   font-style: italic;
 }
 
+hr {
+  border: none;
+  border-top: 1px solid #468445;
+  margin: 2rem 0;
+}
+
 section {
   scroll-margin-top: var(--header-offset);
   margin-bottom: 2rem;
+}
+
+.card {
+    background-color: rgba(123, 202, 91, 0.5);
+    padding: 1rem;
+    margin: 1rem 0;
+    text-align: center;
+    border-radius: 0.5rem;
 }
 
 .contact-form {
