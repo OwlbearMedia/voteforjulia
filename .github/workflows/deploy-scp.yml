@@ -31,9 +31,9 @@ jobs:
           after_sha="${{ github.sha }}"
 
           if [[ "$before_sha" == "0000000000000000000000000000000000000000" ]]; then
-            changed_files=$(git ls-files index.html robots.txt sitemap.xml css js img)
+            changed_files=$(git ls-files '*.html' robots.txt sitemap.xml css js img)
           else
-            changed_files=$(git diff --name-only --diff-filter=ACMR "$before_sha" "$after_sha" -- index.html robots.txt sitemap.xml css js img)
+            changed_files=$(git diff --name-only --diff-filter=ACMR "$before_sha" "$after_sha" -- '*.html' robots.txt sitemap.xml css js img)
           fi
 
           changed_files=$(printf '%s\n' "$changed_files" | sed '/^$/d')

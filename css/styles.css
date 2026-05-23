@@ -364,6 +364,7 @@ section {
 @media (max-width: 700px) {
   header {
     padding: 1rem;
+    backdrop-filter: none;
   }
 
   header .container {
@@ -423,5 +424,12 @@ section {
 
   .stances-layout > * {
     flex-basis: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  header,
+  footer {
+    backdrop-filter: none;
   }
 }
