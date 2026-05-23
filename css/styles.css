@@ -76,7 +76,6 @@ header {
   background-color: #133F30;
   backdrop-filter: blur(4px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-  text-shadow: -1px 0px 2px #79ca5b;
 }
 
 header .container {
@@ -161,16 +160,14 @@ main {
   width: 100%;
   margin: 0 auto;
   padding: 0 2rem;
-  color: #0d3b66;
+  color: #133F30;
 }
 
 footer {
   padding: 1.5rem 2rem;
   background-color: #133F30;
-  border-top: 1px solid #e9ecef;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(4px);
-  text-shadow: -1px 0px 2px #79ca5b;
   text-align: center;
   font-size: 0.875rem;
   color: #fff;
@@ -213,7 +210,26 @@ a:hover {
   text-decoration: underline;
 }
 
+.btn {
+  display: inline-block;
+  padding: 0.75rem 1.5rem .5rem 1.5rem;
+  font-family: "TheBoldFont", sans-serif;
+  background-color: rgba(123, 202, 91, 1);
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn:hover {
+  text-decoration: none;
+  background-color: rgba(123, 202, 91, 0.7);
+}
+
 .bigger {
+  font-family: "Orelega One", serif;
+  font-weight: 400;
+  font-style: normal;
   font-size: 1.25rem;
 }
 
@@ -242,6 +258,9 @@ section {
 }
 
 .card {
+  font-family: "Orelega One", serif;
+  font-weight: 400;
+  font-style: normal;
   background-color: rgba(123, 202, 91, 0.5);
   padding: 1rem;
   margin: 1rem 0;
