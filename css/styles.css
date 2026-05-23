@@ -213,6 +213,10 @@ a:hover {
   text-decoration: underline;
 }
 
+.bigger {
+  font-size: 1.25rem;
+}
+
 blockquote {
   background-color: rgba(123, 202, 91, 0.5);
   border-left: 10px solid #468445;
@@ -243,6 +247,7 @@ section {
   margin: 1rem 0;
   text-align: center;
   border-radius: 0.5rem;
+  font-size: 1.25rem;
 }
 
 .contact-form {
@@ -328,6 +333,13 @@ section {
 .stances-layout ul {
   margin: 0;
   padding-left: 1.25rem;
+}
+
+.stances-text-centered {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 @media (max-width: 700px) {
