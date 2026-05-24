@@ -338,6 +338,11 @@ section {
   margin-bottom: 1rem;
 }
 
+.stances-donate {
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
 .stances-layout > * {
   flex: 1 1 50%;
 }

@@ -48,7 +48,10 @@
       rel="preload"
       href="https://fonts.googleapis.com/css2?family=Orelega+One&display=swap"
       as="style"
-      onload="this.onload=null;this.rel='stylesheet'"
+      onload="
+        this.onload = null;
+        this.rel = 'stylesheet';
+      "
     />
     <noscript>
       <link
@@ -179,14 +182,53 @@
           dignity, justice, freedom, growth, and community.
         </p>
         <div>
-          <a class="btn" href="/meet-julia.html">Learn more <span class="sr-only">about Julia Hamann, candidate for Mayor of Mankato</span></a>
+          <a class="btn" href="/meet-julia.html"
+            >Learn more
+            <span class="sr-only"
+              >about Julia Hamann, candidate for Mayor of Mankato</span
+            ></a
+          >
         </div>
       </section>
 
       <hr />
 
+      <div class="stances-layout">
+        <img
+          src="img/julia-conversation.jpg"
+          alt="Julia Hamann"
+          class="coming-soon"
+          width="767"
+          height="960"
+          loading="lazy"
+          decoding="async"
+        />
+        <div class="stances-text stances-text-centered">
+          <p>
+          Julia wants our town to have conversations about important topics and
+          be part of building creative solutions to the issues facing our
+          community today. She is ready for the city to act boldly, be willing
+          to try new things, and incorporate diverse perspectives. She
+          understands the importance of local policy making and believes that
+          everyday citizens can make a big impact.
+        </p>
+          <blockquote>
+              "I’ve heard a lot about what’s NOT possible and I’m ready to start
+              a new conversation."<br />
+              - Julia
+            </blockquote>
+            <p>
+              If you’re ready for CHANGE and for our city to start some new
+              conversations, vote for Julia!
+            </p>
+        </div>
+      </div>
+
+      <hr />
+
       <section id="issues">
         <h2>Issues</h2>
+
         <p>
           As mayor, Julia knows she can’t singlehandedly change city policy
           overnight, but she can promise to show up, ask hard questions, bring
@@ -200,6 +242,7 @@
         <hr />
 
         <h3>Community Input and Transparency</h3>
+
         <p class="card">
           Julia wants to ensure that citizens are listened to and that city
           government remains transparent and accountable to the community.
@@ -294,6 +337,7 @@
               <textarea
                 id="contact-message"
                 name="message"
+                placeholder="How would you like to help?"
                 rows="5"
                 required
               ></textarea>
@@ -302,8 +346,8 @@
             </form>
           </div>
           <img
-            src="img/julia-conversation.jpg"
-            alt="Julia Hamann"
+            src="img/julia.png"
+            alt="Julia Hamann for Mankato Mayor"
             class="coming-soon"
             width="767"
             height="960"
