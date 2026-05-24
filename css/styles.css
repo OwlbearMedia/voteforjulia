@@ -173,6 +173,20 @@ footer {
   color: #fff;
 }
 
+.footer-container {
+  display: grid;
+  grid-template-columns: 50% 50%;
+  gap: 1.5rem;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
 /* ── Typography ── */
 
 h1,
@@ -210,6 +224,18 @@ a:hover {
   text-decoration: underline;
 }
 
+.socials {
+  text-align: left;
+}
+
+.socials h3 {
+  color: #fff;
+}
+
+.social-icons {
+  font-size: 1.5rem;
+}
+
 .btn {
   display: inline-block;
   padding: 0.75rem 1.5rem .5rem 1.5rem;
@@ -224,6 +250,15 @@ a:hover {
 .btn:hover {
   text-decoration: none;
   background-color: rgba(123, 202, 91, 0.7);
+}
+
+.btn-invert {
+  background-color: #fff;
+  color: rgba(123, 202, 91, 1);
+}
+
+.btn-invert:hover {
+  background-color: rgba(255, 255, 255, 0.85);
 }
 
 .bigger {
@@ -429,6 +464,23 @@ section {
 
   .stances-layout > * {
     flex-basis: auto;
+  }
+
+  .footer-container {
+    color: #fff;
+    grid-template-columns: 1fr;
+  }
+
+  .footer-container > :nth-child(1) {
+    grid-row: 2;
+  }
+
+  .footer-container > :nth-child(2) {
+    grid-row: 1;
+  }
+
+  .footer-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
