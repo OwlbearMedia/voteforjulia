@@ -6,10 +6,10 @@ from email.mime.multipart import MIMEMultipart
 app = Flask(__name__)
 
 # Email configuration
-SMTP_SERVER = 'smtp.gmail.com'  # Replace with your SMTP server
-SMTP_PORT = 587
-EMAIL_ADDRESS = 'your-email@gmail.com'  # Replace with your email
-EMAIL_PASSWORD = 'your-email-password'  # Replace with your email password
+SMTP_SERVER = 'mail.voteforjulia.com'  # Replace with your SMTP server
+SMTP_PORT = 465
+EMAIL_ADDRESS = 'contact@voteforjulia.com'  # Replace with your email
+EMAIL_PASSWORD = 'qSle.Fbv3lPJ~PHE'  # Replace with your email password
 RECIPIENT_EMAIL = 'info@voteforjulia.com'
 
 @app.route('/send-email', methods=['POST'])
@@ -33,8 +33,7 @@ def send_email():
         msg.attach(MIMEText(body, 'plain'))
 
         # Send email
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
             server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             server.sendmail(EMAIL_ADDRESS, RECIPIENT_EMAIL, msg.as_string())
 
