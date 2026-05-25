@@ -186,8 +186,19 @@ footer {
   margin-top: 1rem;
 }
 
+.footer-disclaimer-address {
+  grid-column: span 2;
+  margin-top: 0;
+  font-size: 10px;
+}
+
 .social-icons {
   font-size: 1.5rem;
+  color: #fff;
+}
+
+.social-icons a {
+  color: #fff;
 }
 
 /* ── Typography ── */
