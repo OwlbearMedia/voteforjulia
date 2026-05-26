@@ -19,6 +19,36 @@ if (menuToggle && menuList) {
 const header = document.querySelector('header');
 const contactForm = document.querySelector('.contact-form');
 
+function trackGaEvent(eventName, params) {
+  if (typeof window.gtag !== 'function') {
+    return;
+  }
+
+  window.gtag('event', eventName, {
+    ...params,
+    transport_type: 'beacon'
+  });
+}
+
+function normalizeFooterIconLabel(link) {
+  const href = (link.getAttribute('href') || '').toLowerCase();
+  const ariaLabel = (link.getAttribute('aria-label') || '').toLowerCase();
+
+  if (href.startsWith('mailto:') || ariaLabel.includes('email')) {
+    return 'email';
+  }
+
+  if (ariaLabel.includes('instagram') || href.includes('instagram.com')) {
+    return 'instagram';
+  }
+
+  if (ariaLabel.includes('facebook') || href.includes('facebook.com')) {
+    return 'facebook';
+  }
+
+  return 'other';
+}
+
 function updateHeaderOffset() {
   if (!header) {
     return;
@@ -32,6 +62,29 @@ updateHeaderOffset();
 window.addEventListener('load', updateHeaderOffset);
 window.addEventListener('resize', updateHeaderOffset);
 
+document.querySelectorAll('a[href*="/donate.html"]').forEach(function(link) {
+  link.addEventListener('click', function() {
+    const section = link.closest('header, footer, main, section');
+    const linkLocation = section ? section.tagName.toLowerCase() : 'unknown';
+
+    trackGaEvent('donate_click', {
+      link_location: linkLocation,
+      link_text: (link.textContent || '').trim() || 'donate'
+    });
+  });
+});
+
+document.querySelectorAll('footer .social-icons a').forEach(function(link) {
+  link.addEventListener('click', function() {
+    trackGaEvent('footer_icon_click', {
+      icon_label: normalizeFooterIconLabel(link),
+      icon_label_raw: link.getAttribute('aria-label') || 'unknown',
+      link_url: link.getAttribute('href') || '',
+      link_type: (link.getAttribute('href') || '').startsWith('mailto:') ? 'email' : 'social'
+    });
+  });
+});
+
 if (contactForm) {
   contactForm.addEventListener('submit', function(event) {
     const emailInput = document.getElementById('contact-email');
@@ -42,6 +95,12 @@ if (contactForm) {
       event.preventDefault();
       alert('Please enter a valid email address.');
       emailInput.focus();
+      return;
     }
+
+    trackGaEvent('volunteer_form_submit', {
+      form_id: contactForm.id || 'contact-form',
+      form_location: window.location.pathname
+    });
   });
 }
