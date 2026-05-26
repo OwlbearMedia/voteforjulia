@@ -510,8 +510,7 @@ section {
 
   .issues-layout > :first-child {
     align-self: auto;
-    justify-content: flex-start;
-    gap: 1rem;
+    display: block;
   }
 
   .issues-layout .coming-soon {
