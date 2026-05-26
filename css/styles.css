@@ -280,11 +280,13 @@ a:hover {
 }
 
 blockquote {
+  font-family: "Orelega One", serif;
   background-color: rgba(123, 202, 91, 0.5);
   border-left: 10px solid #468445;
   margin: 1.5em 10px;
   padding: 0.5em 10px;
   quotes: "\201C" "\201D" "\2018" "\2019";
+  font-size: 1.25rem;
   font-style: italic;
 }
 
@@ -419,14 +421,21 @@ section {
   align-items: center;
 }
 
+.issues-layout > :first-child {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
 .issues-layout .coming-soon {
-  width: 275px;
-  max-width: 275px;
+  width: 250px;
+  max-width: 250px;
 }
 
 .issues-header {
-  margin-bottom: 2rem;
-  margin-top: 0;
+  margin-bottom: 1rem;
+  margin-top: 1rem;
 }
 
 @media (max-width: 700px) {
@@ -497,6 +506,12 @@ section {
   .issues-layout {
     grid-template-columns: 1fr;
     gap: 1.5rem;
+  }
+
+  .issues-layout > :first-child {
+    align-self: auto;
+    justify-content: flex-start;
+    gap: 1rem;
   }
 
   .issues-layout .coming-soon {
