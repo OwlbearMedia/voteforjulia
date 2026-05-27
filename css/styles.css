@@ -193,8 +193,15 @@ footer {
 }
 
 .social-icons {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   font-size: 1.5rem;
   color: #fff;
+}
+
+.menu-list > .social-icons {
+  display: none;
 }
 
 .social-icons a {
@@ -480,6 +487,18 @@ section {
     padding: 0.5rem 1rem;
     border-radius: 0;
     background-color: transparent;
+  }
+
+  .menu-list .social-icons {
+    display: flex;
+    justify-content: center;
+    padding: 0.5rem 1rem;
+    margin-top: 0.5rem;
+  }
+
+  .menu-list .social-icons a {
+    display: inline-flex;
+    padding: 0;
   }
 
   main {
