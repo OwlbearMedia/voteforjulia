@@ -17,7 +17,7 @@ if (menuToggle && menuList) {
 }
 
 const header = document.querySelector('header');
-const contactForm = document.querySelector('.contact-form');
+const contactForms = document.querySelectorAll('.contact-form');
 
 function trackGaEvent(eventName, params) {
   if (typeof window.gtag !== 'function') {
@@ -85,22 +85,78 @@ document.querySelectorAll('footer .social-icons a').forEach(function(link) {
   });
 });
 
-if (contactForm) {
-  contactForm.addEventListener('submit', function(event) {
-    const emailInput = document.getElementById('contact-email');
-    const email = emailInput.value;
+contactForms.forEach(function(contactForm) {
+  contactForm.addEventListener('submit', async function(event) {
+    event.preventDefault();
+
+    const emailInput = contactForm.querySelector('#contact-email');
+    const nameInput = contactForm.querySelector('#contact-name');
+    const phoneInput = contactForm.querySelector('#contact-phone');
+    const messageInput = contactForm.querySelector('#contact-message');
+    const checkedHelpWays = Array.from(contactForm.querySelectorAll('input[name="helpWays[]"]:checked'));
+    const email = (emailInput ? emailInput.value : '').trim();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailRegex.test(email)) {
-      event.preventDefault();
       alert('Please enter a valid email address.');
-      emailInput.focus();
+      if (emailInput) {
+        emailInput.focus();
+      }
       return;
     }
 
-    trackGaEvent('volunteer_form_submit', {
-      form_id: contactForm.id || 'contact-form',
-      form_location: window.location.pathname
-    });
+    const payload = {
+      name: nameInput ? nameInput.value.trim() : '',
+      email: email,
+      phone: phoneInput ? phoneInput.value.trim() : '',
+      message: messageInput ? messageInput.value.trim() : '',
+      helpWays: checkedHelpWays.map(function(input) {
+        return input.value.trim();
+      })
+    };
+
+    const submitButton = contactForm.querySelector('button[type="submit"]');
+    if (submitButton) {
+      submitButton.disabled = true;
+    }
+
+    try {
+      const response = await fetch(contactForm.action, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await response.json().catch(function() {
+        return {};
+      });
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Unable to submit your form right now.');
+      }
+
+      trackGaEvent('volunteer_form_submit', {
+        form_id: contactForm.id || 'contact-form',
+        form_location: window.location.pathname,
+        submission_status: 'success'
+      });
+
+      alert('Thanks for reaching out. We received your submission.');
+      contactForm.reset();
+    } catch (error) {
+      trackGaEvent('volunteer_form_submit', {
+        form_id: contactForm.id || 'contact-form',
+        form_location: window.location.pathname,
+        submission_status: 'error'
+      });
+
+      alert(error.message || 'Unable to submit your form right now.');
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+      }
+    }
   });
-}
+});
