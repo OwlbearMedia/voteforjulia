@@ -50,7 +50,7 @@ describe('Page components', () => {
     expect(wrapper.text()).toContain('Inspiration for Running for Mayor')
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'About Julia | Julia Hamann for Mankato Mayor',
+        title: 'Meet Julia | Julia Hamann for Mankato Mayor',
         link: expect.arrayContaining([
           expect.objectContaining({
             rel: 'canonical',

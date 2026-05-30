@@ -8,7 +8,7 @@ defineOptions({
 });
 
 useHead({
-    title: 'About Julia | Julia Hamann for Mankato Mayor',
+    title: 'Meet Julia | Julia Hamann for Mankato Mayor',
     link: [{
         rel: 'canonical',
         href: 'https://voteforjulia.com/meet-julia.html'
