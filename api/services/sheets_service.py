@@ -1,13 +1,13 @@
-import json
+from __future__ import annotations
 
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
+import json
 
 from api.config import SheetsConfig
 
 
-def _get_sheets_credentials(config: SheetsConfig) -> Credentials:
+def _get_sheets_credentials(config: SheetsConfig):
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    from google.oauth2.service_account import Credentials
 
     if config.service_account_file:
         return Credentials.from_service_account_file(config.service_account_file, scopes=scopes)
@@ -24,6 +24,8 @@ def append_row(config: SheetsConfig, row: list[str]) -> None:
         return
 
     credentials = _get_sheets_credentials(config)
+    from googleapiclient.discovery import build
+
     service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
     range_name = f"{config.worksheet}!A:A"
 

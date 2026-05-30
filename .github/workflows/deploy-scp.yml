@@ -14,42 +14,47 @@ concurrency:
 
 jobs:
   deploy:
-    name: Upload files over SSH
+    name: Build and upload over SSH
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Collect changed deploy files
-        id: changed-files
-        shell: bash
-        run: |
-          before_sha="${{ github.event.before }}"
-          after_sha="${{ github.sha }}"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
 
-          if [[ "$before_sha" == "0000000000000000000000000000000000000000" ]]; then
-            changed_files=$(git ls-files '*.html' robots.txt sitemap.xml css js img)
-          else
-            changed_files=$(git diff --name-only --diff-filter=ACMR "$before_sha" "$after_sha" -- '*.html' robots.txt sitemap.xml css js img)
-          fi
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
-          changed_files=$(printf '%s\n' "$changed_files" | sed '/^$/d')
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-          if [[ -z "$changed_files" ]]; then
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "files=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-          files_csv=$(printf '%s\n' "$changed_files" | paste -sd, -)
-          echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          echo "files=$files_csv" >> "$GITHUB_OUTPUT"
+      - name: Install Python dependencies
+        run: python -m pip install -r api/requirements.txt
 
-      - name: Upload files to server
-        if: steps.changed-files.outputs.has_changes == 'true'
+      - name: Run frontend tests
+        run: pnpm test
+
+      - name: Run Python API tests
+        run: python -m unittest api/test_models.py api/test_email_service.py
+
+      - name: Build site
+        run: pnpm run build
+
+      - name: Upload dist contents to server root
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -57,7 +62,20 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
-          source: ${{ steps.changed-files.outputs.files }}
-          target: ${{ secrets.SSH_TARGET_PATH }}
+          source: dist/**
+          target: ./public_html
           overwrite: true
-          strip_components: 0
+          strip_components: 1
+
+      - name: Upload api contents to server api directory
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          source: api/**
+          target: ./api
+          overwrite: true
+          strip_components: 1

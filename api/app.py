@@ -1,12 +1,19 @@
+from __future__ import annotations
+
 import logging
 import smtplib
 
 from flask import Flask, jsonify, request
-from googleapiclient.errors import HttpError
+
+try:
+    from googleapiclient.errors import HttpError
+except Exception:  # pragma: no cover - fallback for environments without google libs
+    class HttpError(Exception):
+        pass
 
 from api.config import EmailConfig, env, load_email_config, load_sheets_config
 from api.models import Submission, looks_like_email
-from api.services.email_service import send_submission_email
+from api.services.email_service import send_confirmation_email, send_submission_email
 from api.services.sheets_service import append_row
 
 app = Flask(__name__)
@@ -38,6 +45,20 @@ def _submission_from_request() -> Submission | None:
     return None
 
 
+def _missing_required_fields_message(submission: Submission) -> str:
+    missing_name = not submission.name
+    missing_email = not submission.email
+
+    if missing_name and missing_email:
+        return 'First name and email are required.'
+    if missing_name:
+        return 'First name is required.'
+    if missing_email:
+        return 'Email is required.'
+
+    return ''
+
+
 @app.route('/health', methods=['GET'])
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -63,8 +84,9 @@ def send_email():
         if submission is None:
             return jsonify({'error': 'Request body must be valid JSON or form data.'}), 400
 
-        if not submission.name or not submission.email:
-            return jsonify({'error': 'Name and email are required.'}), 400
+        missing_fields_message = _missing_required_fields_message(submission)
+        if missing_fields_message:
+            return jsonify({'error': missing_fields_message}), 400
 
         if not looks_like_email(submission.email):
             return jsonify({'error': 'Please provide a valid email address.'}), 400
@@ -75,16 +97,19 @@ def send_email():
             logger.error("SMTP refused recipients: %s", ", ".join(refused.keys()))
             return jsonify({'error': 'Unable to deliver email to recipient.'}), 502
 
+        confirmation_refused = send_confirmation_email(email_config, submission)
+        if confirmation_refused:
+            logger.warning(
+                "Confirmation email refused for %s",
+                ", ".join(confirmation_refused.keys()),
+            )
+
         logger.info(
             "Email accepted by SMTP for %d recipient(s)",
             len(email_config.recipients),
         )
 
-        sheet_row = submission.to_sheet_row(
-            request.path,
-            request.headers.get('User-Agent', ''),
-            request.headers.get('X-Forwarded-For', request.remote_addr or ''),
-        )
+        sheet_row = submission.to_sheet_row()
 
         try:
             append_row(sheets_config, sheet_row)
