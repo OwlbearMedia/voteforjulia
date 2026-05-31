@@ -15,6 +15,9 @@ class FakeSmtpServer:
         self.smtp_port = smtp_port
         self.login_args: tuple[str, str] | None = None
         self.sent_messages: list[tuple[str, list[str], str]] = []
+        self.ehlo_calls = 0
+        self.starttls_calls = 0
+        self.quit_calls = 0
         FakeSmtpServer.instances.append(self)
 
     def __enter__(self) -> "FakeSmtpServer":
@@ -30,6 +33,15 @@ class FakeSmtpServer:
         self.sent_messages.append((from_address, recipients, message))
         return {}
 
+    def ehlo(self) -> None:
+        self.ehlo_calls += 1
+
+    def starttls(self) -> None:
+        self.starttls_calls += 1
+
+    def quit(self) -> None:
+        self.quit_calls += 1
+
 
 class EmailServiceTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -39,9 +51,11 @@ class EmailServiceTests(unittest.TestCase):
         self.config = EmailConfig(
             smtp_server="mail.example.com",
             smtp_port=465,
+            smtp_security="ssl",
             email_address="info@example.com",
             email_password=password_placeholder,
             recipients=["team@example.com"],
+            plain_text_confirmation_only=False,
         )
         self.submission = Submission(
             first_name="Julia",
@@ -128,6 +142,55 @@ class EmailServiceTests(unittest.TestCase):
 
         self.assertIn("Hi there!", plain_text_payload)
         self.assertIn("Hi there!", html_payload)
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_send_confirmation_email_can_send_plain_text_only(self) -> None:
+        config = EmailConfig(
+            smtp_server="mail.example.com",
+            smtp_port=465,
+            smtp_security="ssl",
+            email_address="info@example.com",
+            email_password="placeholder-value",
+            recipients=["team@example.com"],
+            plain_text_confirmation_only=True,
+        )
+
+        refused = send_confirmation_email(config, self.submission)
+
+        self.assertEqual(refused, {})
+        self.assertEqual(len(FakeSmtpServer.instances), 1)
+        server = FakeSmtpServer.instances[0]
+        self.assertEqual(len(server.sent_messages), 1)
+
+        _, recipients, raw_message = server.sent_messages[0]
+        parsed = message_from_string(raw_message)
+
+        self.assertEqual(recipients, ["supporter@example.com"])
+        self.assertEqual(parsed.get_content_type(), "text/plain")
+        self.assertIn("Hi Julia!", parsed.get_payload())
+        self.assertIn("Paid for by Julia Hamann for Mankato Mayor", parsed.get_payload())
+
+    @patch("api.services.email_service.smtplib.SMTP", new=FakeSmtpServer)
+    def test_send_submission_email_uses_starttls_when_configured(self) -> None:
+        config = EmailConfig(
+            smtp_server="mail.example.com",
+            smtp_port=587,
+            smtp_security="starttls",
+            email_address="info@example.com",
+            email_password="placeholder-value",
+            recipients=["team@example.com"],
+            plain_text_confirmation_only=False,
+        )
+
+        refused = send_submission_email(config, self.submission)
+
+        self.assertEqual(refused, {})
+        self.assertEqual(len(FakeSmtpServer.instances), 1)
+        server = FakeSmtpServer.instances[0]
+        self.assertEqual(server.ehlo_calls, 2)
+        self.assertEqual(server.starttls_calls, 1)
+        self.assertEqual(server.login_args, ("info@example.com", "placeholder-value"))
+        self.assertEqual(server.quit_calls, 1)
 
 
 if __name__ == "__main__":
