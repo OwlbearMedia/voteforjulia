@@ -10,7 +10,7 @@ useHead({
   title: 'Secret Recipe | Julia Hamann for Mankato Mayor',
   link: [{
     rel: 'canonical',
-    href: 'https://voteforjulia.com/secret-recipe.html'
+    href: 'https://voteforjulia.com/secret-recipe'
   }],
   script: [{
     type: 'application/ld+json',
@@ -65,7 +65,7 @@ useHead({
     content: 'Discover the secret recipe behind the Julia Hamann campaign for a more just, community-led Mankato.'
   }, {
     property: 'og:url',
-    content: 'https://voteforjulia.com/secret-recipe.html'
+    content: 'https://voteforjulia.com/secret-recipe'
   }, {
     property: 'og:image',
     content: 'https://voteforjulia.com/julia-social-banner.avif'

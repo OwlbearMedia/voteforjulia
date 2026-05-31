@@ -153,16 +153,10 @@ const hasValidationError = computed(() => Boolean(firstNameError.value || emailE
                     v-model="helpWays" />
                 Talk to friends, family, &amp; neighbors
             </label>
-            <label class="help-option" for="help-other">
-                <input id="help-other" name="helpWays[]" type="checkbox" value="Other" v-model="helpWays" />
-                <span class="sr-only">Other special skills</span>
-                <input id="help-other-text" name="helpWaysOther" type="text" v-model="helpWaysOther"
-                    placeholder="Tell us about your other special skills or ideas!" />
-            </label>
         </fieldset>
 
-        <label for="contact-message">Message</label>
-        <textarea id="contact-message" name="message" v-model="message" placeholder="How would you like to help?"
+        <label for="contact-message" class="sr-only">Message</label>
+        <textarea id="contact-message" name="message" v-model="message" placeholder="How would you like to help? Tell us about your other special skills or ideas!"
             rows="5"></textarea>
 
         <button type="submit" :disabled="hasValidationError">Send Message</button>

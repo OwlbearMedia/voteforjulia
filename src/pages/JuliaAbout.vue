@@ -11,7 +11,7 @@ useHead({
     title: 'Meet Julia | Julia Hamann for Mankato Mayor',
     link: [{
         rel: 'canonical',
-        href: 'https://voteforjulia.com/meet-julia.html'
+        href: 'https://voteforjulia.com/meet-julia'
     }],
     script: [{
         type: 'application/ld+json',
@@ -69,7 +69,7 @@ useHead({
         content: 'Learn about Julia Hamann and her campaign for Mayor of Mankato with a vision for equity, transparency, sustainability, and community-led safety.'
     }, {
         property: 'og:url',
-        content: 'https://voteforjulia.com/meet-julia.html'
+        content: 'https://voteforjulia.com/meet-julia'
     }, {
         property: 'og:image',
         content: 'https://voteforjulia.com/julia-social-banner.avif'

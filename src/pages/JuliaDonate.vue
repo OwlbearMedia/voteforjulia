@@ -10,7 +10,7 @@ useHead({
   title: 'Donate | Julia Hamann for Mankato Mayor',
   link: [{
     rel: 'canonical',
-    href: 'https://voteforjulia.com/donate.html'
+    href: 'https://voteforjulia.com/donate'
   }],
   script: [{
     type: 'module',
@@ -27,7 +27,7 @@ useHead({
       }, {
         '@type': 'WebPage',
         name: 'Donate | Julia Hamann for Mankato Mayor',
-        url: 'https://voteforjulia.com/donate.html',
+        url: 'https://voteforjulia.com/donate',
         description: 'Support Julia Hamann in her campaign for Mayor of Mankato by making a donation.',
         isPartOf: {
           '@type': 'WebSite',
@@ -40,7 +40,7 @@ useHead({
         },
         potentialAction: {
           '@type': 'DonateAction',
-          target: 'https://voteforjulia.com/donate.html'
+          target: 'https://voteforjulia.com/donate'
         }
       }, {
         '@type': 'Person',
@@ -93,7 +93,7 @@ useHead({
     content: 'Support Julia Hamann in her campaign for Mayor of Mankato by making a donation. Every contribution helps build a more just, community-led Mankato.'
   }, {
     property: 'og:url',
-    content: 'https://voteforjulia.com/donate.html'
+    content: 'https://voteforjulia.com/donate'
   }, {
     property: 'og:image',
     content: 'https://voteforjulia.com/julia-social-banner.avif'
@@ -120,7 +120,7 @@ useHead({
     content: 'https://voteforjulia.com/julia-social-banner.avif'
   }, {
     name: 'twitter:url',
-    content: 'https://voteforjulia.com/donate.html'
+    content: 'https://voteforjulia.com/donate'
   }, {
     name: 'twitter:image:alt',
     content: 'Julia Hamann for Mankato Mayor campaign logo'

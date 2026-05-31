@@ -11,7 +11,7 @@ useHead({
     title: 'Volunteer | Julia Hamann for Mankato Mayor',
     link: [{
         rel: 'canonical',
-        href: 'https://voteforjulia.com/volunteer.html'
+        href: 'https://voteforjulia.com/volunteer'
     }],
     script: [{
         type: 'application/ld+json',
@@ -66,7 +66,7 @@ useHead({
         content: 'Volunteer for the Julia Hamann campaign to help build a more just, community-led Mankato.'
     }, {
         property: 'og:url',
-        content: 'https://voteforjulia.com/volunteer.html'
+        content: 'https://voteforjulia.com/volunteer'
     }, {
         property: 'og:image',
         content: 'https://voteforjulia.com/julia-social-banner.avif'

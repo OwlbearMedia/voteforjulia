@@ -21,6 +21,28 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_CORS_ALLOWED_ORIGINS = {
+    item.strip()
+    for item in env(
+        'CORS_ALLOWED_ORIGINS',
+        'https://voteforjulia.com,https://www.voteforjulia.com,http://localhost:5173',
+    ).split(',')
+    if item.strip()
+}
+
+
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get('Origin', '').strip()
+    if origin and origin in _CORS_ALLOWED_ORIGINS:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Max-Age'] = '86400'
+
+    return response
+
 def _validate_email_config(config: EmailConfig) -> str:
     if not config.email_address or not config.email_password:
         return "Email service not configured: missing EMAIL_ADDRESS or EMAIL_PASSWORD"
@@ -46,12 +68,12 @@ def _submission_from_request() -> Submission | None:
 
 
 def _missing_required_fields_message(submission: Submission) -> str:
-    missing_name = not submission.name
+    missing_first_name = not submission.first_name
     missing_email = not submission.email
 
-    if missing_name and missing_email:
+    if missing_first_name and missing_email:
         return 'First name and email are required.'
-    if missing_name:
+    if missing_first_name:
         return 'First name is required.'
     if missing_email:
         return 'Email is required.'
@@ -68,9 +90,12 @@ def health_check():
         'script_root': request.script_root,
     }), 200
 
-@app.route('/send-email', methods=['POST'])
-@app.route('/api/send-email', methods=['POST'])
+@app.route('/send-email', methods=['POST', 'OPTIONS'])
+@app.route('/api/send-email', methods=['POST', 'OPTIONS'])
 def send_email():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
     email_config = load_email_config()
     sheets_config = load_sheets_config()
 
