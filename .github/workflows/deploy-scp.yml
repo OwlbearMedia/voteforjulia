@@ -72,6 +72,19 @@ jobs:
           overwrite: true
           strip_components: 1
 
+      - name: Upload .htaccess to server root
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          source: dist/.htaccess
+          target: ./public_html
+          overwrite: true
+          strip_components: 1
+
       - name: Upload api contents to server api directory
         uses: appleboy/scp-action@v0.1.7
         with:

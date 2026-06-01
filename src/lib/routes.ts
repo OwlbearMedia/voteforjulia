@@ -5,9 +5,9 @@ import JuliaSecretRecipe from '../pages/JuliaSecretRecipe.vue';
 import JuliaDonate from '../pages/JuliaDonate.vue';
 
 export const routes = [
-  { path: '/', component: JuliaHome, alias: '/index.html' },
-  { path: '/meet-julia', component: JuliaAbout, alias: '/meet-julia.html' },
-  { path: '/volunteer', component: JuliaVolunteer, alias: '/volunteer.html' },
-  { path: '/secret-recipe', component: JuliaSecretRecipe, alias: '/secret-recipe.html' },
-  { path: '/donate', component: JuliaDonate, alias: '/donate.html' },
+  { path: '/', component: JuliaHome },
+  { path: '/meet-julia', component: JuliaAbout },
+  { path: '/volunteer', component: JuliaVolunteer },
+  { path: '/secret-recipe', component: JuliaSecretRecipe },
+  { path: '/donate', component: JuliaDonate },
 ];
