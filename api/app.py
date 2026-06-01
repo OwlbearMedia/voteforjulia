@@ -25,7 +25,13 @@ _CORS_ALLOWED_ORIGINS = {
     item.strip()
     for item in env(
         'CORS_ALLOWED_ORIGINS',
-        'https://voteforjulia.com,https://www.voteforjulia.com,http://localhost:5173',
+        (
+            'https://voteforjulia.com,'
+            'https://www.voteforjulia.com,'
+            'https://test.voteforjulia.com,'
+            'https://test-api.voteforjulia.com,'
+            'http://localhost:5173'
+        ),
     ).split(',')
     if item.strip()
 }
