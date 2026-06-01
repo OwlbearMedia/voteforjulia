@@ -17,8 +17,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.0",
-    "tailwindcss": "^4.3.0",
     "vue": "^3.5.34",
     "vue-gtag": "^3.7.1"
   },

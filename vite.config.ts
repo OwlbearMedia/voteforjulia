@@ -3,7 +3,6 @@ import { writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import tailwindcss from '@tailwindcss/vite'
 
 const SITE_URL = 'https://voteforjulia.com'
 
@@ -27,7 +26,6 @@ function buildSitemapXml(routePaths: string[]): string {
 export default defineConfig({
   plugins: [
     vue(),
-    tailwindcss(),
   ],
   ssgOptions: {
     dirStyle: 'nested',

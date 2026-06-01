@@ -98,79 +98,81 @@ const hasValidationError = computed(() => Boolean(firstNameError.value || emailE
 </script>
 
 <template>
-    <output v-if="isSubmitted" class="contact-form" aria-live="polite">
-        <h3>Thanks so much for your support, {{ firstName.trim() || 'friend' }}!</h3>
-        <p>
-            Check your inbox for additional follow up. I look forward to working with you!
-            <img class="success-sprout" :src="sprout" alt="" aria-hidden="true" />
-        </p>
-    </output>
+    <Transition name="contact-state" mode="out-in">
+        <output v-if="isSubmitted" key="success" class="contact-form" aria-live="polite">
+            <h3>Thanks so much for your support, {{ firstName.trim() || 'friend' }}!</h3>
+            <p>
+                Check your inbox for additional follow up. I look forward to working with you!
+                <img class="success-sprout" :src="sprout" alt="" aria-hidden="true" />
+            </p>
+        </output>
 
-    <form v-else class="contact-form" action="/api/send-email" method="POST" @submit="handleSubmit">
-        <h3>Volunteer for the Campaign</h3>
-        <p>* Fields marked with an asterisk are required.</p>
+        <form v-else key="form" class="contact-form" action="/api/send-email" method="POST" @submit="handleSubmit">
+            <h3>Volunteer for the Campaign</h3>
+            <p>* Fields marked with an asterisk are required.</p>
 
-        <div class="name-fields">
-            <div class="name-field">
-                <label for="contact-first-name" class="sr-only">First Name *</label>
-                <input id="contact-first-name" name="firstName" type="text" v-model="firstName" placeholder="First Name *"
-                    @blur="validateFirstNameField" :class="{ 'input-error': firstNameError }" autocomplete="given-name" required />
-                <p v-if="firstNameError" class="form-error-message" role="alert" aria-live="polite">{{ firstNameError }}</p>
+            <div class="name-fields">
+                <div class="name-field">
+                    <label for="contact-first-name" class="sr-only">First Name *</label>
+                    <input id="contact-first-name" name="firstName" type="text" v-model="firstName" placeholder="First Name *"
+                        @blur="validateFirstNameField" :class="{ 'input-error': firstNameError }" autocomplete="given-name" required />
+                    <p v-if="firstNameError" class="form-error-message" role="alert" aria-live="polite">{{ firstNameError }}</p>
+                </div>
+
+                <div class="name-field">
+                    <label for="contact-last-name" class="sr-only">Last Name</label>
+                    <input id="contact-last-name" name="lastName" type="text" v-model="lastName" placeholder="Last Name"
+                        autocomplete="family-name" />
+                </div>
             </div>
 
-            <div class="name-field">
-                <label for="contact-last-name" class="sr-only">Last Name</label>
-                <input id="contact-last-name" name="lastName" type="text" v-model="lastName" placeholder="Last Name"
-                    autocomplete="family-name" />
-            </div>
-        </div>
+            <input type="hidden" name="name" :value="fullName" />
 
-        <input type="hidden" name="name" :value="fullName" />
+            <label for="contact-email" class="sr-only">Email *</label>
+            <input id="contact-email" name="email" type="email" v-model="email" @blur="validateEmailField"
+                :class="{ 'input-error': emailError }" placeholder="Email *" autocomplete="email" required />
+            <p v-if="emailError" class="form-error-message" role="alert" aria-live="polite">{{ emailError }}</p>
 
-        <label for="contact-email" class="sr-only">Email *</label>
-        <input id="contact-email" name="email" type="email" v-model="email" @blur="validateEmailField"
-            :class="{ 'input-error': emailError }" placeholder="Email *" autocomplete="email" required />
-        <p v-if="emailError" class="form-error-message" role="alert" aria-live="polite">{{ emailError }}</p>
+            <label for="contact-phone" class="sr-only">Phone</label>
+            <input id="contact-phone" name="phone" type="tel" v-model="phone" placeholder="Phone" autocomplete="tel" />
 
-        <label for="contact-phone" class="sr-only">Phone</label>
-        <input id="contact-phone" name="phone" type="tel" v-model="phone" placeholder="Phone" autocomplete="tel" />
+            <fieldset class="help-options">
+                <legend>Ways you'd like to help</legend>
+                <label class="help-option" for="help-canvassing">
+                    <input id="help-canvassing" name="helpWays[]" type="checkbox" value="Canvassing" v-model="helpWays" />
+                    Canvassing
+                </label>
+                <label class="help-option" for="help-events">
+                    <input id="help-events" name="helpWays[]" type="checkbox" value="Events" v-model="helpWays" />
+                    Host a Meet &amp; Greet
+                </label>
+                <label class="help-option" for="help-letter-to-editor">
+                    <input id="help-letter-to-editor" name="helpWays[]" type="checkbox" value="Letter to the editor"
+                        v-model="helpWays" />
+                    Letter to the editor
+                </label>
+                <label class="help-option" for="help-fundraiser">
+                    <input id="help-fundraiser" name="helpWays[]" type="checkbox" value="Fundraiser" v-model="helpWays" />
+                    Host a fundraiser
+                </label>
+                <label class="help-option" for="help-campaign-team">
+                    <input id="help-campaign-team" name="helpWays[]" type="checkbox" value="Campaign team"
+                        v-model="helpWays" />
+                    Join the campaign team
+                </label>
+                <label class="help-option" for="help-yard-signs">
+                    <input id="help-yard-signs" name="helpWays[]" type="checkbox" value="Yard signs" v-model="helpWays" />
+                    Put up a yard sign
+                </label>
+            </fieldset>
 
-        <fieldset class="help-options">
-            <legend>Ways you'd like to help</legend>
-            <label class="help-option" for="help-canvassing">
-                <input id="help-canvassing" name="helpWays[]" type="checkbox" value="Canvassing" v-model="helpWays" />
-                Canvassing
-            </label>
-            <label class="help-option" for="help-events">
-                <input id="help-events" name="helpWays[]" type="checkbox" value="Events" v-model="helpWays" />
-                Host a Meet &amp; Greet
-            </label>
-            <label class="help-option" for="help-letter-to-editor">
-                <input id="help-letter-to-editor" name="helpWays[]" type="checkbox" value="Letter to the editor"
-                    v-model="helpWays" />
-                Letter to the editor
-            </label>
-            <label class="help-option" for="help-fundraiser">
-                <input id="help-fundraiser" name="helpWays[]" type="checkbox" value="Fundraiser" v-model="helpWays" />
-                Host a fundraiser
-            </label>
-            <label class="help-option" for="help-campaign-team">
-                <input id="help-campaign-team" name="helpWays[]" type="checkbox" value="Campaign team"
-                    v-model="helpWays" />
-                Join the campaign team
-            </label>
-            <label class="help-option" for="help-yard-signs">
-                <input id="help-yard-signs" name="helpWays[]" type="checkbox" value="Yard signs" v-model="helpWays" />
-                Put up a yard sign
-            </label>
-        </fieldset>
+            <label for="contact-message" class="sr-only">Message</label>
+            <textarea id="contact-message" name="message" v-model="message" placeholder="How would you like to help? Tell us about your other special skills or ideas!"
+                rows="5"></textarea>
 
-        <label for="contact-message" class="sr-only">Message</label>
-        <textarea id="contact-message" name="message" v-model="message" placeholder="How would you like to help? Tell us about your other special skills or ideas!"
-            rows="5"></textarea>
-
-        <button v-if="!isSubmitting" type="submit" :disabled="hasValidationError">Send Message</button>
-        <output v-else class="form-loading-message" aria-live="polite">Sending your message...</output>
-        <p v-if="submitError" class="form-error-message" role="alert" aria-live="assertive">{{ submitError }}</p>
-    </form>
+            <button v-if="!isSubmitting" type="submit" :disabled="hasValidationError">Send Message</button>
+            <output v-else class="form-loading-message" aria-live="polite">Sending your message...</output>
+            <p v-if="submitError" class="form-error-message" role="alert" aria-live="assertive">{{ submitError }}</p>
+        </form>
+    </Transition>
 </template>
