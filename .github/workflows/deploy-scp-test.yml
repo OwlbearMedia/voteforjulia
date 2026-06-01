@@ -1,22 +1,22 @@
-name: Deploy via SCP
+name: Deploy Test via SCP
 
 on:
   pull_request:
     types:
       - closed
     branches:
-      - main
+      - develop
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-main
+  group: deploy-develop
   cancel-in-progress: true
 
 jobs:
   deploy:
-    name: Build and upload over SSH
+    name: Build and upload over SSH (test)
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
@@ -56,10 +56,27 @@ jobs:
 
       - name: Build site
         env:
-          VITE_API_BASE_URL: https://api.voteforjulia.com
+          VITE_API_BASE_URL: https://test-api.voteforjulia.com
         run: pnpm run build
 
-      - name: Upload dist contents to server root
+      - name: Write no-index robots.txt for test deploy
+        run: |
+          cat > dist/robots.txt <<'EOF'
+          User-agent: *
+          Disallow: /
+          EOF
+
+      - name: Add noindex meta tag to built test HTML
+        run: |
+          find dist -type f -name '*.html' -print0 | while IFS= read -r -d '' file; do
+            if grep -qi '<meta name="robots"' "$file"; then
+              sed -i 's#<meta name="robots"[^>]*>#<meta name="robots" content="noindex,nofollow,noarchive" />#I' "$file"
+            else
+              sed -i 's#</head>#  <meta name="robots" content="noindex,nofollow,noarchive" />\n</head>#I' "$file"
+            fi
+          done
+
+      - name: Upload dist contents to test server root
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -68,11 +85,11 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
           source: dist/**
-          target: ./public_html
+          target: ./public_html_test
           overwrite: true
           strip_components: 1
 
-      - name: Upload .htaccess to server root
+      - name: Upload .htaccess to test server root
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -81,11 +98,11 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
           source: dist/.htaccess
-          target: ./public_html
+          target: ./public_html_test
           overwrite: true
           strip_components: 1
 
-      - name: Upload api contents to server api directory
+      - name: Upload api contents to test api directory
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -94,11 +111,11 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
           source: api/**
-          target: ./api
+          target: ./api_test
           overwrite: true
           strip_components: 1
 
-      - name: Restart Python app (Passenger)
+      - name: Restart Python app (Passenger) in test
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -107,5 +124,5 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            mkdir -p ./api/tmp
-            touch ./api/tmp/restart.txt
+            mkdir -p ./api_test/tmp
+            touch ./api_test/tmp/restart.txt

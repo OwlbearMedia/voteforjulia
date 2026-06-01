@@ -1,0 +1,53 @@
+import { ViteSSG } from 'vite-ssg'
+
+import './style.css';
+import App from './App.vue';
+import { routes } from './lib/routes';
+import { trackPageView } from './lib/analytics';
+
+export const createApp = ViteSSG(
+  App,
+  {
+    routes,
+    scrollBehavior(to, _from, savedPosition) {
+      if (savedPosition) {
+        return savedPosition;
+      }
+
+      if (to.hash) {
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            const targetElement = document.querySelector(to.hash);
+            if (!targetElement) {
+              resolve({ top: 0 });
+              return;
+            }
+
+            const headerElement = document.querySelector('header');
+            const headerHeight = headerElement ? headerElement.getBoundingClientRect().height : 0;
+            const targetTop = targetElement.getBoundingClientRect().top + window.scrollY;
+            const scrollTop = Math.max(targetTop - headerHeight - 8, 0);
+
+            resolve({
+              top: scrollTop,
+            });
+          }, 0);
+        });
+      }
+
+      return { top: 0 };
+    },
+  },
+  ({ router }) => {
+  if (import.meta.env.SSR) {
+    return;
+  }
+
+  router.isReady().then(() => {
+    trackPageView(router.currentRoute.value.fullPath);
+  });
+
+  router.afterEach((to) => {
+    trackPageView(to.fullPath);
+  });
+});
