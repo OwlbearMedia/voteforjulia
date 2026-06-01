@@ -113,7 +113,7 @@ class EmailServiceTests(unittest.TestCase):
         self.assertIn("Hi Julia!", html_payload)
         self.assertIn("Thank you so much for reaching out to help promote my campaign", html_payload)
         self.assertIn("Paid for by Julia Hamann for Mankato Mayor", html_payload)
-        self.assertIn("https://voteforjulia.com/img/julia-hamann-for-mankato-mayor.png", html_payload)
+        self.assertIn("https://voteforjulia.com/julia-hamann-for-mankato-mayor.png", html_payload)
 
     @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
     def test_send_confirmation_email_uses_there_when_name_missing(self) -> None:

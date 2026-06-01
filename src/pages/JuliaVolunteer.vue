@@ -109,7 +109,6 @@ useHead({
                     engagement.
                 </p>
 
-                <h3>Volunteer for the Campaign</h3>
                 <JuliaContactForm />
             </div>
             <img :src="Julia" alt="Julia Hamann for Mankato Mayor" class="coming-soon" width="767" height="960"

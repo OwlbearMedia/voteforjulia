@@ -47,6 +47,12 @@ body {
   flex-direction: column;
 }
 
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -329,6 +335,12 @@ section {
   max-width: 640px;
   display: grid;
   gap: 0.6rem;
+}
+
+.success-sprout {
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: text-bottom;
 }
 
 .contact-form label,

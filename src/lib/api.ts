@@ -1,8 +1,12 @@
+const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "") ||
+  "https://api.voteforjulia.com";
+
 export async function submitContactForm(
   formData: Record<string, string>,
 ): Promise<void> {
   try {
-    const response = await fetch("https://api.voteforjulia.com/send-email", {
+    const response = await fetch(`${API_BASE_URL}/send-email`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

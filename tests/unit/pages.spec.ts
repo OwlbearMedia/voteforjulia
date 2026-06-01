@@ -54,7 +54,7 @@ describe('Page components', () => {
         link: expect.arrayContaining([
           expect.objectContaining({
             rel: 'canonical',
-            href: 'https://voteforjulia.com/meet-julia.html',
+            href: 'https://voteforjulia.com/meet-julia',
           }),
         ]),
       }),
@@ -70,14 +70,14 @@ describe('Page components', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('Volunteer for the Campaign')
+    expect(wrapper.text()).toContain('Join the campaign team to help with outreach, events, and voter engagement.')
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Volunteer | Julia Hamann for Mankato Mayor',
         link: expect.arrayContaining([
           expect.objectContaining({
             rel: 'canonical',
-            href: 'https://voteforjulia.com/volunteer.html',
+            href: 'https://voteforjulia.com/volunteer',
           }),
         ]),
       }),
@@ -100,7 +100,7 @@ describe('Page components', () => {
         link: expect.arrayContaining([
           expect.objectContaining({
             rel: 'canonical',
-            href: 'https://voteforjulia.com/donate.html',
+            href: 'https://voteforjulia.com/donate',
           }),
         ]),
       }),
@@ -118,7 +118,7 @@ describe('Page components', () => {
         link: expect.arrayContaining([
           expect.objectContaining({
             rel: 'canonical',
-            href: 'https://voteforjulia.com/secret-recipe.html',
+            href: 'https://voteforjulia.com/secret-recipe',
           }),
         ]),
       }),

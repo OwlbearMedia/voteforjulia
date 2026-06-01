@@ -45,11 +45,11 @@ function handleDonateClick() {
 
             <nav aria-label="Main navigation">
                 <ul class="menu-list" :class="{ open: showMenu }" id="main-menu">
-                    <li><router-link to="/" @click="closeMenu">Home</router-link></li>
-                    <li><router-link to="/meet-julia" @click="closeMenu">Meet Julia</router-link></li>
-                    <li><router-link :to="{ path: '/', hash: '#issues' }" @click="closeMenu">Issues</router-link></li>
-                    <li><router-link to="/volunteer" @click="closeMenu">Volunteer</router-link></li>
-                    <li><router-link to="/donate" class="donate" @click="handleDonateClick">Donate</router-link></li>
+                    <li><RouterLink to="/" @click="closeMenu">Home</RouterLink></li>
+                    <li><RouterLink to="/meet-julia" @click="closeMenu">Meet Julia</RouterLink></li>
+                    <li><RouterLink :to="{ path: '/', hash: '#issues' }" @click="closeMenu">Issues</RouterLink></li>
+                    <li><RouterLink to="/volunteer" @click="closeMenu">Volunteer</RouterLink></li>
+                    <li><RouterLink to="/donate" class="donate" @click="handleDonateClick">Donate</RouterLink></li>
                     <li class="social-icons">
                         <a href="https://www.instagram.com/voteforjuliahamann" aria-label="Julia on Instagram"
                             target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-instagram"></i></a>

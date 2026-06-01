@@ -2,20 +2,8 @@ import { ViteSSG } from 'vite-ssg'
 
 import './style.css';
 import App from './App.vue';
-import JuliaHome from './pages/JuliaHome.vue';
-import JuliaAbout from './pages/JuliaAbout.vue';
-import JuliaVolunteer from './pages/JuliaVolunteer.vue';
-import JuliaSecretRecipe from './pages/JuliaSecretRecipe.vue';
-import JuliaDonate from './pages/JuliaDonate.vue';
+import { routes } from './lib/routes';
 import { trackPageView } from './lib/analytics';
-
-const routes = [
-  { path: '/', component: JuliaHome },
-  { path: '/meet-julia', component: JuliaAbout },
-  { path: '/volunteer', component: JuliaVolunteer },
-  { path: '/secret-recipe', component: JuliaSecretRecipe },
-  { path: '/donate', component: JuliaDonate },
-];
 
 export const createApp = ViteSSG(
   App,
