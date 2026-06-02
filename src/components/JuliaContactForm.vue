@@ -12,6 +12,15 @@ defineOptions({
   name: "JuliaContactForm",
 });
 
+const MAX_FIRST_NAME_LENGTH = 80;
+const MAX_LAST_NAME_LENGTH = 80;
+const MAX_EMAIL_LENGTH = 254;
+const MAX_PHONE_LENGTH = 32;
+const MAX_MESSAGE_LENGTH = 500;
+
+const EMAIL_REGEX =
+  /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+$/i;
+
 const firstName = ref("");
 const lastName = ref("");
 const email = ref("");
@@ -19,7 +28,10 @@ const phone = ref("");
 const helpWays = ref<string[]>([]);
 const message = ref("");
 const firstNameError = ref("");
+const lastNameError = ref("");
 const emailError = ref("");
+const phoneError = ref("");
+const messageError = ref("");
 const submitError = ref("");
 const isSubmitted = ref(false);
 const isSubmitting = ref(false);
@@ -30,9 +42,43 @@ const fullName = computed(() =>
   `${firstName.value.trim()} ${lastName.value.trim()}`.trim(),
 );
 
+function containsDisallowedControlChars(
+  value: string,
+  allowNewlines: boolean,
+): boolean {
+  for (const character of value) {
+    if (character === "\n" || character === "\r") {
+      if (allowNewlines) {
+        continue;
+      }
+
+      return true;
+    }
+
+    const codePoint = character.charCodeAt(0);
+    if (codePoint < 32 || codePoint === 127) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function validateFirstNameField(): boolean {
-  if (!firstName.value.trim()) {
+  const normalized = firstName.value.trim();
+
+  if (!normalized) {
     firstNameError.value = "Please enter your first name.";
+    return false;
+  }
+
+  if (containsDisallowedControlChars(firstName.value, false)) {
+    firstNameError.value = "First name contains invalid characters.";
+    return false;
+  }
+
+  if (normalized.length > MAX_FIRST_NAME_LENGTH) {
+    firstNameError.value = `First name must be ${MAX_FIRST_NAME_LENGTH} characters or fewer.`;
     return false;
   }
 
@@ -40,19 +86,79 @@ function validateFirstNameField(): boolean {
   return true;
 }
 
+function validateLastNameField(): boolean {
+  const normalized = lastName.value.trim();
+
+  if (containsDisallowedControlChars(lastName.value, false)) {
+    lastNameError.value = "Last name contains invalid characters.";
+    return false;
+  }
+
+  if (normalized.length > MAX_LAST_NAME_LENGTH) {
+    lastNameError.value = `Last name must be ${MAX_LAST_NAME_LENGTH} characters or fewer.`;
+    return false;
+  }
+
+  lastNameError.value = "";
+  return true;
+}
+
 function isValidEmailFormat(value: string): boolean {
   const normalized = value.trim();
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(normalized);
+  return EMAIL_REGEX.test(normalized);
 }
 
 function validateEmailField(): boolean {
+  const normalized = email.value.trim();
+
+  if (containsDisallowedControlChars(email.value, false)) {
+    emailError.value = "Email contains invalid characters.";
+    return false;
+  }
+
+  if (normalized.length > MAX_EMAIL_LENGTH) {
+    emailError.value = `Email must be ${MAX_EMAIL_LENGTH} characters or fewer.`;
+    return false;
+  }
+
   if (!isValidEmailFormat(email.value)) {
     emailError.value = "Please enter a valid email address.";
     return false;
   }
 
   emailError.value = "";
+  return true;
+}
+
+function validatePhoneField(): boolean {
+  const normalized = phone.value.trim();
+
+  if (containsDisallowedControlChars(phone.value, false)) {
+    phoneError.value = "Phone contains invalid characters.";
+    return false;
+  }
+
+  if (normalized.length > MAX_PHONE_LENGTH) {
+    phoneError.value = `Phone must be ${MAX_PHONE_LENGTH} characters or fewer.`;
+    return false;
+  }
+
+  phoneError.value = "";
+  return true;
+}
+
+function validateMessageField(): boolean {
+  if (containsDisallowedControlChars(message.value, true)) {
+    messageError.value = "Message contains invalid characters.";
+    return false;
+  }
+
+  if (message.value.length > MAX_MESSAGE_LENGTH) {
+    messageError.value = `Message must be ${MAX_MESSAGE_LENGTH} characters or fewer.`;
+    return false;
+  }
+
+  messageError.value = "";
   return true;
 }
 
@@ -64,9 +170,18 @@ function handleSubmit(event: Event): void {
   }
 
   const isFirstNameValid = validateFirstNameField();
+  const isLastNameValid = validateLastNameField();
   const isEmailValid = validateEmailField();
+  const isPhoneValid = validatePhoneField();
+  const isMessageValid = validateMessageField();
 
-  if (!isFirstNameValid || !isEmailValid) {
+  if (
+    !isFirstNameValid ||
+    !isLastNameValid ||
+    !isEmailValid ||
+    !isPhoneValid ||
+    !isMessageValid
+  ) {
     submitError.value = "";
   } else {
     submitForm();
@@ -106,7 +221,13 @@ async function submitForm(): Promise<void> {
 }
 
 const hasValidationError = computed(() =>
-  Boolean(firstNameError.value || emailError.value),
+  Boolean(
+    firstNameError.value ||
+    lastNameError.value ||
+    emailError.value ||
+    phoneError.value ||
+    messageError.value,
+  ),
 );
 
 async function scrollToSuccessMessage(): Promise<void> {
@@ -209,8 +330,17 @@ watch(successMessageRef, (element) => {
             type="text"
             v-model="lastName"
             placeholder="Last Name"
+            @blur="validateLastNameField"
             autocomplete="family-name"
           />
+          <p
+            v-if="lastNameError"
+            class="form-error-message"
+            role="alert"
+            aria-live="polite"
+          >
+            {{ lastNameError }}
+          </p>
         </div>
       </div>
 
@@ -244,8 +374,17 @@ watch(successMessageRef, (element) => {
         type="tel"
         v-model="phone"
         placeholder="Phone"
+        @blur="validatePhoneField"
         autocomplete="tel"
       />
+      <p
+        v-if="phoneError"
+        class="form-error-message"
+        role="alert"
+        aria-live="polite"
+      >
+        {{ phoneError }}
+      </p>
 
       <fieldset class="help-options">
         <legend>Ways you'd like to help</legend>
@@ -318,7 +457,16 @@ watch(successMessageRef, (element) => {
         v-model="message"
         placeholder="How would you like to help? Tell us about your other special skills or ideas!"
         rows="5"
+        @blur="validateMessageField"
       ></textarea>
+      <p
+        v-if="messageError"
+        class="form-error-message"
+        role="alert"
+        aria-live="polite"
+      >
+        {{ messageError }}
+      </p>
 
       <button v-if="!isSubmitting" type="submit" :disabled="hasValidationError">
         Send Message

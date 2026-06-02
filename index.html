@@ -3,80 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <!-- Google tag (gtag.js) -->
-    <script
-      async
-      src="https://www.googletagmanager.com/gtag/js?id=G-4WYNB1ECZQ"
-    ></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag() {
-        dataLayer.push(arguments);
-      }
-      gtag("js", new Date());
-
-      gtag("config", "G-4WYNB1ECZQ", { send_page_view: false });
-    </script>
-
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="preload"
-      href="https://fonts.googleapis.com/css2?family=Orelega+One&display=swap"
-      as="style"
-      onload="
-        this.onload = null;
-        this.rel = 'stylesheet';
-      "
-    />
-    <noscript>
-      <link
-        href="https://fonts.googleapis.com/css2?family=Orelega+One&display=swap"
-        rel="stylesheet"
-      />
-    </noscript>
-    <link rel="icon" type="image/png" href="public/favicon.png" sizes="64x64" />
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@graph": [
-          {
-            "@type": "WebSite",
-            "name": "Vote for Julia Hamann",
-            "url": "https://voteforjulia.com/"
-          },
-          {
-            "@type": "Person",
-            "name": "Julia Hamann",
-            "url": "https://voteforjulia.com/",
-            "jobTitle": "Candidate for Mayor of Mankato",
-            "description": "Campaign website for Julia Hamann running for Mayor of Mankato.",
-            "address": {
-              "@type": "PostalAddress",
-              "addressLocality": "Mankato",
-              "addressRegion": "MN",
-              "addressCountry": "US"
-            },
-            "areaServed": {
-              "@type": "City",
-              "name": "Mankato"
-            },
-            "knowsAbout": [
-              "Environmental justice",
-              "Government transparency",
-              "Affordable housing",
-              "Community-led safety"
-            ]
-          }
-        ]
-      }
-    </script>
+    <link rel="icon" type="image/png" href="/favicon.png" sizes="64x64" />
   </head>
 
   <body>
-    <div id="app"></div>  
+    <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
-    <script src="https://kit.fontawesome.com/f899652583.js" crossorigin="anonymous"></script>
   </body>
 </html>

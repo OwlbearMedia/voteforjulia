@@ -33,6 +33,35 @@ describe("JuliaContactForm", () => {
     expect(submitContactForm).not.toHaveBeenCalled();
   });
 
+  it("blocks submission when the message exceeds the backend limit", async () => {
+    const wrapper = mount(JuliaContactForm);
+
+    await wrapper.find("#contact-first-name").setValue("Julia");
+    await wrapper.find("#contact-email").setValue("julia@example.com");
+    await wrapper.find("#contact-message").setValue("x".repeat(501));
+
+    await wrapper.find("form").trigger("submit");
+
+    expect(wrapper.text()).toContain(
+      "Message must be 500 characters or fewer.",
+    );
+    expect(submitContactForm).not.toHaveBeenCalled();
+  });
+
+  it("blocks submission when first name exceeds the backend limit", async () => {
+    const wrapper = mount(JuliaContactForm);
+
+    await wrapper.find("#contact-first-name").setValue("x".repeat(81));
+    await wrapper.find("#contact-email").setValue("julia@example.com");
+
+    await wrapper.find("form").trigger("submit");
+
+    expect(wrapper.text()).toContain(
+      "First name must be 80 characters or fewer.",
+    );
+    expect(submitContactForm).not.toHaveBeenCalled();
+  });
+
   it("submits a valid payload and tracks success", async () => {
     vi.mocked(submitContactForm).mockResolvedValueOnce();
 
