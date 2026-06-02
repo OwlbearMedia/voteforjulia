@@ -110,7 +110,7 @@ useHead({
         </p>
         <div>
             <RouterLink class="btn" to="/meet-julia">
-                Learn more <span class="sr-only">about Julia Hamann, candidate for Mayor of Mankato</span>
+                Learn more about Julia
             </RouterLink>
         </div>
     </section>
