@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import sprout from '../assets/sprout.png';
 import { submitContactForm } from '../lib/api';
 import { trackVolunteerFormSubmit } from '../lib/analytics';
@@ -19,6 +19,8 @@ const emailError = ref('');
 const submitError = ref('');
 const isSubmitted = ref(false);
 const isSubmitting = ref(false);
+const successMessageRef = ref<HTMLElement | null>(null);
+const hasScrolledToSuccess = ref(false);
 
 const fullName = computed(() => `${firstName.value.trim()} ${lastName.value.trim()}`.trim());
 
@@ -95,11 +97,47 @@ async function submitForm(): Promise<void> {
 }
 
 const hasValidationError = computed(() => Boolean(firstNameError.value || emailError.value));
+
+async function scrollToSuccessMessage(): Promise<void> {
+    await nextTick();
+
+    const successElement = successMessageRef.value;
+    if (!successElement || hasScrolledToSuccess.value) {
+        return;
+    }
+
+    const headerElement = document.querySelector('header');
+    const headerHeight = headerElement instanceof HTMLElement
+        ? headerElement.getBoundingClientRect().height
+        : 0;
+    const targetTop = successElement.getBoundingClientRect().top + window.scrollY;
+    const scrollTop = Math.max(targetTop - headerHeight - 8, 0);
+
+    window.scrollTo({ top: scrollTop, behavior: 'smooth' });
+    hasScrolledToSuccess.value = true;
+}
+
+watch(isSubmitted, (submitted) => {
+    if (!submitted) {
+        hasScrolledToSuccess.value = false;
+        return;
+    }
+
+    void scrollToSuccessMessage();
+});
+
+watch(successMessageRef, (element) => {
+    if (!element || !isSubmitted.value) {
+        return;
+    }
+
+    void scrollToSuccessMessage();
+});
 </script>
 
 <template>
     <Transition name="contact-state" mode="out-in">
-        <output v-if="isSubmitted" key="success" class="contact-form" aria-live="polite">
+        <output v-if="isSubmitted" key="success" ref="successMessageRef" class="contact-form" aria-live="polite">
             <h3>Thanks so much for your support, {{ firstName.trim() || 'friend' }}!</h3>
             <p>
                 Check your inbox for additional follow up. I look forward to working with you!

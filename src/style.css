@@ -459,12 +459,6 @@ section {
   cursor: not-allowed;
 }
 
-@media (max-width: 700px) {
-  .name-fields {
-    flex-direction: column;
-  }
-}
-
 .hero {
   text-align: center;
   margin: 1rem 0;
