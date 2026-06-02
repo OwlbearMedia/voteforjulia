@@ -1,0 +1,7 @@
+RewriteEngine On
+
+Redirect 301 /index.html /
+Redirect 301 /meet-julia.html /meet-julia
+Redirect 301 /volunteer.html /volunteer
+Redirect 301 /donate.html /donate
+Redirect 301 /secret-recipe.html /secret-recipe

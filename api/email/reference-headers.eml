@@ -1,0 +1,385 @@
+Delivered-To: thedylanwhitney@gmail.com
+Received: by 2002:a05:701b:281b:b0:137:ca07:a0d4 with SMTP id j27csp1436559dla;
+        Sun, 31 May 2026 13:03:02 -0700 (PDT)
+X-Received: by 2002:a17:90b:5704:b0:367:b819:2214 with SMTP id 98e67ed59e1d1-36c501dfca2mr8056218a91.13.1780257781893;
+        Sun, 31 May 2026 13:03:01 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1780257781; cv=none;
+        d=google.com; s=arc-20240605;
+        b=gOs2zP1LBodX5jNgdlgZww/LZ/k4zJRkqORRE0vRRtk1cNKYKweA/8jvdVZTy4dJnu
+         erePYCpZ+AiDMCJ7PGqN12I2iyWGj+iAMwve7hFxBb4YwSVhLENfciYbToF/3pFEvdTk
+         TwLjmnWRASRQoKFLDYJXnup3zRFdXAzdIxvshhxrgVv3NibXxeE3yQ83AarftlEZVo5B
+         yNy+Ix6+rGzdbnrbS2YJLZB1ZRyYjZ5+4vxJajFdgV/hht7TVegMy4CeMauOqKf9pzbs
+         0nwQ76DxgPTWq6SXrtG9+N9dcpByZvYQQuLRoQHeLlV/xHkyRZ9k9Wvf4qfufjF4furM
+         j27A==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=subject:message-id:date:to:from:mime-version:dkim-signature;
+        bh=ps2eZL/S9kxfDa7JJy3MEMkJzeHY07QRjYbziksJ7To=;
+        fh=yMcPfCwbmoSGKqlKSdmJKm5sRckgIfQ5389DuuU2QeM=;
+        b=jMr2NQ2Zvsgnb9SWSGDMdJymxoH7Md9f67tQMlOlF0Y8VNzORJNTZCBfESuLhXtJXs
+         ZxzHp2EJmpEUEWYb/2D6ZB/RvqnLjDSDwZNvNbmKuYprmbEPyHPtqHigsa6IFzdUFDRT
+         gPKXNOKu6M9cZqSKf0yGWXvODrS/vR6fUaagP8zAKXOrasU5nIQG/m/YPl9/RWIXF/Kt
+         ILsOXhOgNLi9v008d6d5p154V/BOucltkKivzNqjfUMIfbSvMci6ayw1wo8emds4btT5
+         smAHR4OSFnM3NDz7C9cZDXsw2SLCgYYn/w7dzl2zUc8BoGfmeXDp9JXcjNYa2QcFzR+f
+         CATQ==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@voteforjulia.com header.s=default header.b=mCkN7Rvu;
+       spf=pass (google.com: domain of contact@voteforjulia.com designates 23.83.223.161 as permitted sender) smtp.mailfrom=contact@voteforjulia.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=voteforjulia.com
+Return-Path: <contact@voteforjulia.com>
+Received: from seahorse.cherry.relay.mailchannels.net (seahorse.cherry.relay.mailchannels.net. [23.83.223.161])
+        by mx.google.com with ESMTPS id 98e67ed59e1d1-36bc66092a6si18355021a91.2.2026.05.31.13.03.01
+        for <thedylanwhitney@gmail.com>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Sun, 31 May 2026 13:03:01 -0700 (PDT)
+Received-SPF: pass (google.com: domain of contact@voteforjulia.com designates 23.83.223.161 as permitted sender) client-ip=23.83.223.161;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@voteforjulia.com header.s=default header.b=mCkN7Rvu;
+       spf=pass (google.com: domain of contact@voteforjulia.com designates 23.83.223.161 as permitted sender) smtp.mailfrom=contact@voteforjulia.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=voteforjulia.com
+X-Sender-Id: ethernetserversltd|x-authuser|contact@voteforjulia.com
+Received: from relay.mailchannels.net (localhost [127.0.0.1])
+	by relay.mailchannels.net (Postfix) with ESMTP id 337A8607E7
+	for <thedylanwhitney@gmail.com>; Sun, 31 May 2026 20:03:01 +0000 (UTC)
+Received: from dubstep.cleannameservers.com (100-101-152-156.trex-nlb.outbound.svc.cluster.local [100.101.152.156])
+	(Authenticated sender: ethernetserversltd)
+	by relay.mailchannels.net (Postfix) with ESMTPA id A251860C46
+	for <thedylanwhitney@gmail.com>; Sun, 31 May 2026 20:03:00 +0000 (UTC)
+X-Sender-Id: ethernetserversltd|x-authuser|contact@voteforjulia.com
+X-MC-Relay: Neutral
+X-MailChannels-SenderId:
+ ethernetserversltd|x-authuser|contact@voteforjulia.com
+X-MailChannels-Auth-Id: ethernetserversltd
+X-Stretch-Cure: 065950287c8a5ae7_1780257781043_313354459
+X-MC-Loop-Signature: 1780257781043:2131806381
+X-MC-Ingress-Time: 1780257781043
+Received: from dubstep.cleannameservers.com (dubstep.cleannameservers.com
+ [208.115.234.114])
+	(using TLSv1.3 with cipher TLS_AES_256_GCM_SHA384)
+	by 100.101.152.156 (trex/7.1.5);
+	Sun, 31 May 2026 20:03:01 +0000
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/relaxed;
+	d=voteforjulia.com; s=default; h=Subject:Message-ID:Date:To:From:MIME-Version
+	:Content-Type:Sender:Reply-To:Cc:Content-Transfer-Encoding:Content-ID:
+	Content-Description:Resent-Date:Resent-From:Resent-Sender:Resent-To:Resent-Cc
+	:Resent-Message-ID:In-Reply-To:References:List-Id:List-Help:List-Unsubscribe:
+	List-Subscribe:List-Post:List-Owner:List-Archive;
+	bh=ps2eZL/S9kxfDa7JJy3MEMkJzeHY07QRjYbziksJ7To=; b=mCkN7RvulJ17GQyq3NIhGcUzMK
+	9jXf+DKWZy25pAOPQqk4uB5DvyoaxxZYiZowWBYsjf5x5iHAceEcoa52L4Wyt/bnYXucLxYt259tw
+	ZkkE7nOfp2E6vSjKRQtDpY0VQIfFxNvSxDpkOFFuZejayr4NUNi9xu8/Zgd28yRR41sC9lqwm+4Zr
+	Bm+hnOxTsEvKQqqnyI0HL8A6ff1LDSn3QQIxaAqym+Waz8U7Ibx/Ra9nPUhKrJltzQo2xYnLiXS5I
+	vRkB5xnJTXnjST165/SGHkOdsn351Zym1P8FcYidP8fml5R1d9TfKIIvJQWO+ScYAzhy2dIK4NFYh
+	/nZ+UZsA==;
+Received: from dubstep.cleannameservers.com ([208.115.234.114]:55922)
+	by dubstep.cleannameservers.com with esmtpsa  (TLS1.3) tls TLS_AES_256_GCM_SHA384
+	(Exim 4.99.2)
+	(envelope-from <contact@voteforjulia.com>)
+	id 1wTmN9-00000000vxa-0Wxl
+	for thedylanwhitney@gmail.com;
+	Sun, 31 May 2026 21:02:59 +0100
+Content-Type: multipart/alternative; boundary="===============6930966990055013893=="
+MIME-Version: 1.0
+From: Julia Hamann <contact@voteforjulia.com>
+To: thedylanwhitney@gmail.com
+Date: Sun, 31 May 2026 21:02:58 +0100
+Message-ID: <178025777884.222778.13387115175201683789@voteforjulia.com>
+Subject: Thanks for reaching out to Julia Hamann for Mayor
+X-AuthUser: contact@voteforjulia.com
+
+--===============6930966990055013893==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+Hi Dylan!
+
+Thank you so much for reaching out to help promote my campaign. I am incredibly grateful for your support!
+
+Right now, I am in the stage of gathering information and figuring out where volunteers are needed most. I will get you added to our volunteer list and be in touch as more direct needs arise.
+
+If you're looking for a yard sign, they will be coming soon as well. I'm gathering some donations to get those printing costs covered, and will get those shared out as soon as possible!
+
+For now, please keep planting my name in every ear you can and be sure they know about the primary vote coming up on August 11th! The primary narrows the mayoral candidates down to two for November.
+
+It's also super helpful if you follow my campaign on Facebook and Instagram, invite others, and share posts as they come up to encourage folks to get engaged or donate if they can.
+Facebook: https://www.facebook.com/profile.php?id=61590411090366
+Instagram: https://www.instagram.com/voteforjuliahamann
+
+We've got an exciting season ahead of us and I can't wait to connect with you in person!
+
+All my best,
+Julia
+
+Paid for by Julia Hamann for Mankato Mayor
+https://voteforjulia.com
+--===============6930966990055013893==
+Content-Type: text/html; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+<!doctype html>
+<html lang="und" dir="auto" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+
+<head>
+  <title></title>
+  <!--[if !mso]><!-->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <!--<![endif]-->
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style type="text/css">
+    #outlook a {
+      padding: 0;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+
+    table,
+    td {
+      border-collapse: collapse;
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+    }
+
+    img {
+      border: 0;
+      height: auto;
+      line-height: 100%;
+      outline: none;
+      text-decoration: none;
+      -ms-interpolation-mode: bicubic;
+    }
+
+    p {
+      display: block;
+      margin: 13px 0;
+    }
+  </style>
+  <!--[if mso]>
+    <noscript>
+    <xml>
+    <o:OfficeDocumentSettings>
+      <o:AllowPNG/>
+      <o:PixelsPerInch>96</o:PixelsPerInch>
+    </o:OfficeDocumentSettings>
+    </xml>
+    </noscript>
+    <![endif]-->
+  <!--[if lte mso 11]>
+    <style type="text/css">
+      .mj-outlook-group-fix { width:100% !important; }
+    </style>
+    <![endif]-->
+  <style type="text/css">
+    @media only screen and (min-width:480px) {
+      .mj-column-per-100 {
+        width: 100% !important;
+        max-width: 100%;
+      }
+    }
+  </style>
+  <style media="screen and (min-width:480px)">
+    .moz-text-html .mj-column-per-100 {
+      width: 100% !important;
+      max-width: 100%;
+    }
+  </style>
+  <style type="text/css">
+    @media only screen and (max-width:479px) {
+      table.mj-full-width-mobile {
+        width: 100% !important;
+      }
+
+      td.mj-full-width-mobile {
+        width: auto !important;
+      }
+    }
+  </style>
+</head>
+
+<body style="word-spacing:normal;">
+  <div aria-roledescription="email" role="article" lang="und" dir="auto" style="word-spacing:normal;">
+    <!--[if mso | IE]><table align="center" border="0" cellpadding="0" cellspacing="0" class="" role="presentation" style="width:600px;" width="600" ><tr><td style="line-height:0px;font-size:0px;mso-line-height-rule:exactly;"><![endif]-->
+    <div style="margin:0px auto;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
+        <tbody>
+          <tr>
+            <td style="direction:ltr;font-size:0px;padding:0;text-align:center;">
+              <!--[if mso | IE]><table role="presentation" border="0" cellpadding="0" cellspacing="0"><tr><td class="" style="vertical-align:top;width:600px;" ><![endif]-->
+              <div class="mj-column-per-100 mj-outlook-group-fix" style="font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                <table border="0" cellpadding="0" cellspacing="0" role="presentation" width="100%">
+                  <tbody>
+                    <tr>
+                      <td style="background-color:#133F30;vertical-align:top;padding:10px;">
+                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="" width="100%">
+                          <tbody>
+                            <tr>
+                              <td align="center" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="border-collapse:collapse;border-spacing:0px;">
+                                  <tbody>
+                                    <tr>
+                                      <td style="width:200px;">
+                                        <img alt="Julia Hamann for Mankato Mayor" src="https://voteforjulia.com/img/julia-hamann-for-mankato-mayor.png" style="border:0;display:block;outline:none;text-decoration:none;height:auto;width:100%;font-size:13px;" width="200" height="auto" />
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <!--[if mso | IE]></td></tr></table><![endif]-->
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <!--[if mso | IE]></td></tr></table><table align="center" border="0" cellpadding="0" cellspacing="0" class="" role="presentation" style="width:600px;" width="600" ><tr><td style="line-height:0px;font-size:0px;mso-line-height-rule:exactly;"><![endif]-->
+    <div style="margin:0px auto;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
+        <tbody>
+          <tr>
+            <td style="direction:ltr;font-size:0px;padding:0;text-align:center;">
+              <!--[if mso | IE]><table role="presentation" border="0" cellpadding="0" cellspacing="0"><tr><td class="" style="vertical-align:top;width:600px;" ><![endif]-->
+              <div class="mj-column-per-100 mj-outlook-group-fix" style="font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                <table border="0" cellpadding="0" cellspacing="0" role="presentation" width="100%">
+                  <tbody>
+                    <tr>
+                      <td style="background-color:rgba(123, 202, 91, 0.2);vertical-align:top;padding:16px;">
+                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="" width="100%">
+                          <tbody>
+                            <tr>
+                              <td align="left" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <div style="font-family:helvetica;font-size:20px;line-height:1;text-align:left;color:#133F30;">Hi Dylan!</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="left" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <div style="font-family:helvetica;font-size:20px;line-height:1;text-align:left;color:#133F30;">Thank you so much for reaching out to help promote my campaign. I am incredibly grateful for your support!</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="left" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <div style="font-family:helvetica;font-size:20px;line-height:1;text-align:left;color:#133F30;">Right now, I am in the stage of gathering information and figuring out where volunteers are needed most. I will get you added to our volunteer list and be in touch as more direct needs arise.</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="left" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <div style="font-family:helvetica;font-size:20px;line-height:1;text-align:left;color:#133F30;">If you're looking for a yard sign, they will be coming soon as well. I'm gathering some donations to get those printing costs covered, and will get those shared out as soon as possible!</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="left" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <div style="font-family:helvetica;font-size:20px;line-height:1;text-align:left;color:#133F30;">For now, please keep planting my name in every ear you can and be sure they know about the primary vote coming up on August 11th! The primary narrows the mayoral candidates down to two for November.</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="left" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <div style="font-family:helvetica;font-size:20px;line-height:1;text-align:left;color:#133F30;">It's also super helpful if you follow my campaign on <a style="color: #407628; font-size: 18px;" href="https://www.facebook.com/profile.php?id=61590411090366">Facebook</a> and <a style="color: #407628; font-size: 18px;" href="https://www.facebook.com/profile.php?id=61590411090366">Instagram</a>, invite others, and share posts as they come up to encourage folks to get engaged or <a style="color: #407628; font-size: 18px;" href="https://voteforjulia.com/donate.html">donate</a> if they can.</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="left" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <div style="font-family:helvetica;font-size:20px;line-height:1;text-align:left;color:#133F30;">We've got an exciting season ahead of us and I can't wait to connect with you in person!</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="left" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <div style="font-family:helvetica;font-size:20px;line-height:1;text-align:left;color:#133F30;">All my best,</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="left" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <!--[if mso | IE]><table align="left" border="0" cellpadding="0" cellspacing="0" role="presentation" ><tr><td><![endif]-->
+                                <table align="left" border="0" cellpadding="0" cellspacing="0" role="presentation" style="float:none;display:inline-table;">
+                                  <tbody>
+                                    <tr>
+                                      <td style="padding:4px;vertical-align:middle;">
+                                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="border-radius:3px;width:20px;">
+                                          <tbody>
+                                            <tr>
+                                              <td style="font-size:0;height:20px;vertical-align:middle;width:20px;">
+                                                <a href="https://voteforjulia.com" target="_blank">
+                                                  <img alt="Sprout icon" src="https://voteforjulia.com/img/sprout.png" style="border-radius:3px;display:block;" width="20" />
+                                                </a>
+                                              </td>
+                                            </tr>
+                                          </tbody>
+                                        </table>
+                                      </td>
+                                      <td style="vertical-align:middle;padding:4px 4px 4px 0;text-align:left;">
+                                        <a href="https://voteforjulia.com" style="color:#133F30;font-size:20px;font-family:helvetica;line-height:22px;text-decoration:none;" target="_blank"> Julia </a>
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                                <!--[if mso | IE]></td></tr></table><![endif]-->
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <!--[if mso | IE]></td></tr></table><![endif]-->
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <!--[if mso | IE]></td></tr></table><table align="center" border="0" cellpadding="0" cellspacing="0" class="" role="presentation" style="width:600px;" width="600" ><tr><td style="line-height:0px;font-size:0px;mso-line-height-rule:exactly;"><![endif]-->
+    <div style="margin:0px auto;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
+        <tbody>
+          <tr>
+            <td style="direction:ltr;font-size:0px;padding:0;text-align:center;">
+              <!--[if mso | IE]><table role="presentation" border="0" cellpadding="0" cellspacing="0"><tr><td class="" style="vertical-align:top;width:600px;" ><![endif]-->
+              <div class="mj-column-per-100 mj-outlook-group-fix" style="font-size:0px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                <table border="0" cellpadding="0" cellspacing="0" role="presentation" width="100%">
+                  <tbody>
+                    <tr>
+                      <td style="background-color:#133F30;vertical-align:top;padding:16px;">
+                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="" width="100%">
+                          <tbody>
+                            <tr>
+                              <td align="center" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <div style="font-family:helvetica;font-size:16px;line-height:1;text-align:center;color:#FFFFFF;">Paid for by Julia Hamann for Mankato Mayor</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="center" style="font-size:0px;padding:10px 25px;word-break:break-word;">
+                                <div style="font-family:helvetica;font-size:16px;line-height:1;text-align:center;color:#FFFFFF;"><a style="color: #FFF" href="https://voteforjulia.com">voteforjulia.com</a></div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <!--[if mso | IE]></td></tr></table><![endif]-->
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <!--[if mso | IE]></td></tr></table><![endif]-->
+  </div>
+</body>
+
+</html>
+
+--===============6930966990055013893==--
