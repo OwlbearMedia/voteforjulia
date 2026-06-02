@@ -1,5 +1,4 @@
 import { ViteSSG } from 'vite-ssg'
-import { BrowserAgent } from '@newrelic/browser-agent/loaders/browser-agent'
 
 import './style.css';
 import App from './App.vue';
@@ -44,10 +43,6 @@ const options = {
   }
 }
 
-// The agent loader code executes immediately on instantiation.
-// @ts-ignore-next-line
-const nrba = new BrowserAgent(options)
-
 // Remaining code
 export const createApp = ViteSSG(
   App,
@@ -86,6 +81,12 @@ export const createApp = ViteSSG(
   if (import.meta.env.SSR) {
     return;
   }
+
+  void import('@newrelic/browser-agent/loaders/browser-agent').then(({ BrowserAgent }) => {
+    // The agent loader code executes immediately on instantiation.
+    // @ts-ignore-next-line
+    new BrowserAgent(options)
+  })
 
   router.isReady().then(() => {
     trackPageView(router.currentRoute.value.fullPath);
