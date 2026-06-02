@@ -45,6 +45,7 @@ const options = {
 }
 
 // The agent loader code executes immediately on instantiation.
+// @ts-ignore-next-line
 const nrba = new BrowserAgent(options)
 
 // Remaining code
