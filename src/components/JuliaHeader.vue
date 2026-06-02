@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
+import { faInstagram, faFacebookF } from "@fortawesome/free-brands-svg-icons";
 import juliaLogo from '../assets/julia-hamann-for-mankato-mayor.avif';
 import { trackDonateClick } from '../lib/analytics';
 
@@ -52,9 +54,9 @@ function handleDonateClick() {
                     <li><RouterLink to="/donate" class="donate" @click="handleDonateClick">Donate</RouterLink></li>
                     <li class="social-icons">
                         <a href="https://www.instagram.com/voteforjuliahamann" aria-label="Julia on Instagram"
-                            target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-instagram"></i></a>
+                            target="_blank" rel="noopener noreferrer"><FontAwesomeIcon :icon="faInstagram" /></a>
                         <a href="https://www.facebook.com/profile.php?id=61590411090366" aria-label="Julia on Facebook"
-                            target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-facebook-f"></i></a>
+                            target="_blank" rel="noopener noreferrer"><FontAwesomeIcon :icon="faFacebookF" /></a>
                     </li>
                 </ul>
             </nav>

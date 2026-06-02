@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from api import models
-from api.models import Submission
+from api.models import Submission, validate_submission
 
 
 class FakeFormData:
@@ -124,6 +124,43 @@ class SubmissionParsingTests(unittest.TestCase):
                 "Door Knocking, Phone Banking",
                 "Ready to help.",
             ],
+        )
+
+
+class SubmissionValidationTests(unittest.TestCase):
+    def test_looks_like_email_rejects_control_characters(self) -> None:
+        self.assertFalse(models.looks_like_email("julia@example.com\r\nBCC:evil@example.com"))
+
+    def test_validate_submission_rejects_header_control_characters(self) -> None:
+        submission = Submission(
+            first_name="Julia\n",
+            last_name="Hamann",
+            name="Julia Hamann",
+            email="julia@example.com",
+            phone="555-555-5555",
+            message="Ready to help.",
+            help_ways=["Door Knocking"],
+        )
+
+        self.assertEqual(
+            validate_submission(submission),
+            "First name contains invalid characters.",
+        )
+
+    def test_validate_submission_rejects_oversized_message(self) -> None:
+        submission = Submission(
+            first_name="Julia",
+            last_name="Hamann",
+            name="Julia Hamann",
+            email="julia@example.com",
+            phone="555-555-5555",
+            message="x" * (models.MAX_MESSAGE_LENGTH + 1),
+            help_ways=["Door Knocking"],
+        )
+
+        self.assertEqual(
+            validate_submission(submission),
+            f"Message must be {models.MAX_MESSAGE_LENGTH} characters or fewer.",
         )
 
 

@@ -1,46 +1,19 @@
-import { ViteSSG } from 'vite-ssg'
+import { ViteSSG } from "vite-ssg";
+import { configure } from "vue-gtag";
+import '@fontsource/orelega-one';
 
-import './style.css';
-import App from './App.vue';
-import { routes } from './lib/routes';
-import { trackPageView } from './lib/analytics';
+import "./style.css";
+import App from "./App.vue";
+import { routes } from "./lib/routes";
+import { trackPageView } from "./lib/analytics";
 
-const options = {
-  "info": {
-    "applicationID": 653419329,
-    "beacon": "bam.nr-data.net",
-    "errorBeacon": "bam.nr-data.net",
-    "licenseKey": "NRJS-8688cc793ecfb998d0b",
-    "sa": 1
-  },
-  "init": {
-    "ajax": {
-      "deny_list": [
-        "bam.nr-data.net"
-      ]
+if (!import.meta.env.SSR) {
+  configure({
+    tagId: "G-4WYNB1ECZQ",
+    config: {
+      send_page_view: false,
     },
-    "browser_consent_mode": {
-      "enabled": false
-    },
-    "distributed_tracing": {
-      "enabled": true
-    },
-    "performance": {
-      "capture_detail": false,
-      "capture_marks": false,
-      "capture_measures": true
-    },
-    "privacy": {
-      "cookies_enabled": true
-    }
-  },
-  "loader_config": {
-    "accountID": 8127277,
-    "agentID": 653419329,
-    "applicationID": 653419329,
-    "licenseKey": "NRJS-8688cc793ecfb998d0b",
-    "trustKey": 8127277
-  }
+  });
 }
 
 // Remaining code
@@ -62,9 +35,12 @@ export const createApp = ViteSSG(
               return;
             }
 
-            const headerElement = document.querySelector('header');
-            const headerHeight = headerElement ? headerElement.getBoundingClientRect().height : 0;
-            const targetTop = targetElement.getBoundingClientRect().top + window.scrollY;
+            const headerElement = document.querySelector("header");
+            const headerHeight = headerElement
+              ? headerElement.getBoundingClientRect().height
+              : 0;
+            const targetTop =
+              targetElement.getBoundingClientRect().top + window.scrollY;
             const scrollTop = Math.max(targetTop - headerHeight - 8, 0);
 
             resolve({
@@ -78,21 +54,58 @@ export const createApp = ViteSSG(
     },
   },
   ({ router }) => {
-  if (import.meta.env.SSR) {
-    return;
-  }
+    if (import.meta.env.SSR) {
+      return;
+    }
 
-  void import('@newrelic/browser-agent/loaders/browser-agent').then(({ BrowserAgent }) => {
-    // The agent loader code executes immediately on instantiation.
-    // @ts-ignore-next-line
-    new BrowserAgent(options)
-  })
+    void import("@newrelic/browser-agent/loaders/browser-agent").then(
+      ({ BrowserAgent }) => {
+        // The agent loader code executes immediately on instantiation.
+        // @ts-ignore-next-line
+        new BrowserAgent({
+          info: {
+            applicationID: '653419329',
+            beacon: "bam.nr-data.net",
+            errorBeacon: "bam.nr-data.net",
+            licenseKey: "NRJS-8688cc793ecfb998d0b",
+            sa: 1,
+          },
+          init: {
+            ajax: {
+              deny_list: ["bam.nr-data.net"],
+            },
+            browser_consent_mode: {
+              enabled: false,
+            },
+            distributed_tracing: {
+              enabled: true,
+            },
+            performance: {
+              capture_detail: false,
+              capture_marks: false,
+              capture_measures: true,
+            },
+            privacy: {
+              cookies_enabled: true,
+            },
+          },
+          loader_config: {
+            accountID: 8127277,
+            agentID: 653419329,
+            applicationID: '653419329',
+            licenseKey: "NRJS-8688cc793ecfb998d0b",
+            trustKey: 8127277,
+          },
+        });
+      },
+    );
 
-  router.isReady().then(() => {
-    trackPageView(router.currentRoute.value.fullPath);
-  });
+    router.isReady().then(() => {
+      trackPageView(router.currentRoute.value.fullPath);
+    });
 
-  router.afterEach((to) => {
-    trackPageView(to.fullPath);
-  });
-});
+    router.afterEach((to) => {
+      trackPageView(to.fullPath);
+    });
+  },
+);
