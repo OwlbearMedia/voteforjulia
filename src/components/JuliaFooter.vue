@@ -36,7 +36,12 @@ function updateFooterSupportActionsState() {
 
   footerSupportActionsHeight.value = actionsEl.offsetHeight;
 
-  if (!globalThis.matchMedia("(max-width: 700px)").matches) {
+  const isMobileViewport =
+    typeof globalThis.matchMedia === "function"
+      ? globalThis.matchMedia("(max-width: 700px)").matches
+      : false;
+
+  if (!isMobileViewport) {
     isFooterSupportActionsFixed.value = false;
     return;
   }
