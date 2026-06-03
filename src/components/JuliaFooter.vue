@@ -26,6 +26,7 @@ const isFooterSupportActionsFixed = ref(false);
 let footerSupportActionsResizeObserver: ResizeObserver | null = null;
 let safeAreaBottomInsetCache: number | null = null;
 let safeAreaProbeEl: HTMLDivElement | null = null;
+let footerSupportActionsRafId: number | null = null;
 
 function getSafeAreaProbeElement() {
   if (safeAreaProbeEl) {
@@ -92,22 +93,38 @@ function updateFooterSupportActionsState() {
   isFooterSupportActionsFixed.value = anchorRect.top > fixedTop;
 }
 
+function scheduleFooterSupportActionsStateUpdate() {
+  if (footerSupportActionsRafId !== null) {
+    return;
+  }
+
+  if (typeof globalThis.requestAnimationFrame === "function") {
+    footerSupportActionsRafId = globalThis.requestAnimationFrame(() => {
+      footerSupportActionsRafId = null;
+      updateFooterSupportActionsState();
+    });
+    return;
+  }
+
+  updateFooterSupportActionsState();
+}
+
 function handleResize() {
   safeAreaBottomInsetCache = null;
-  updateFooterSupportActionsState();
+  scheduleFooterSupportActionsStateUpdate();
 }
 
 onMounted(() => {
   updateFooterSupportActionsState();
 
-  window.addEventListener("scroll", updateFooterSupportActionsState, {
+  window.addEventListener("scroll", scheduleFooterSupportActionsStateUpdate, {
     passive: true,
   });
   window.addEventListener("resize", handleResize);
 
   if (typeof ResizeObserver !== "undefined" && footerSupportActionsRef.value) {
     footerSupportActionsResizeObserver = new ResizeObserver(() => {
-      updateFooterSupportActionsState();
+      scheduleFooterSupportActionsStateUpdate();
     });
 
     footerSupportActionsResizeObserver.observe(footerSupportActionsRef.value);
@@ -115,9 +132,17 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener("scroll", updateFooterSupportActionsState);
+  window.removeEventListener("scroll", scheduleFooterSupportActionsStateUpdate);
   window.removeEventListener("resize", handleResize);
   footerSupportActionsResizeObserver?.disconnect();
+
+  if (
+    footerSupportActionsRafId !== null &&
+    typeof globalThis.cancelAnimationFrame === "function"
+  ) {
+    globalThis.cancelAnimationFrame(footerSupportActionsRafId);
+    footerSupportActionsRafId = null;
+  }
 
   if (safeAreaProbeEl) {
     safeAreaProbeEl.remove();

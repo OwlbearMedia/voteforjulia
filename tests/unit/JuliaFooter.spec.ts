@@ -48,6 +48,17 @@ function mockAnchorRect(anchorEl: HTMLElement, top: number) {
   } as DOMRect)
 }
 
+async function flushAnimationFrame() {
+  if (typeof globalThis.requestAnimationFrame === 'function') {
+    await new Promise<void>((resolve) => {
+      globalThis.requestAnimationFrame(() => resolve())
+    })
+    return
+  }
+
+  await Promise.resolve()
+}
+
 describe('JuliaFooter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -108,6 +119,7 @@ describe('JuliaFooter', () => {
     mockAnchorRect(anchorEl, 1000)
 
     window.dispatchEvent(new Event('resize'))
+    await flushAnimationFrame()
     await nextTick()
 
     const inFooterActions = wrapper.find('.footer-support-actions-anchor .footer-support-actions')
@@ -136,6 +148,7 @@ describe('JuliaFooter', () => {
     mockAnchorRect(anchorEl, 1000)
 
     window.dispatchEvent(new Event('resize'))
+    await flushAnimationFrame()
     await nextTick()
 
     const inFooterActions = wrapper.find('.footer-support-actions-anchor .footer-support-actions')
