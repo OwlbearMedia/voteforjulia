@@ -24,6 +24,25 @@ const footerSupportActionsHeight = ref(0);
 const isFooterSupportActionsFixed = ref(false);
 
 let footerSupportActionsResizeObserver: ResizeObserver | null = null;
+let safeAreaBottomInsetCache: number | null = null;
+
+function getSafeAreaBottomInset() {
+  if (safeAreaBottomInsetCache !== null) {
+    return safeAreaBottomInsetCache;
+  }
+
+  if (typeof document === "undefined") {
+    return 0;
+  }
+
+  const safeAreaValue = getComputedStyle(document.documentElement)
+    .getPropertyValue("--safe-area-inset-bottom")
+    .trim();
+  const safeArea = Number.parseFloat(safeAreaValue);
+  safeAreaBottomInsetCache = Number.isFinite(safeArea) ? safeArea : 0;
+
+  return safeAreaBottomInsetCache;
+}
 
 function updateFooterSupportActionsState() {
   const anchorEl = footerSupportActionsAnchorRef.value;
@@ -46,11 +65,17 @@ function updateFooterSupportActionsState() {
     return;
   }
 
+  const bottomOffset = 16 + getSafeAreaBottomInset();
   const anchorRect = anchorEl.getBoundingClientRect();
   const fixedTop =
-    globalThis.innerHeight - 16 - footerSupportActionsHeight.value;
+    globalThis.innerHeight - bottomOffset - footerSupportActionsHeight.value;
 
   isFooterSupportActionsFixed.value = anchorRect.top > fixedTop;
+}
+
+function handleResize() {
+  safeAreaBottomInsetCache = null;
+  updateFooterSupportActionsState();
 }
 
 onMounted(() => {
@@ -59,7 +84,7 @@ onMounted(() => {
   window.addEventListener("scroll", updateFooterSupportActionsState, {
     passive: true,
   });
-  window.addEventListener("resize", updateFooterSupportActionsState);
+  window.addEventListener("resize", handleResize);
 
   if (typeof ResizeObserver !== "undefined" && footerSupportActionsRef.value) {
     footerSupportActionsResizeObserver = new ResizeObserver(() => {
@@ -72,7 +97,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("scroll", updateFooterSupportActionsState);
-  window.removeEventListener("resize", updateFooterSupportActionsState);
+  window.removeEventListener("resize", handleResize);
   footerSupportActionsResizeObserver?.disconnect();
 });
 </script>
@@ -152,7 +177,11 @@ onBeforeUnmount(() => {
   </footer>
 
   <Teleport to="body">
-    <div v-if="isFooterSupportActionsFixed" class="footer-support-actions-fixed-backdrop"></div>
+    <div
+      v-if="isFooterSupportActionsFixed"
+      class="footer-support-actions-fixed-backdrop"
+      aria-hidden="true"
+    ></div>
     <div v-if="isFooterSupportActionsFixed" class="footer-support-actions footer-support-actions-fixed">
       <RouterLink class="btn btn-invert" to="/volunteer">Volunteer</RouterLink>
       <RouterLink class="btn" to="/donate" @click="handleDonateClick">Donate</RouterLink>

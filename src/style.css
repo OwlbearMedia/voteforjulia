@@ -26,6 +26,7 @@ html {
   --header-height: 7rem;
   --header-offset-extra: -15.25rem;
   --header-offset: calc(var(--header-height) + var(--header-offset-extra));
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
   font-size: 16px;
   letter-spacing: 0.05em;
   scroll-behavior: smooth;
@@ -216,7 +217,7 @@ footer {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 1rem;
+  bottom: calc(1rem + var(--safe-area-inset-bottom));
   z-index: 1100;
 }
 
@@ -225,7 +226,7 @@ footer {
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(5.5rem + env(safe-area-inset-bottom));
+  height: calc(5rem + var(--safe-area-inset-bottom));
   background-color: #133F30;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
   z-index: 1090;
@@ -673,13 +674,7 @@ section {
   }
 
   .footer-support-actions-fixed {
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 1rem;
-  }
-
-  .footer-support-actions-fixed-backdrop {
-    height: calc(4.75rem + env(safe-area-inset-bottom));
+    bottom: calc(1rem + var(--safe-area-inset-bottom));
   }
 
   .footer-container > :nth-child(1) {
