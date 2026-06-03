@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { faEnvelope } from "@fortawesome/free-regular-svg-icons";
@@ -16,6 +17,59 @@ function handleFooterIconClick(href: string, ariaLabel: string) {
 function handleDonateClick() {
   trackDonateClick("footer", "Donate");
 }
+
+const footerSupportActionsAnchorRef = ref<HTMLElement | null>(null);
+const footerSupportActionsRef = ref<HTMLElement | null>(null);
+const footerSupportActionsHeight = ref(0);
+const isFooterSupportActionsFixed = ref(false);
+
+let footerSupportActionsResizeObserver: ResizeObserver | null = null;
+
+function updateFooterSupportActionsState() {
+  const anchorEl = footerSupportActionsAnchorRef.value;
+  const actionsEl = footerSupportActionsRef.value;
+
+  if (!anchorEl || !actionsEl) {
+    isFooterSupportActionsFixed.value = false;
+    return;
+  }
+
+  footerSupportActionsHeight.value = actionsEl.offsetHeight;
+
+  if (!globalThis.matchMedia("(max-width: 700px)").matches) {
+    isFooterSupportActionsFixed.value = false;
+    return;
+  }
+
+  const anchorRect = anchorEl.getBoundingClientRect();
+  const fixedTop =
+    globalThis.innerHeight - 16 - footerSupportActionsHeight.value;
+
+  isFooterSupportActionsFixed.value = anchorRect.top > fixedTop;
+}
+
+onMounted(() => {
+  updateFooterSupportActionsState();
+
+  window.addEventListener("scroll", updateFooterSupportActionsState, {
+    passive: true,
+  });
+  window.addEventListener("resize", updateFooterSupportActionsState);
+
+  if (typeof ResizeObserver !== "undefined" && footerSupportActionsRef.value) {
+    footerSupportActionsResizeObserver = new ResizeObserver(() => {
+      updateFooterSupportActionsState();
+    });
+
+    footerSupportActionsResizeObserver.observe(footerSupportActionsRef.value);
+  }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("scroll", updateFooterSupportActionsState);
+  window.removeEventListener("resize", updateFooterSupportActionsState);
+  footerSupportActionsResizeObserver?.disconnect();
+});
 </script>
 
 <template>
@@ -65,12 +119,23 @@ function handleDonateClick() {
       </div>
       <div class="footer-support">
         <p class="bigger">Support Julia's Campaign</p>
-        <RouterLink class="btn btn-invert" to="/volunteer"
-          >Volunteer</RouterLink
-        >
-        <RouterLink class="btn" to="/donate" @click="handleDonateClick"
-          >Donate</RouterLink
-        >
+        <div ref="footerSupportActionsAnchorRef" class="footer-support-actions-anchor">
+          <div
+            ref="footerSupportActionsRef"
+            class="footer-support-actions"
+            :class="{
+              'footer-support-actions-hidden': isFooterSupportActionsFixed,
+            }"
+            :aria-hidden="isFooterSupportActionsFixed ? 'true' : undefined"
+          >
+            <RouterLink class="btn btn-invert" to="/volunteer"
+              >Volunteer</RouterLink
+            >
+            <RouterLink class="btn" to="/donate" @click="handleDonateClick"
+              >Donate</RouterLink
+            >
+          </div>
+        </div>
       </div>
       <div class="footer-disclaimer">
         Paid for by Julia Hamann for Mankato Mayor
@@ -80,4 +145,12 @@ function handleDonateClick() {
       </div>
     </div>
   </footer>
+
+  <Teleport to="body">
+    <div v-if="isFooterSupportActionsFixed" class="footer-support-actions-fixed-backdrop"></div>
+    <div v-if="isFooterSupportActionsFixed" class="footer-support-actions footer-support-actions-fixed">
+      <RouterLink class="btn btn-invert" to="/volunteer">Volunteer</RouterLink>
+      <RouterLink class="btn" to="/donate" @click="handleDonateClick">Donate</RouterLink>
+    </div>
+  </Teleport>
 </template>

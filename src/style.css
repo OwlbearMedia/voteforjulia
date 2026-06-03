@@ -197,6 +197,41 @@ footer {
   font-size: 10px;
 }
 
+.footer-support-actions-anchor {
+  display: flex;
+  justify-content: center;
+}
+
+.footer-support-actions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.footer-support-actions-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.footer-support-actions-fixed {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 1rem;
+  z-index: 1100;
+}
+
+.footer-support-actions-fixed-backdrop {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(5.5rem + env(safe-area-inset-bottom));
+  background-color: #133F30;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+  z-index: 1090;
+  pointer-events: none;
+}
+
 .social-icons {
   display: flex;
   align-items: center;
@@ -635,6 +670,16 @@ section {
   .footer-container {
     color: #fff;
     grid-template-columns: 1fr;
+  }
+
+  .footer-support-actions-fixed {
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 1rem;
+  }
+
+  .footer-support-actions-fixed-backdrop {
+    height: calc(4.75rem + env(safe-area-inset-bottom));
   }
 
   .footer-container > :nth-child(1) {
