@@ -25,6 +25,27 @@ const isFooterSupportActionsFixed = ref(false);
 
 let footerSupportActionsResizeObserver: ResizeObserver | null = null;
 let safeAreaBottomInsetCache: number | null = null;
+let safeAreaProbeEl: HTMLDivElement | null = null;
+
+function getSafeAreaProbeElement() {
+  if (safeAreaProbeEl) {
+    return safeAreaProbeEl;
+  }
+
+  const probe = document.createElement("div");
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.position = "fixed";
+  probe.style.left = "0";
+  probe.style.bottom = "0";
+  probe.style.visibility = "hidden";
+  probe.style.pointerEvents = "none";
+  probe.style.paddingBottom = "env(safe-area-inset-bottom)";
+
+  document.body.appendChild(probe);
+  safeAreaProbeEl = probe;
+
+  return safeAreaProbeEl;
+}
 
 function getSafeAreaBottomInset() {
   if (safeAreaBottomInsetCache !== null) {
@@ -35,10 +56,8 @@ function getSafeAreaBottomInset() {
     return 0;
   }
 
-  const safeAreaValue = getComputedStyle(document.documentElement)
-    .getPropertyValue("--safe-area-inset-bottom")
-    .trim();
-  const safeArea = Number.parseFloat(safeAreaValue);
+  const probe = getSafeAreaProbeElement();
+  const safeArea = Number.parseFloat(getComputedStyle(probe).paddingBottom);
   safeAreaBottomInsetCache = Number.isFinite(safeArea) ? safeArea : 0;
 
   return safeAreaBottomInsetCache;
@@ -53,8 +72,6 @@ function updateFooterSupportActionsState() {
     return;
   }
 
-  footerSupportActionsHeight.value = actionsEl.offsetHeight;
-
   const isMobileViewport =
     typeof globalThis.matchMedia === "function"
       ? globalThis.matchMedia("(max-width: 700px)").matches
@@ -64,6 +81,8 @@ function updateFooterSupportActionsState() {
     isFooterSupportActionsFixed.value = false;
     return;
   }
+
+  footerSupportActionsHeight.value = actionsEl.offsetHeight;
 
   const bottomOffset = 16 + getSafeAreaBottomInset();
   const anchorRect = anchorEl.getBoundingClientRect();
@@ -99,6 +118,11 @@ onBeforeUnmount(() => {
   window.removeEventListener("scroll", updateFooterSupportActionsState);
   window.removeEventListener("resize", handleResize);
   footerSupportActionsResizeObserver?.disconnect();
+
+  if (safeAreaProbeEl) {
+    safeAreaProbeEl.remove();
+    safeAreaProbeEl = null;
+  }
 });
 </script>
 
