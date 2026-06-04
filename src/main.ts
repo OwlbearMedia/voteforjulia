@@ -55,45 +55,90 @@ export const createApp = ViteSSG(
       return;
     }
 
-    void import('@newrelic/browser-agent/loaders/browser-agent').then(({ BrowserAgent }) => {
-      // The agent loader code executes immediately on instantiation.
-      // @ts-ignore-next-line
-      new BrowserAgent({
-        info: {
-          applicationID: '653419329',
-          beacon: 'bam.nr-data.net',
-          errorBeacon: 'bam.nr-data.net',
-          licenseKey: 'NRJS-8688cc793ecfb998d0b',
-          sa: 1
-        },
-        init: {
-          ajax: {
-            deny_list: ['bam.nr-data.net']
-          },
-          browser_consent_mode: {
-            enabled: false
-          },
-          distributed_tracing: {
-            enabled: true
-          },
-          performance: {
-            capture_detail: false,
-            capture_marks: false,
-            capture_measures: true
-          },
-          privacy: {
-            cookies_enabled: true
-          }
-        },
-        loader_config: {
-          accountID: 8127277,
-          agentID: 653419329,
-          applicationID: '653419329',
-          licenseKey: 'NRJS-8688cc793ecfb998d0b',
-          trustKey: 8127277
-        }
+    // Defer New Relic agent to avoid blocking initial render
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        void import('@newrelic/browser-agent/loaders/browser-agent').then(({ BrowserAgent }) => {
+          // @ts-ignore-next-line
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const _ = new BrowserAgent({
+            info: {
+              applicationID: '653419329',
+              beacon: 'bam.nr-data.net',
+              errorBeacon: 'bam.nr-data.net',
+              licenseKey: 'NRJS-8688cc793ecfb998d0b',
+              sa: 1
+            },
+            init: {
+              ajax: {
+                deny_list: ['bam.nr-data.net']
+              },
+              browser_consent_mode: {
+                enabled: false
+              },
+              distributed_tracing: {
+                enabled: true
+              },
+              performance: {
+                capture_detail: false,
+                capture_marks: false,
+                capture_measures: true
+              },
+              privacy: {
+                cookies_enabled: true
+              }
+            },
+            loader_config: {
+              accountID: 8127277,
+              agentID: 653419329,
+              applicationID: '653419329',
+              licenseKey: 'NRJS-8688cc793ecfb998d0b',
+              trustKey: 8127277
+            }
+          });
+        });
       });
-    });
+    } else {
+      void import('@newrelic/browser-agent/loaders/browser-agent').then(({ BrowserAgent }) => {
+        // @ts-ignore-next-line
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const _ = new BrowserAgent({
+          info: {
+            applicationID: '653419329',
+            beacon: 'bam.nr-data.net',
+            errorBeacon: 'bam.nr-data.net',
+            licenseKey: 'NRJS-8688cc793ecfb998d0b',
+            sa: 1
+          },
+          init: {
+            ajax: {
+              deny_list: ['bam.nr-data.net']
+            },
+            browser_consent_mode: {
+              enabled: false
+            },
+            distributed_tracing: {
+              enabled: true
+            },
+            performance: {
+              capture_detail: false,
+              capture_marks: false,
+              capture_measures: true
+            },
+            privacy: {
+              cookies_enabled: true
+            }
+          },
+          loader_config: {
+            accountID: 8127277,
+            agentID: 653419329,
+            applicationID: '653419329',
+            licenseKey: 'NRJS-8688cc793ecfb998d0b',
+            trustKey: 8127277
+          }
+        });
+      });
+    }
 
     router.isReady().then(() => {
       trackPageView(router.currentRoute.value.fullPath);
