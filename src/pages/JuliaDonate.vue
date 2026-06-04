@@ -168,14 +168,14 @@ useHead({
 
     <p class="card">Donate now to help elect Julia as Mayor of Mankato!</p>
 
-    <div class="stances-layout stances-donate">
+    <div class="donate-layout">
       <dbox-widget
         campaign="julia-hamann-for-mankato-mayor"
         type="donation_form"
         enable-auto-scroll="true"
       ></dbox-widget>
 
-      <div class="stances-text">
+      <div class="donate-text">
         <p>
           Julia is running a true grassroots campaign, for and by the community! Every contribution
           makes a meaningful impact, whether it's $20, $100, or more. Your donation will help us
