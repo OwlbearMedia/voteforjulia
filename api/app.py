@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections import deque
 import logging
 import smtplib
+from time import monotonic
 
 from flask import Flask, jsonify, request
 
@@ -12,7 +14,7 @@ except Exception:  # pragma: no cover - fallback for environments without google
         pass
 
 from api.config import EmailConfig, env, load_email_config, load_sheets_config
-from api.models import Submission, looks_like_email
+from api.models import Submission, looks_like_email, validate_submission
 from api.services.email_service import send_confirmation_email, send_submission_email
 from api.services.sheets_service import append_row
 
@@ -20,6 +22,10 @@ app = Flask(__name__)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+_RATE_LIMIT_WINDOW_SECONDS = max(int(env('RATE_LIMIT_WINDOW_SECONDS', '60')), 1)
+_RATE_LIMIT_MAX_REQUESTS = max(int(env('RATE_LIMIT_MAX_REQUESTS', '5')), 1)
+_RATE_LIMIT_BUCKETS: dict[str, deque[float]] = {}
 
 _CORS_ALLOWED_ORIGINS = {
     item.strip()
@@ -87,6 +93,37 @@ def _missing_required_fields_message(submission: Submission) -> str:
     return ''
 
 
+def _rate_limit_key() -> str:
+    forwarded_for = request.headers.get('X-Forwarded-For', '')
+    if forwarded_for:
+        first_hop = forwarded_for.split(',', 1)[0].strip()
+        if first_hop:
+            return first_hop
+
+    connecting_ip = request.headers.get('CF-Connecting-IP', '').strip()
+    if connecting_ip:
+        return connecting_ip
+
+    return request.remote_addr or 'unknown'
+
+
+def _consume_rate_limit() -> int | None:
+    now = monotonic()
+    key = _rate_limit_key()
+    bucket = _RATE_LIMIT_BUCKETS.setdefault(key, deque())
+    cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
+
+    while bucket and bucket[0] <= cutoff:
+        bucket.popleft()
+
+    if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
+        retry_after = max(1, int(bucket[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
+        return retry_after
+
+    bucket.append(now)
+    return None
+
+
 @app.route('/health', methods=['GET'])
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -101,6 +138,13 @@ def health_check():
 def send_email():
     if request.method == 'OPTIONS':
         return ('', 204)
+
+    retry_after = _consume_rate_limit()
+    if retry_after is not None:
+        response = jsonify({'error': 'Too many requests. Please try again later.'})
+        response.status_code = 429
+        response.headers['Retry-After'] = str(retry_after)
+        return response
 
     email_config = load_email_config()
     sheets_config = load_sheets_config()
@@ -118,6 +162,10 @@ def send_email():
         missing_fields_message = _missing_required_fields_message(submission)
         if missing_fields_message:
             return jsonify({'error': missing_fields_message}), 400
+
+        validation_error = validate_submission(submission)
+        if validation_error:
+            return jsonify({'error': validation_error}), 400
 
         if not looks_like_email(submission.email):
             return jsonify({'error': 'Please provide a valid email address.'}), 400

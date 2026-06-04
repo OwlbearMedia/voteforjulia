@@ -2,19 +2,48 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import re
+
+
+MAX_FIRST_NAME_LENGTH = 80
+MAX_LAST_NAME_LENGTH = 80
+MAX_EMAIL_LENGTH = 254
+MAX_PHONE_LENGTH = 32
+MAX_MESSAGE_LENGTH = 500
+MAX_HELP_WAYS_COUNT = 10
+MAX_HELP_WAY_LENGTH = 100
+
+_EMAIL_PATTERN = re.compile(
+    r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+$",
+    re.IGNORECASE,
+)
 
 
 def looks_like_email(value: str) -> bool:
-    if "@" not in value:
+    normalized = normalize_text(value)
+    if not normalized or contains_disallowed_control_chars(normalized, allow_newlines=False):
         return False
-    local_part, _, domain = value.partition("@")
-    return bool(local_part and domain and "." in domain)
+
+    return bool(_EMAIL_PATTERN.fullmatch(normalized))
+
+
+def contains_disallowed_control_chars(value: str, *, allow_newlines: bool) -> bool:
+    for character in value:
+        if character in {"\n", "\r"}:
+            if allow_newlines:
+                continue
+            return True
+
+        if ord(character) < 32 or ord(character) == 127:
+            return True
+
+    return False
 
 
 def normalize_text(value: object) -> str:
     if value is None:
         return ""
-    return str(value).strip()
+    return str(value).strip(" \t")
 
 
 def normalize_string_list(value: object) -> list[str]:
@@ -35,6 +64,44 @@ def normalize_string_list(value: object) -> list[str]:
         return items
 
     return []
+
+
+def validate_submission(submission: "Submission") -> str:
+    if contains_disallowed_control_chars(submission.first_name, allow_newlines=False):
+        return "First name contains invalid characters."
+    if contains_disallowed_control_chars(submission.last_name, allow_newlines=False):
+        return "Last name contains invalid characters."
+    if contains_disallowed_control_chars(submission.name, allow_newlines=False):
+        return "Name contains invalid characters."
+    if contains_disallowed_control_chars(submission.email, allow_newlines=False):
+        return "Email contains invalid characters."
+    if contains_disallowed_control_chars(submission.phone, allow_newlines=False):
+        return "Phone contains invalid characters."
+    if contains_disallowed_control_chars(submission.message, allow_newlines=True):
+        return "Message contains invalid characters."
+
+    for help_way in submission.help_ways:
+        if contains_disallowed_control_chars(help_way, allow_newlines=False):
+            return "Ways to help contains invalid characters."
+
+    if len(submission.first_name) > MAX_FIRST_NAME_LENGTH:
+        return f"First name must be {MAX_FIRST_NAME_LENGTH} characters or fewer."
+    if len(submission.last_name) > MAX_LAST_NAME_LENGTH:
+        return f"Last name must be {MAX_LAST_NAME_LENGTH} characters or fewer."
+    if len(submission.email) > MAX_EMAIL_LENGTH:
+        return f"Email must be {MAX_EMAIL_LENGTH} characters or fewer."
+    if len(submission.phone) > MAX_PHONE_LENGTH:
+        return f"Phone must be {MAX_PHONE_LENGTH} characters or fewer."
+    if len(submission.message) > MAX_MESSAGE_LENGTH:
+        return f"Message must be {MAX_MESSAGE_LENGTH} characters or fewer."
+    if len(submission.help_ways) > MAX_HELP_WAYS_COUNT:
+        return f"Please select no more than {MAX_HELP_WAYS_COUNT} ways to help."
+
+    for help_way in submission.help_ways:
+        if len(help_way) > MAX_HELP_WAY_LENGTH:
+            return f"Each way to help must be {MAX_HELP_WAY_LENGTH} characters or fewer."
+
+    return ""
 
 
 def _compose_name(name_value: object, first_name_value: object, last_name_value: object) -> str:
