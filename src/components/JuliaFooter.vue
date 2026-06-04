@@ -197,7 +197,7 @@ onBeforeUnmount(() => {
               'footer-support-actions-hidden': isFooterSupportActionsFixed
             }"
             :aria-hidden="isFooterSupportActionsFixed ? 'true' : undefined"
-            :inert="isFooterSupportActionsFixed ? '' : undefined"
+            :inert="isFooterSupportActionsFixed ? true : undefined"
           >
             <RouterLink class="btn btn-invert" to="/volunteer">Volunteer</RouterLink>
             <RouterLink class="btn" to="/donate" @click="handleDonateClick">Donate</RouterLink>
