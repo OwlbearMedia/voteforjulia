@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Build and upload over SSH (test)
+  deploy_frontend:
+    name: Build and upload frontend over SSH (test)
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
@@ -37,22 +37,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Python dependencies
-        run: python -m pip install -r api/requirements.txt
-
       - name: Run frontend tests
         run: pnpm test
-
-      - name: Run Python API tests
-        run: python -m unittest api/test_models.py api/test_email_service.py
 
       - name: Build site
         env:
@@ -102,6 +91,28 @@ jobs:
           overwrite: true
           strip_components: 1
 
+  deploy_python:
+    name: Build and upload Python API over SSH (test)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: python -m pip install -r api/requirements.txt
+
+      - name: Run Python API tests
+        run: python -m unittest api/test_models.py api/test_email_service.py
+
       - name: Upload api contents to test api directory
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -126,3 +137,24 @@ jobs:
           script: |
             mkdir -p ./api_test/tmp
             touch ./api_test/tmp/restart.txt
+
+  deploy_summary:
+    name: Deployment summary (test)
+    if: ${{ always() && github.event.pull_request.merged == true }}
+    runs-on: ubuntu-latest
+    needs:
+      - deploy_frontend
+      - deploy_python
+
+    steps:
+      - name: Report deploy results
+        run: |
+          echo "Frontend deploy result: ${{ needs.deploy_frontend.result }}"
+          echo "Python deploy result:   ${{ needs.deploy_python.result }}"
+
+      - name: Fail if any deploy job failed
+        run: |
+          if [[ "${{ needs.deploy_frontend.result }}" != "success" || "${{ needs.deploy_python.result }}" != "success" ]]; then
+            echo "One or more deployment jobs did not succeed."
+            exit 1
+          fi

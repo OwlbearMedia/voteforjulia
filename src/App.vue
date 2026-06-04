@@ -11,7 +11,7 @@ const pageHeaderTitle = computed(() => {
     '/meet-julia': 'Meet Julia | Julia Hamann for Mankato Mayor',
     '/volunteer': 'Volunteer | Julia Hamann for Mankato Mayor',
     '/donate': 'Donate | Julia Hamann for Mankato Mayor',
-    '/secret-recipe': 'Secret Recipe | Julia Hamann for Mankato Mayor',
+    '/secret-recipe': 'Secret Recipe | Julia Hamann for Mankato Mayor'
   };
 
   return routeTitles[route.path] ?? 'Julia Hamann for Mankato Mayor';

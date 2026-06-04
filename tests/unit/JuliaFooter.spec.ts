@@ -1,13 +1,13 @@
-import { mount, RouterLinkStub } from '@vue/test-utils'
-import { nextTick } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import JuliaFooter from '../../src/components/JuliaFooter.vue'
-import { trackDonateClick, trackFooterIconClick } from '../../src/lib/analytics'
+import { mount, RouterLinkStub } from '@vue/test-utils';
+import { nextTick } from 'vue';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import JuliaFooter from '../../src/components/JuliaFooter.vue';
+import { trackDonateClick, trackFooterIconClick } from '../../src/lib/analytics';
 
 vi.mock('../../src/lib/analytics', () => ({
   trackDonateClick: vi.fn(),
-  trackFooterIconClick: vi.fn(),
-}))
+  trackFooterIconClick: vi.fn()
+}));
 
 function mockMatchMedia(matches: boolean) {
   Object.defineProperty(globalThis, 'matchMedia', {
@@ -21,17 +21,17 @@ function mockMatchMedia(matches: boolean) {
       removeListener: vi.fn(),
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  })
+      dispatchEvent: vi.fn()
+    }))
+  });
 }
 
 function setInnerHeight(value: number) {
   Object.defineProperty(globalThis, 'innerHeight', {
     configurable: true,
     writable: true,
-    value,
-  })
+    value
+  });
 }
 
 function mockAnchorRect(anchorEl: HTMLElement, top: number) {
@@ -44,120 +44,124 @@ function mockAnchorRect(anchorEl: HTMLElement, top: number) {
     bottom: top + 40,
     width: 300,
     height: 40,
-    toJSON: () => ({}),
-  } as DOMRect)
+    toJSON: () => ({})
+  });
 }
 
 async function flushAnimationFrame() {
   if (typeof globalThis.requestAnimationFrame === 'function') {
     await new Promise<void>((resolve) => {
-      globalThis.requestAnimationFrame(() => resolve())
-    })
-    return
+      globalThis.requestAnimationFrame(() => resolve());
+    });
+    return;
   }
 
-  await Promise.resolve()
+  await Promise.resolve();
 }
 
 describe('JuliaFooter', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockMatchMedia(false)
-    setInnerHeight(800)
-  })
+    vi.clearAllMocks();
+    mockMatchMedia(false);
+    setInnerHeight(800);
+  });
 
   it('tracks footer social icon clicks', async () => {
     const wrapper = mount(JuliaFooter, {
       global: {
         stubs: {
-          RouterLink: RouterLinkStub,
-        },
-      },
-    })
+          RouterLink: RouterLinkStub
+        }
+      }
+    });
 
-    const instagramLink = wrapper.find('a[aria-label="Julia on Instagram"]')
-    await instagramLink.trigger('click')
+    const instagramLink = wrapper.find('a[aria-label="Julia on Instagram"]');
+    await instagramLink.trigger('click');
 
     expect(trackFooterIconClick).toHaveBeenCalledWith(
       'https://www.instagram.com/voteforjuliahamann',
-      'Julia on Instagram',
-    )
-  })
+      'Julia on Instagram'
+    );
+  });
 
   it('tracks donate button clicks in the footer', async () => {
     const wrapper = mount(JuliaFooter, {
       global: {
         stubs: {
-          RouterLink: RouterLinkStub,
-        },
-      },
-    })
+          RouterLink: RouterLinkStub
+        }
+      }
+    });
 
-    const donateLink = wrapper.findAllComponents(RouterLinkStub)
-      .find((link) => link.text() === 'Donate')
+    const donateLink = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find((link) => link.text() === 'Donate');
 
-    expect(donateLink).toBeDefined()
+    expect(donateLink).toBeDefined();
+    if (!donateLink) {
+      throw new Error('Donate link should be rendered in JuliaFooter');
+    }
 
-    await donateLink!.trigger('click')
+    await donateLink.trigger('click');
 
-    expect(trackDonateClick).toHaveBeenCalledWith('footer', 'Donate')
-  })
+    expect(trackDonateClick).toHaveBeenCalledWith('footer', 'Donate');
+  });
 
   it('shows fixed teleported actions on mobile and hides in-footer actions', async () => {
-    mockMatchMedia(true)
+    mockMatchMedia(true);
 
     const wrapper = mount(JuliaFooter, {
       attachTo: document.body,
       global: {
         stubs: {
-          RouterLink: RouterLinkStub,
-        },
-      },
-    })
+          RouterLink: RouterLinkStub
+        }
+      }
+    });
 
-    const anchorEl = wrapper.find('.footer-support-actions-anchor').element as HTMLElement
-    mockAnchorRect(anchorEl, 1000)
+    const anchorEl = wrapper.find('.footer-support-actions-anchor').element as HTMLElement;
+    mockAnchorRect(anchorEl, 1000);
 
-    window.dispatchEvent(new Event('resize'))
-    await flushAnimationFrame()
-    await nextTick()
+    globalThis.dispatchEvent(new Event('resize'));
+    await flushAnimationFrame();
+    await nextTick();
 
-    const inFooterActions = wrapper.find('.footer-support-actions-anchor .footer-support-actions')
-    expect(inFooterActions.classes()).toContain('footer-support-actions-hidden')
-    expect(inFooterActions.attributes('aria-hidden')).toBe('true')
+    const inFooterActions = wrapper.find('.footer-support-actions-anchor .footer-support-actions');
+    expect(inFooterActions.classes()).toContain('footer-support-actions-hidden');
+    expect(inFooterActions.attributes('aria-hidden')).toBe('true');
 
-    const fixedActions = document.body.querySelector('.footer-support-actions-fixed')
-    expect(fixedActions).not.toBeNull()
+    const fixedActions = document.body.querySelector('.footer-support-actions-fixed');
+    expect(fixedActions).not.toBeNull();
 
-    wrapper.unmount()
-  })
+    wrapper.unmount();
+  });
 
   it('keeps only in-footer actions visible on non-mobile viewports', async () => {
-    mockMatchMedia(false)
+    mockMatchMedia(false);
 
     const wrapper = mount(JuliaFooter, {
       attachTo: document.body,
       global: {
         stubs: {
-          RouterLink: RouterLinkStub,
-        },
-      },
-    })
+          RouterLink: RouterLinkStub
+        }
+      }
+    });
 
-    const anchorEl = wrapper.find('.footer-support-actions-anchor').element as HTMLElement
-    mockAnchorRect(anchorEl, 1000)
+    const anchorEl = wrapper.find('.footer-support-actions-anchor').element as HTMLElement;
+    mockAnchorRect(anchorEl, 1000);
 
-    window.dispatchEvent(new Event('resize'))
-    await flushAnimationFrame()
-    await nextTick()
+    globalThis.dispatchEvent(new Event('resize'));
+    await flushAnimationFrame();
+    await nextTick();
 
-    const inFooterActions = wrapper.find('.footer-support-actions-anchor .footer-support-actions')
-    expect(inFooterActions.classes()).not.toContain('footer-support-actions-hidden')
-    expect(inFooterActions.attributes('aria-hidden')).toBeUndefined()
+    const inFooterActions = wrapper.find('.footer-support-actions-anchor .footer-support-actions');
+    expect(inFooterActions.classes()).not.toContain('footer-support-actions-hidden');
+    expect(inFooterActions.attributes('aria-hidden')).toBeUndefined();
 
-    const fixedActions = document.body.querySelector('.footer-support-actions-fixed')
-    expect(fixedActions).toBeNull()
+    const fixedActions = document.body.querySelector('.footer-support-actions-fixed');
+    expect(fixedActions).toBeNull();
 
-    wrapper.unmount()
-  })
-})
+    wrapper.unmount();
+  });
+});

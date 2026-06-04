@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
-import { RouterLink } from "vue-router";
-import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { faEnvelope } from "@fortawesome/free-regular-svg-icons";
-import { faInstagram, faFacebookF } from "@fortawesome/free-brands-svg-icons";
-import { trackDonateClick, trackFooterIconClick } from "../lib/analytics";
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
+import { faEnvelope } from '@fortawesome/free-regular-svg-icons';
+import { faInstagram, faFacebookF } from '@fortawesome/free-brands-svg-icons';
+import { trackDonateClick, trackFooterIconClick } from '../lib/analytics';
 
 defineOptions({
-  name: "JuliaFooter",
+  name: 'JuliaFooter'
 });
 
 function handleFooterIconClick(href: string, ariaLabel: string) {
@@ -15,7 +15,7 @@ function handleFooterIconClick(href: string, ariaLabel: string) {
 }
 
 function handleDonateClick() {
-  trackDonateClick("footer", "Donate");
+  trackDonateClick('footer', 'Donate');
 }
 
 const footerSupportActionsAnchorRef = ref<HTMLElement | null>(null);
@@ -33,14 +33,14 @@ function getSafeAreaProbeElement() {
     return safeAreaProbeEl;
   }
 
-  const probe = document.createElement("div");
-  probe.setAttribute("aria-hidden", "true");
-  probe.style.position = "fixed";
-  probe.style.left = "0";
-  probe.style.bottom = "0";
-  probe.style.visibility = "hidden";
-  probe.style.pointerEvents = "none";
-  probe.style.paddingBottom = "env(safe-area-inset-bottom)";
+  const probe = document.createElement('div');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.position = 'fixed';
+  probe.style.left = '0';
+  probe.style.bottom = '0';
+  probe.style.visibility = 'hidden';
+  probe.style.pointerEvents = 'none';
+  probe.style.paddingBottom = 'env(safe-area-inset-bottom)';
 
   document.body.appendChild(probe);
   safeAreaProbeEl = probe;
@@ -53,7 +53,7 @@ function getSafeAreaBottomInset() {
     return safeAreaBottomInsetCache;
   }
 
-  if (typeof document === "undefined") {
+  if (typeof document === 'undefined') {
     return 0;
   }
 
@@ -74,8 +74,8 @@ function updateFooterSupportActionsState() {
   }
 
   const isMobileViewport =
-    typeof globalThis.matchMedia === "function"
-      ? globalThis.matchMedia("(max-width: 700px)").matches
+    typeof globalThis.matchMedia === 'function'
+      ? globalThis.matchMedia('(max-width: 700px)').matches
       : false;
 
   if (!isMobileViewport) {
@@ -87,8 +87,7 @@ function updateFooterSupportActionsState() {
 
   const bottomOffset = 16 + getSafeAreaBottomInset();
   const anchorRect = anchorEl.getBoundingClientRect();
-  const fixedTop =
-    globalThis.innerHeight - bottomOffset - footerSupportActionsHeight.value;
+  const fixedTop = globalThis.innerHeight - bottomOffset - footerSupportActionsHeight.value;
 
   isFooterSupportActionsFixed.value = anchorRect.top > fixedTop;
 }
@@ -98,7 +97,7 @@ function scheduleFooterSupportActionsStateUpdate() {
     return;
   }
 
-  if (typeof globalThis.requestAnimationFrame === "function") {
+  if (typeof globalThis.requestAnimationFrame === 'function') {
     footerSupportActionsRafId = globalThis.requestAnimationFrame(() => {
       footerSupportActionsRafId = null;
       updateFooterSupportActionsState();
@@ -117,12 +116,12 @@ function handleResize() {
 onMounted(() => {
   updateFooterSupportActionsState();
 
-  window.addEventListener("scroll", scheduleFooterSupportActionsStateUpdate, {
-    passive: true,
+  window.addEventListener('scroll', scheduleFooterSupportActionsStateUpdate, {
+    passive: true
   });
-  window.addEventListener("resize", handleResize);
+  window.addEventListener('resize', handleResize);
 
-  if (typeof ResizeObserver !== "undefined" && footerSupportActionsRef.value) {
+  if (typeof ResizeObserver !== 'undefined' && footerSupportActionsRef.value) {
     footerSupportActionsResizeObserver = new ResizeObserver(() => {
       scheduleFooterSupportActionsStateUpdate();
     });
@@ -132,14 +131,11 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener("scroll", scheduleFooterSupportActionsStateUpdate);
-  window.removeEventListener("resize", handleResize);
+  window.removeEventListener('scroll', scheduleFooterSupportActionsStateUpdate);
+  window.removeEventListener('resize', handleResize);
   footerSupportActionsResizeObserver?.disconnect();
 
-  if (
-    footerSupportActionsRafId !== null &&
-    typeof globalThis.cancelAnimationFrame === "function"
-  ) {
+  if (footerSupportActionsRafId !== null && typeof globalThis.cancelAnimationFrame === 'function') {
     globalThis.cancelAnimationFrame(footerSupportActionsRafId);
     footerSupportActionsRafId = null;
   }
@@ -165,7 +161,7 @@ onBeforeUnmount(() => {
             @click="
               handleFooterIconClick(
                 'https://www.instagram.com/voteforjuliahamann',
-                'Julia on Instagram',
+                'Julia on Instagram'
               )
             "
             ><FontAwesomeIcon :icon="faInstagram"
@@ -178,7 +174,7 @@ onBeforeUnmount(() => {
             @click="
               handleFooterIconClick(
                 'https://www.facebook.com/profile.php?id=61590411090366',
-                'Julia on Facebook',
+                'Julia on Facebook'
               )
             "
             ><FontAwesomeIcon :icon="faFacebookF"
@@ -186,12 +182,7 @@ onBeforeUnmount(() => {
           <a
             href="mailto:info@juliahamann.com"
             aria-label="Email Julia"
-            @click="
-              handleFooterIconClick(
-                'mailto:info@juliahamann.com',
-                'Email Julia',
-              )
-            "
+            @click="handleFooterIconClick('mailto:info@juliahamann.com', 'Email Julia')"
             ><FontAwesomeIcon :icon="faEnvelope"
           /></a>
         </div>
@@ -203,25 +194,17 @@ onBeforeUnmount(() => {
             ref="footerSupportActionsRef"
             class="footer-support-actions"
             :class="{
-              'footer-support-actions-hidden': isFooterSupportActionsFixed,
+              'footer-support-actions-hidden': isFooterSupportActionsFixed
             }"
             :aria-hidden="isFooterSupportActionsFixed ? 'true' : undefined"
           >
-            <RouterLink class="btn btn-invert" to="/volunteer"
-              >Volunteer</RouterLink
-            >
-            <RouterLink class="btn" to="/donate" @click="handleDonateClick"
-              >Donate</RouterLink
-            >
+            <RouterLink class="btn btn-invert" to="/volunteer">Volunteer</RouterLink>
+            <RouterLink class="btn" to="/donate" @click="handleDonateClick">Donate</RouterLink>
           </div>
         </div>
       </div>
-      <div class="footer-disclaimer">
-        Paid for by Julia Hamann for Mankato Mayor
-      </div>
-      <div class="footer-disclaimer-address">
-        311 N 5th St. Mankato MN 56001
-      </div>
+      <div class="footer-disclaimer">Paid for by Julia Hamann for Mankato Mayor</div>
+      <div class="footer-disclaimer-address">311 N 5th St. Mankato MN 56001</div>
     </div>
   </footer>
 
@@ -231,7 +214,10 @@ onBeforeUnmount(() => {
       class="footer-support-actions-fixed-backdrop"
       aria-hidden="true"
     ></div>
-    <div v-if="isFooterSupportActionsFixed" class="footer-support-actions footer-support-actions-fixed">
+    <div
+      v-if="isFooterSupportActionsFixed"
+      class="footer-support-actions footer-support-actions-fixed"
+    >
       <RouterLink class="btn btn-invert" to="/volunteer">Volunteer</RouterLink>
       <RouterLink class="btn" to="/donate" @click="handleDonateClick">Donate</RouterLink>
     </div>

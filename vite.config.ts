@@ -28,7 +28,8 @@ export default defineConfig({
     vue(),
   ],
   ssgOptions: {
-    dirStyle: 'nested',
+    // Generate route files as .html so `/meet-julia` is not treated as a directory URL.
+    dirStyle: 'flat',
     includedRoutes(paths) {
       builtRoutePaths = [...paths]
       return paths
