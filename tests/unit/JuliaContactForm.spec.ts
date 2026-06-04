@@ -137,7 +137,7 @@ describe('JuliaContactForm', () => {
     expect(wrapper.text()).toContain('Server unavailable');
   });
 
-  it('replaces submit button with loading indicator while request is in flight', async () => {
+  it('disables submit button and shows spinner while request is in flight', async () => {
     let resolveSubmission: () => void = () => {};
     const pendingSubmission = new Promise<void>((resolve) => {
       resolveSubmission = resolve;
@@ -152,8 +152,10 @@ describe('JuliaContactForm', () => {
 
     await wrapper.find('form').trigger('submit');
 
-    expect(wrapper.find('button[type="submit"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Sending your message...');
+    const submitButton = wrapper.find('button[type="submit"]');
+    expect(submitButton.exists()).toBe(true);
+    expect(submitButton.attributes('disabled')).toBeDefined();
+    expect(wrapper.findComponent({ name: 'FontAwesomeIcon' }).exists()).toBe(true);
 
     resolveSubmission();
     await flushPromises();
