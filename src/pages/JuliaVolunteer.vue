@@ -142,6 +142,7 @@ useHead({
         class="coming-soon"
         width="767"
         height="960"
+        crossorigin="anonymous"
         loading="lazy"
         decoding="async"
       />
