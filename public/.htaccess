@@ -1,5 +1,8 @@
 RewriteEngine On
 
+# Mark fingerprinted Vite assets so we can apply immutable caching headers.
+RewriteRule ^assets/ - [E=IS_VITE_ASSET:1]
+
 Redirect 301 /meet-julia/ /meet-julia
 
 Redirect 301 /index.html /
@@ -7,3 +10,49 @@ Redirect 301 /meet-julia.html /meet-julia
 Redirect 301 /volunteer.html /volunteer
 Redirect 301 /donate.html /donate
 Redirect 301 /secret-recipe.html /secret-recipe
+
+# Keep ETags stable across deployments while still allowing validator-based revalidation.
+FileETag MTime Size
+
+<IfModule mod_expires.c>
+	ExpiresActive On
+
+	# HTML should be refreshed on navigation.
+	ExpiresByType text/html "access plus 0 seconds"
+
+	# Metadata files can be cached briefly.
+	ExpiresByType application/xml "access plus 1 hour"
+	ExpiresByType text/xml "access plus 1 hour"
+	ExpiresByType text/plain "access plus 1 hour"
+
+	# Public non-hashed images get a moderate cache window.
+	ExpiresByType image/avif "access plus 1 week"
+	ExpiresByType image/webp "access plus 1 week"
+	ExpiresByType image/jpeg "access plus 1 week"
+	ExpiresByType image/png "access plus 1 week"
+	ExpiresByType image/gif "access plus 1 week"
+	ExpiresByType image/svg+xml "access plus 1 week"
+	ExpiresByType image/x-icon "access plus 1 week"
+</IfModule>
+
+<IfModule mod_headers.c>
+	# HTML should always be revalidated so navigation picks up new deploys.
+	<FilesMatch "\.(?:html)$">
+		Header set Cache-Control "no-cache, max-age=0, must-revalidate"
+		Header always unset ETag
+	</FilesMatch>
+
+	# Vite build assets are content-hashed, so they are safe to cache long-term.
+	Header set Cache-Control "public, max-age=31536000, immutable" env=IS_VITE_ASSET
+	Header unset ETag env=IS_VITE_ASSET
+
+	# Non-hashed site metadata files should refresh more frequently.
+	<FilesMatch "\.(?:xml|txt)$">
+		Header set Cache-Control "public, max-age=3600, must-revalidate"
+	</FilesMatch>
+
+	# Non-hashed static images from /public get a moderate cache window.
+	<FilesMatch "\.(?:png|jpe?g|gif|webp|avif|svg|ico)$">
+		Header set Cache-Control "public, max-age=604800"
+	</FilesMatch>
+</IfModule>
