@@ -175,6 +175,7 @@ useHead({
         class="coming-soon maybe-idk"
         width="690"
         height="960"
+        crossorigin="anonymous"
         loading="lazy"
         decoding="async"
       />
@@ -219,6 +220,7 @@ useHead({
         class="coming-soon"
         width="690"
         height="960"
+        crossorigin="anonymous"
         loading="lazy"
         decoding="async"
       />
