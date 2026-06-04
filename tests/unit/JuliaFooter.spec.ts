@@ -129,6 +129,7 @@ describe('JuliaFooter', () => {
     const inFooterActions = wrapper.find('.footer-support-actions-anchor .footer-support-actions');
     expect(inFooterActions.classes()).toContain('footer-support-actions-hidden');
     expect(inFooterActions.attributes('aria-hidden')).toBe('true');
+    expect(inFooterActions.attributes('inert')).toBeDefined();
 
     const fixedActions = document.body.querySelector('.footer-support-actions-fixed');
     expect(fixedActions).not.toBeNull();
@@ -158,6 +159,7 @@ describe('JuliaFooter', () => {
     const inFooterActions = wrapper.find('.footer-support-actions-anchor .footer-support-actions');
     expect(inFooterActions.classes()).not.toContain('footer-support-actions-hidden');
     expect(inFooterActions.attributes('aria-hidden')).toBeUndefined();
+    expect(inFooterActions.attributes('inert')).toBeUndefined();
 
     const fixedActions = document.body.querySelector('.footer-support-actions-fixed');
     expect(fixedActions).toBeNull();
