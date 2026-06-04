@@ -8,13 +8,13 @@ const route = useRoute();
 
 const pageHeaderTitle = computed(() => {
   const routeTitles: Record<string, string> = {
-    '/meet-julia': 'Meet Julia | Julia Hamann for Mankato Mayor',
-    '/volunteer': 'Volunteer | Julia Hamann for Mankato Mayor',
-    '/donate': 'Donate | Julia Hamann for Mankato Mayor',
-    '/secret-recipe': 'Secret Recipe | Julia Hamann for Mankato Mayor'
+    '/meet-julia': 'Get to Know Julia Hamann — Mankato Mayor Candidate',
+    '/volunteer': 'Join Julia’s Team — Volunteer in Mankato',
+    '/donate': 'Support Julia Hamann’s Campaign for Mankato Mayor',
+    '/secret-recipe': 'Julia’s Famous Shrimp Salad Supreme Recipe'
   };
 
-  return routeTitles[route.path] ?? 'Julia Hamann for Mankato Mayor';
+  return routeTitles[route.path] ?? 'Elect Julia Hamann — A New Voice for Mankato';
 });
 </script>
 

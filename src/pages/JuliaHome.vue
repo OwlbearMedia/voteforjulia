@@ -1,43 +1,23 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useHead } from '@unhead/vue';
 import { RouterLink } from 'vue-router';
 import { Image } from '@imagekit/vue';
 import JuliaContactForm from '../components/JuliaContactForm.vue';
+import { useResponsiveImageSize } from '../composables/useResponsiveImageSize';
 
 defineOptions({
   name: 'JuliaHome'
 });
 
-const HERO_BASE_WIDTH = 960;
-const HERO_BASE_HEIGHT = 672;
-const HERO_ASPECT_RATIO = HERO_BASE_WIDTH / HERO_BASE_HEIGHT;
-
-const viewportWidth = ref(HERO_BASE_WIDTH);
-
-function updateViewportWidth() {
-  if (globalThis.window === undefined) {
-    return;
-  }
-
-  viewportWidth.value = globalThis.innerWidth;
-}
-
-onMounted(() => {
-  updateViewportWidth();
-  globalThis.addEventListener('resize', updateViewportWidth);
+const { width: blueSkyImageWidth, height: blueSkyImageHeight } = useResponsiveImageSize({
+  baseWidth: 390,
+  baseHeight: 517
+});
+const { width: logoImageWidth, height: logoImageHeight } = useResponsiveImageSize({
+  baseWidth: 390,
+  baseHeight: 390
 });
 
-onBeforeUnmount(() => {
-  globalThis.removeEventListener('resize', updateViewportWidth);
-});
-
-const heroImageWidth = computed(() => {
-  const horizontalPadding = viewportWidth.value <= 700 ? 40 : 64;
-  return Math.min(HERO_BASE_WIDTH, Math.max(viewportWidth.value - horizontalPadding, 1));
-});
-
-const heroImageHeight = computed(() => Math.round(heroImageWidth.value / HERO_ASPECT_RATIO));
 
 useHead({
   title: 'Home | Julia Hamann for Mankato Mayor',
@@ -164,13 +144,13 @@ useHead({
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia-hero.webp"
         class="hero-image"
-        :width="heroImageWidth"
-        :height="heroImageHeight"
+        :responsive="false"
+        :width="960"
+        :height="672"
         alt="Julia Hamann for Mankato Mayor"
         crossorigin="anonymous"
         fetchpriority="high"
         loading="eager"
-        :transformation="[{ width: heroImageWidth, height: heroImageHeight }]"
       />
     </div>
 
@@ -226,12 +206,13 @@ useHead({
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia-blue-sky.webp"
         class="coming-soon"
-        width="767"
-        height="960"
+        :width="blueSkyImageWidth"
+        :height="blueSkyImageHeight"
         alt="Julia Hamann for Mankato Mayor"
         crossorigin="anonymous"
         loading="lazy"
         decoding="async"
+        :transformation="[{ width: blueSkyImageWidth, height: blueSkyImageHeight }]"
       />
     </div>
 
@@ -311,11 +292,12 @@ useHead({
         src="/julia.avif"
         alt="Julia Hamann for Mankato Mayor"
         class="coming-soon"
-        width="767"
-        height="960"
+        :width="logoImageWidth"
+        :height="logoImageHeight"
         crossorigin="anonymous"
         loading="lazy"
         decoding="async"
+        :transformation="[{ width: logoImageWidth, height: logoImageHeight }]"
       />
     </div>
   </section>
