@@ -1,7 +1,7 @@
 RewriteEngine On
 
-# Mark fingerprinted Vite assets so we can apply immutable caching headers.
-RewriteRule ^assets/ - [E=IS_VITE_ASSET:1]
+# Mark only fingerprinted Vite assets so immutable caching is limited to hashed filenames.
+RewriteRule ^assets/.+[-.][A-Za-z0-9]{8,}\.[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)?$ - [E=IS_VITE_ASSET:1]
 
 Redirect 301 /meet-julia/ /meet-julia
 
@@ -39,7 +39,6 @@ FileETag MTime Size
 	# HTML should always be revalidated so navigation picks up new deploys.
 	<FilesMatch "\.(?:html)$">
 		Header set Cache-Control "no-cache, max-age=0, must-revalidate"
-		Header always unset ETag
 	</FilesMatch>
 
 	# Vite build assets are content-hashed, so they are safe to cache long-term.
