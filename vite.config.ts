@@ -27,8 +27,28 @@ export default defineConfig({
   plugins: [
     vue(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          // Separate vendor dependencies to enable better caching and reduce main bundle
+          if (id.includes('node_modules/vue') || 
+              id.includes('node_modules/vue-router') ||
+              id.includes('node_modules/@unhead') ||
+              id.includes('node_modules/@imagekit')) {
+            return 'vendor'
+          }
+          // Separate gtag into its own chunk since it's non-critical for initial render
+          if (id.includes('node_modules/vue-gtag')) {
+            return 'gtag'
+          }
+        }
+      }
+    }
+  },
   ssgOptions: {
-    dirStyle: 'nested',
+    // Generate route files as .html so `/meet-julia` is not treated as a directory URL.
+    dirStyle: 'flat',
     includedRoutes(paths) {
       builtRoutePaths = [...paths]
       return paths

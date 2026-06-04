@@ -10,14 +10,16 @@
 /* ── Base ── */
 @font-face {
   font-family: "TheBoldFont";
-  src: url("/theboldfont.woff") format("woff");
+  font-display: swap;
+  src: url("../public/theboldfont.woff") format("woff");
   font-weight: normal;
   font-style: normal;
 }
 
 @font-face {
   font-family: "Mickle";
-  src: url("/Mickle.ttf") format("truetype");
+  font-display: swap;
+  src: url("../public/Mickle.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
 }
@@ -154,7 +156,7 @@ header .container {
 }
 
 .menu-list a.donate {
-  background-color: rgba(123, 202, 91, 1);
+  background-color: #468445;
   padding: 0.7rem 1rem 0.5rem 1rem;
   border-radius: 999px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -519,7 +521,9 @@ section {
   margin-bottom: 1rem;
 }
 
-.stances-donate {
+.donate-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 2rem;
   margin-top: 2rem;
 }
@@ -650,6 +654,10 @@ section {
 
   .stances-layout > * {
     flex-basis: auto;
+  }
+
+  .donate-layout {
+    grid-template-columns: 1fr;
   }
 
   .issues-layout {
