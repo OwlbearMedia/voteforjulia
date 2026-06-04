@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
-import sprout from "../assets/sprout.png";
-import { submitContactForm } from "../lib/api";
+import { computed, nextTick, ref, watch } from 'vue';
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
+import { faSpinner } from '@fortawesome/free-solid-svg-icons';
+import sprout from '../assets/sprout.png';
+import { submitContactForm } from '../lib/api';
 import {
   trackVolunteerFormSubmit,
   trackVolunteerRequestBody,
-  trackVolunteerSubmissionError,
-} from "../lib/analytics";
+  trackVolunteerSubmissionError
+} from '../lib/analytics';
 
 defineOptions({
-  name: "JuliaContactForm",
+  name: 'JuliaContactForm'
 });
 
 const MAX_FIRST_NAME_LENGTH = 80;
@@ -18,36 +20,30 @@ const MAX_EMAIL_LENGTH = 254;
 const MAX_PHONE_LENGTH = 32;
 const MAX_MESSAGE_LENGTH = 500;
 
-const EMAIL_REGEX =
-  /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+$/i;
+const EMAIL_REGEX = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+$/i;
 
-const firstName = ref("");
-const lastName = ref("");
-const email = ref("");
-const phone = ref("");
+const firstName = ref('');
+const lastName = ref('');
+const email = ref('');
+const phone = ref('');
 const helpWays = ref<string[]>([]);
-const message = ref("");
-const firstNameError = ref("");
-const lastNameError = ref("");
-const emailError = ref("");
-const phoneError = ref("");
-const messageError = ref("");
-const submitError = ref("");
+const message = ref('');
+const firstNameError = ref('');
+const lastNameError = ref('');
+const emailError = ref('');
+const phoneError = ref('');
+const messageError = ref('');
+const submitError = ref('');
 const isSubmitted = ref(false);
 const isSubmitting = ref(false);
 const successMessageRef = ref<HTMLElement | null>(null);
 const hasScrolledToSuccess = ref(false);
 
-const fullName = computed(() =>
-  `${firstName.value.trim()} ${lastName.value.trim()}`.trim(),
-);
+const fullName = computed(() => `${firstName.value.trim()} ${lastName.value.trim()}`.trim());
 
-function containsDisallowedControlChars(
-  value: string,
-  allowNewlines: boolean,
-): boolean {
+function containsDisallowedControlChars(value: string, allowNewlines: boolean): boolean {
   for (const character of value) {
-    if (character === "\n" || character === "\r") {
+    if (character === '\n' || character === '\r') {
       if (allowNewlines) {
         continue;
       }
@@ -55,7 +51,7 @@ function containsDisallowedControlChars(
       return true;
     }
 
-    const codePoint = character.charCodeAt(0);
+    const codePoint = character.codePointAt(0) ?? 0;
     if (codePoint < 32 || codePoint === 127) {
       return true;
     }
@@ -68,12 +64,12 @@ function validateFirstNameField(): boolean {
   const normalized = firstName.value.trim();
 
   if (!normalized) {
-    firstNameError.value = "Please enter your first name.";
+    firstNameError.value = 'Please enter your first name.';
     return false;
   }
 
   if (containsDisallowedControlChars(firstName.value, false)) {
-    firstNameError.value = "First name contains invalid characters.";
+    firstNameError.value = 'First name contains invalid characters.';
     return false;
   }
 
@@ -82,7 +78,7 @@ function validateFirstNameField(): boolean {
     return false;
   }
 
-  firstNameError.value = "";
+  firstNameError.value = '';
   return true;
 }
 
@@ -90,7 +86,7 @@ function validateLastNameField(): boolean {
   const normalized = lastName.value.trim();
 
   if (containsDisallowedControlChars(lastName.value, false)) {
-    lastNameError.value = "Last name contains invalid characters.";
+    lastNameError.value = 'Last name contains invalid characters.';
     return false;
   }
 
@@ -99,7 +95,7 @@ function validateLastNameField(): boolean {
     return false;
   }
 
-  lastNameError.value = "";
+  lastNameError.value = '';
   return true;
 }
 
@@ -112,7 +108,7 @@ function validateEmailField(): boolean {
   const normalized = email.value.trim();
 
   if (containsDisallowedControlChars(email.value, false)) {
-    emailError.value = "Email contains invalid characters.";
+    emailError.value = 'Email contains invalid characters.';
     return false;
   }
 
@@ -122,11 +118,11 @@ function validateEmailField(): boolean {
   }
 
   if (!isValidEmailFormat(email.value)) {
-    emailError.value = "Please enter a valid email address.";
+    emailError.value = 'Please enter a valid email address.';
     return false;
   }
 
-  emailError.value = "";
+  emailError.value = '';
   return true;
 }
 
@@ -134,7 +130,7 @@ function validatePhoneField(): boolean {
   const normalized = phone.value.trim();
 
   if (containsDisallowedControlChars(phone.value, false)) {
-    phoneError.value = "Phone contains invalid characters.";
+    phoneError.value = 'Phone contains invalid characters.';
     return false;
   }
 
@@ -143,13 +139,13 @@ function validatePhoneField(): boolean {
     return false;
   }
 
-  phoneError.value = "";
+  phoneError.value = '';
   return true;
 }
 
 function validateMessageField(): boolean {
   if (containsDisallowedControlChars(message.value, true)) {
-    messageError.value = "Message contains invalid characters.";
+    messageError.value = 'Message contains invalid characters.';
     return false;
   }
 
@@ -158,7 +154,7 @@ function validateMessageField(): boolean {
     return false;
   }
 
-  messageError.value = "";
+  messageError.value = '';
   return true;
 }
 
@@ -175,21 +171,15 @@ function handleSubmit(event: Event): void {
   const isPhoneValid = validatePhoneField();
   const isMessageValid = validateMessageField();
 
-  if (
-    !isFirstNameValid ||
-    !isLastNameValid ||
-    !isEmailValid ||
-    !isPhoneValid ||
-    !isMessageValid
-  ) {
-    submitError.value = "";
+  if (!isFirstNameValid || !isLastNameValid || !isEmailValid || !isPhoneValid || !isMessageValid) {
+    submitError.value = '';
   } else {
     submitForm();
   }
 }
 
 async function submitForm(): Promise<void> {
-  submitError.value = "";
+  submitError.value = '';
   isSubmitting.value = true;
 
   const selectedHelpWays = [...helpWays.value];
@@ -199,22 +189,22 @@ async function submitForm(): Promise<void> {
     lastName: lastName.value,
     email: email.value,
     phone: phone.value,
-    helpWays: selectedHelpWays.join(", "),
-    message: message.value,
+    helpWays: selectedHelpWays.join(', '),
+    message: message.value
   };
 
   try {
     trackVolunteerRequestBody(formData);
     await submitContactForm(formData);
-    trackVolunteerFormSubmit("success");
+    trackVolunteerFormSubmit('success');
     isSubmitted.value = true;
   } catch (error) {
     trackVolunteerSubmissionError(error, formData);
-    trackVolunteerFormSubmit("error");
+    trackVolunteerFormSubmit('error');
     submitError.value =
       error instanceof Error
         ? error.message
-        : "Unable to send your message right now. Please try again.";
+        : 'Unable to send your message right now. Please try again.';
   } finally {
     isSubmitting.value = false;
   }
@@ -226,8 +216,8 @@ const hasValidationError = computed(() =>
     lastNameError.value ||
     emailError.value ||
     phoneError.value ||
-    messageError.value,
-  ),
+    messageError.value
+  )
 );
 
 async function scrollToSuccessMessage(): Promise<void> {
@@ -238,15 +228,13 @@ async function scrollToSuccessMessage(): Promise<void> {
     return;
   }
 
-  const headerElement = document.querySelector("header");
+  const headerElement = document.querySelector('header');
   const headerHeight =
-    headerElement instanceof HTMLElement
-      ? headerElement.getBoundingClientRect().height
-      : 0;
+    headerElement instanceof HTMLElement ? headerElement.getBoundingClientRect().height : 0;
   const targetTop = successElement.getBoundingClientRect().top + window.scrollY;
   const scrollTop = Math.max(targetTop - headerHeight - 8, 0);
 
-  window.scrollTo({ top: scrollTop, behavior: "smooth" });
+  window.scrollTo({ top: scrollTop, behavior: 'smooth' });
   hasScrolledToSuccess.value = true;
 }
 
@@ -277,12 +265,9 @@ watch(successMessageRef, (element) => {
       class="contact-form"
       aria-live="polite"
     >
-      <h3>
-        Thanks so much for your support, {{ firstName.trim() || "friend" }}!
-      </h3>
+      <h3>Thanks so much for your support, {{ firstName.trim() || 'friend' }}!</h3>
       <p>
-        Check your inbox for additional follow up. I look forward to working
-        with you!
+        Check your inbox for additional follow up. I look forward to working with you!
         <img class="success-sprout" :src="sprout" alt="" aria-hidden="true" />
       </p>
     </output>
@@ -312,12 +297,7 @@ watch(successMessageRef, (element) => {
             autocomplete="given-name"
             required
           />
-          <p
-            v-if="firstNameError"
-            class="form-error-message"
-            role="alert"
-            aria-live="polite"
-          >
+          <p v-if="firstNameError" class="form-error-message" role="alert" aria-live="polite">
             {{ firstNameError }}
           </p>
         </div>
@@ -333,12 +313,7 @@ watch(successMessageRef, (element) => {
             @blur="validateLastNameField"
             autocomplete="family-name"
           />
-          <p
-            v-if="lastNameError"
-            class="form-error-message"
-            role="alert"
-            aria-live="polite"
-          >
+          <p v-if="lastNameError" class="form-error-message" role="alert" aria-live="polite">
             {{ lastNameError }}
           </p>
         </div>
@@ -358,12 +333,7 @@ watch(successMessageRef, (element) => {
         autocomplete="email"
         required
       />
-      <p
-        v-if="emailError"
-        class="form-error-message"
-        role="alert"
-        aria-live="polite"
-      >
+      <p v-if="emailError" class="form-error-message" role="alert" aria-live="polite">
         {{ emailError }}
       </p>
 
@@ -377,12 +347,7 @@ watch(successMessageRef, (element) => {
         @blur="validatePhoneField"
         autocomplete="tel"
       />
-      <p
-        v-if="phoneError"
-        class="form-error-message"
-        role="alert"
-        aria-live="polite"
-      >
+      <p v-if="phoneError" class="form-error-message" role="alert" aria-live="polite">
         {{ phoneError }}
       </p>
 
@@ -459,27 +424,14 @@ watch(successMessageRef, (element) => {
         rows="5"
         @blur="validateMessageField"
       ></textarea>
-      <p
-        v-if="messageError"
-        class="form-error-message"
-        role="alert"
-        aria-live="polite"
-      >
+      <p v-if="messageError" class="form-error-message" role="alert" aria-live="polite">
         {{ messageError }}
       </p>
 
-      <button v-if="!isSubmitting" type="submit" :disabled="hasValidationError">
-        Send Message
+      <button type="submit" :disabled="hasValidationError || isSubmitting">
+        Send Message <FontAwesomeIcon v-if="isSubmitting" :icon="faSpinner" spin />
       </button>
-      <output v-else class="form-loading-message" aria-live="polite"
-        >Sending your message...</output
-      >
-      <p
-        v-if="submitError"
-        class="form-error-message"
-        role="alert"
-        aria-live="assertive"
-      >
+      <p v-if="submitError" class="form-error-message" role="alert" aria-live="assertive">
         {{ submitError }}
       </p>
     </form>
