@@ -5,8 +5,8 @@ DirectorySlash Off
 # Mark only fingerprinted Vite assets so immutable caching is limited to hashed filenames.
 RewriteRule ^assets/.+[-.][A-Za-z0-9]{8,}\.[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)?$ - [E=IS_VITE_ASSET:1]
 
-# Strip trailing slashes (except root) — check the actual request line to avoid loops.
-RewriteCond %{THE_REQUEST} \s/.+/$
+# Strip trailing slashes (except root).
+RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.+)/$ /$1 [R=301,L]
 
 # Redirect .html extensions to clean URLs.

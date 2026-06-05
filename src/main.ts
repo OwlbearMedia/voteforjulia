@@ -1,6 +1,5 @@
 import { ViteSSG } from 'vite-ssg';
 import { configure } from 'vue-gtag';
-import '@fontsource/orelega-one';
 
 import './style.css';
 import App from './App.vue';

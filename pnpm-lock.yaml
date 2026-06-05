@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@fontsource/orelega-one':
-        specifier: ^5.2.7
-        version: 5.2.7
       '@fortawesome/fontawesome-svg-core':
         specifier: ^7.2.0
         version: 7.2.0
@@ -197,9 +194,6 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
-
-  '@fontsource/orelega-one@5.2.7':
-    resolution: {integrity: sha512-jc+h6WkZa9WGEt+gxQnA05VFmirBy/oMAHUSUPTN3C5O7mSeRBLI6T1MXTu/+mwNorRHUzyaTaEyYQf4PePvHg==}
 
   '@fortawesome/fontawesome-common-types@7.2.0':
     resolution: {integrity: sha512-IpR0bER9FY25p+e7BmFH25MZKEwFHTfRAfhOyJubgiDnoJNsSvJ7nigLraHtp4VOG/cy8D7uiV0dLkHOne5Fhw==}
@@ -1490,8 +1484,6 @@ snapshots:
     optional: true
 
   '@exodus/bytes@1.15.1': {}
-
-  '@fontsource/orelega-one@5.2.7': {}
 
   '@fortawesome/fontawesome-common-types@7.2.0': {}
 

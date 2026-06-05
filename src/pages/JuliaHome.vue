@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import { useHead } from '@unhead/vue';
 import { RouterLink } from 'vue-router';
 import { Image } from '@imagekit/vue';
@@ -9,13 +10,24 @@ defineOptions({
   name: 'JuliaHome'
 });
 
+const heroImageContainer = ref<HTMLElement | null>(null);
+const blueSkyImageContainer = ref<HTMLElement | null>(null);
+const logoImageContainer = ref<HTMLElement | null>(null);
+
+const { width: heroImageWidth, height: heroImageHeight } = useResponsiveImageSize({
+  baseWidth: 960,
+  baseHeight: 672,
+  target: heroImageContainer
+});
 const { width: blueSkyImageWidth, height: blueSkyImageHeight } = useResponsiveImageSize({
   baseWidth: 390,
-  baseHeight: 517
+  baseHeight: 517,
+  target: blueSkyImageContainer
 });
 const { width: logoImageWidth, height: logoImageHeight } = useResponsiveImageSize({
   baseWidth: 390,
-  baseHeight: 390
+  baseHeight: 390,
+  target: logoImageContainer
 });
 
 
@@ -139,18 +151,19 @@ useHead({
 
 <template>
   <section id="home">
-    <div class="hero">
+    <div ref="heroImageContainer" class="hero">
       <Image
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia-hero.webp"
         class="hero-image"
         :responsive="false"
-        :width="960"
-        :height="672"
+        :width="heroImageWidth"
+        :height="heroImageHeight"
         alt="Julia Hamann for Mankato Mayor"
         crossorigin="anonymous"
         fetchpriority="high"
         loading="eager"
+        :transformation="[{ width: heroImageWidth, height: heroImageHeight }]"
       />
     </div>
 
@@ -202,18 +215,20 @@ useHead({
           Julia wants to start new conversations about issues our town cares about.
         </p>
       </div>
-      <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
-        src="/julia-blue-sky.webp"
-        class="coming-soon"
-        :width="blueSkyImageWidth"
-        :height="blueSkyImageHeight"
-        alt="Julia Hamann for Mankato Mayor"
-        crossorigin="anonymous"
-        loading="lazy"
-        decoding="async"
-        :transformation="[{ width: blueSkyImageWidth, height: blueSkyImageHeight }]"
-      />
+      <div ref="blueSkyImageContainer">
+        <Image
+          url-endpoint="https://ik.imagekit.io/voteforjulia"
+          src="/julia-blue-sky.webp"
+          class="coming-soon"
+          :width="blueSkyImageWidth"
+          :height="blueSkyImageHeight"
+          alt="Julia Hamann for Mankato Mayor"
+          crossorigin="anonymous"
+          loading="lazy"
+          decoding="async"
+          :transformation="[{ width: blueSkyImageWidth, height: blueSkyImageHeight }]"
+        />
+      </div>
     </div>
 
     <hr />
@@ -287,18 +302,20 @@ useHead({
         <p>Join the campaign team to help with outreach, events, and voter engagement.</p>
         <JuliaContactForm />
       </div>
-      <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
-        src="/julia.avif"
-        alt="Julia Hamann for Mankato Mayor"
-        class="coming-soon"
-        :width="logoImageWidth"
-        :height="logoImageHeight"
-        crossorigin="anonymous"
-        loading="lazy"
-        decoding="async"
-        :transformation="[{ width: logoImageWidth, height: logoImageHeight }]"
-      />
+      <div ref="logoImageContainer">
+        <Image
+          url-endpoint="https://ik.imagekit.io/voteforjulia"
+          src="/julia.avif"
+          alt="Julia Hamann for Mankato Mayor"
+          class="coming-soon"
+          :width="logoImageWidth"
+          :height="logoImageHeight"
+          crossorigin="anonymous"
+          loading="lazy"
+          decoding="async"
+          :transformation="[{ width: logoImageWidth, height: logoImageHeight }]"
+        />
+      </div>
     </div>
   </section>
 </template>
