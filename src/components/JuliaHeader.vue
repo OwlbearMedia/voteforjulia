@@ -57,7 +57,7 @@ function handleDonateClick() {
       </button>
 
       <nav aria-label="Main navigation">
-        <ul class="menu-list" :class="{ open: showMenu }" id="main-menu">
+        <ul id="main-menu" class="menu-list" :class="{ open: showMenu }">
           <li><RouterLink to="/" @click="closeMenu">Home</RouterLink></li>
           <li><RouterLink to="/meet-julia" @click="closeMenu">Meet Julia</RouterLink></li>
           <li>

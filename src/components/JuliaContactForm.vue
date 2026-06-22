@@ -1,224 +1,42 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { faSpinner } from '@fortawesome/free-solid-svg-icons';
 import sprout from '../assets/sprout.png';
-import { submitContactForm } from '../lib/api';
-import {
-  trackVolunteerFormSubmit,
-  trackVolunteerRequestBody,
-  trackVolunteerSubmissionError
-} from '../lib/analytics';
+import { useContactForm } from '../composables/useContactForm';
 
 defineOptions({
   name: 'JuliaContactForm'
 });
 
-const MAX_FIRST_NAME_LENGTH = 80;
-const MAX_LAST_NAME_LENGTH = 80;
-const MAX_EMAIL_LENGTH = 254;
-const MAX_PHONE_LENGTH = 32;
-const MAX_MESSAGE_LENGTH = 500;
+const {
+  firstName,
+  firstNameError,
+  validateFirstNameField,
+  lastName,
+  lastNameError,
+  validateLastNameField,
+  email,
+  emailError,
+  validateEmailField,
+  phone,
+  phoneError,
+  validatePhoneField,
+  message,
+  messageError,
+  validateMessageField,
+  helpWays,
+  submitError,
+  isSubmitted,
+  isSubmitting,
+  fullName,
+  hasValidationError,
+  handleSubmit
+} = useContactForm();
 
-const EMAIL_REGEX = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+$/i;
-
-const firstName = ref('');
-const lastName = ref('');
-const email = ref('');
-const phone = ref('');
-const helpWays = ref<string[]>([]);
-const message = ref('');
-const firstNameError = ref('');
-const lastNameError = ref('');
-const emailError = ref('');
-const phoneError = ref('');
-const messageError = ref('');
-const submitError = ref('');
-const isSubmitted = ref(false);
-const isSubmitting = ref(false);
+// View-only concern: scroll the success message into view once it renders.
 const successMessageRef = ref<HTMLElement | null>(null);
 const hasScrolledToSuccess = ref(false);
-
-const fullName = computed(() => `${firstName.value.trim()} ${lastName.value.trim()}`.trim());
-
-function containsDisallowedControlChars(value: string, allowNewlines: boolean): boolean {
-  for (const character of value) {
-    if (character === '\n' || character === '\r') {
-      if (allowNewlines) {
-        continue;
-      }
-
-      return true;
-    }
-
-    const codePoint = character.codePointAt(0) ?? 0;
-    if (codePoint < 32 || codePoint === 127) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function validateFirstNameField(): boolean {
-  const normalized = firstName.value.trim();
-
-  if (!normalized) {
-    firstNameError.value = 'Please enter your first name.';
-    return false;
-  }
-
-  if (containsDisallowedControlChars(firstName.value, false)) {
-    firstNameError.value = 'First name contains invalid characters.';
-    return false;
-  }
-
-  if (normalized.length > MAX_FIRST_NAME_LENGTH) {
-    firstNameError.value = `First name must be ${MAX_FIRST_NAME_LENGTH} characters or fewer.`;
-    return false;
-  }
-
-  firstNameError.value = '';
-  return true;
-}
-
-function validateLastNameField(): boolean {
-  const normalized = lastName.value.trim();
-
-  if (containsDisallowedControlChars(lastName.value, false)) {
-    lastNameError.value = 'Last name contains invalid characters.';
-    return false;
-  }
-
-  if (normalized.length > MAX_LAST_NAME_LENGTH) {
-    lastNameError.value = `Last name must be ${MAX_LAST_NAME_LENGTH} characters or fewer.`;
-    return false;
-  }
-
-  lastNameError.value = '';
-  return true;
-}
-
-function isValidEmailFormat(value: string): boolean {
-  const normalized = value.trim();
-  return EMAIL_REGEX.test(normalized);
-}
-
-function validateEmailField(): boolean {
-  const normalized = email.value.trim();
-
-  if (containsDisallowedControlChars(email.value, false)) {
-    emailError.value = 'Email contains invalid characters.';
-    return false;
-  }
-
-  if (normalized.length > MAX_EMAIL_LENGTH) {
-    emailError.value = `Email must be ${MAX_EMAIL_LENGTH} characters or fewer.`;
-    return false;
-  }
-
-  if (!isValidEmailFormat(email.value)) {
-    emailError.value = 'Please enter a valid email address.';
-    return false;
-  }
-
-  emailError.value = '';
-  return true;
-}
-
-function validatePhoneField(): boolean {
-  const normalized = phone.value.trim();
-
-  if (containsDisallowedControlChars(phone.value, false)) {
-    phoneError.value = 'Phone contains invalid characters.';
-    return false;
-  }
-
-  if (normalized.length > MAX_PHONE_LENGTH) {
-    phoneError.value = `Phone must be ${MAX_PHONE_LENGTH} characters or fewer.`;
-    return false;
-  }
-
-  phoneError.value = '';
-  return true;
-}
-
-function validateMessageField(): boolean {
-  if (containsDisallowedControlChars(message.value, true)) {
-    messageError.value = 'Message contains invalid characters.';
-    return false;
-  }
-
-  if (message.value.length > MAX_MESSAGE_LENGTH) {
-    messageError.value = `Message must be ${MAX_MESSAGE_LENGTH} characters or fewer.`;
-    return false;
-  }
-
-  messageError.value = '';
-  return true;
-}
-
-function handleSubmit(event: Event): void {
-  event.preventDefault();
-
-  if (isSubmitting.value) {
-    return;
-  }
-
-  const isFirstNameValid = validateFirstNameField();
-  const isLastNameValid = validateLastNameField();
-  const isEmailValid = validateEmailField();
-  const isPhoneValid = validatePhoneField();
-  const isMessageValid = validateMessageField();
-
-  if (!isFirstNameValid || !isLastNameValid || !isEmailValid || !isPhoneValid || !isMessageValid) {
-    submitError.value = '';
-  } else {
-    submitForm();
-  }
-}
-
-async function submitForm(): Promise<void> {
-  submitError.value = '';
-  isSubmitting.value = true;
-
-  const selectedHelpWays = [...helpWays.value];
-
-  const formData = {
-    firstName: firstName.value,
-    lastName: lastName.value,
-    email: email.value,
-    phone: phone.value,
-    helpWays: selectedHelpWays.join(', '),
-    message: message.value
-  };
-
-  try {
-    trackVolunteerRequestBody(formData);
-    await submitContactForm(formData);
-    trackVolunteerFormSubmit('success');
-    isSubmitted.value = true;
-  } catch (error) {
-    trackVolunteerSubmissionError(error, formData);
-    trackVolunteerFormSubmit('error');
-    submitError.value =
-      error instanceof Error
-        ? error.message
-        : 'Unable to send your message right now. Please try again.';
-  } finally {
-    isSubmitting.value = false;
-  }
-}
-
-const hasValidationError = computed(() =>
-  Boolean(
-    firstNameError.value ||
-    lastNameError.value ||
-    emailError.value ||
-    phoneError.value ||
-    messageError.value
-  )
-);
 
 async function scrollToSuccessMessage(): Promise<void> {
   await nextTick();
@@ -288,14 +106,14 @@ watch(successMessageRef, (element) => {
           <label for="contact-first-name" class="sr-only">First Name *</label>
           <input
             id="contact-first-name"
+            v-model="firstName"
             name="firstName"
             type="text"
-            v-model="firstName"
             placeholder="First Name *"
-            @blur="validateFirstNameField"
             :class="{ 'input-error': firstNameError }"
             autocomplete="given-name"
             required
+            @blur="validateFirstNameField"
           />
           <p v-if="firstNameError" class="form-error-message" role="alert" aria-live="polite">
             {{ firstNameError }}
@@ -306,12 +124,12 @@ watch(successMessageRef, (element) => {
           <label for="contact-last-name" class="sr-only">Last Name</label>
           <input
             id="contact-last-name"
+            v-model="lastName"
             name="lastName"
             type="text"
-            v-model="lastName"
             placeholder="Last Name"
-            @blur="validateLastNameField"
             autocomplete="family-name"
+            @blur="validateLastNameField"
           />
           <p v-if="lastNameError" class="form-error-message" role="alert" aria-live="polite">
             {{ lastNameError }}
@@ -324,14 +142,14 @@ watch(successMessageRef, (element) => {
       <label for="contact-email" class="sr-only">Email *</label>
       <input
         id="contact-email"
+        v-model="email"
         name="email"
         type="email"
-        v-model="email"
-        @blur="validateEmailField"
         :class="{ 'input-error': emailError }"
         placeholder="Email *"
         autocomplete="email"
         required
+        @blur="validateEmailField"
       />
       <p v-if="emailError" class="form-error-message" role="alert" aria-live="polite">
         {{ emailError }}
@@ -340,12 +158,12 @@ watch(successMessageRef, (element) => {
       <label for="contact-phone" class="sr-only">Phone</label>
       <input
         id="contact-phone"
+        v-model="phone"
         name="phone"
         type="tel"
-        v-model="phone"
         placeholder="Phone"
-        @blur="validatePhoneField"
         autocomplete="tel"
+        @blur="validatePhoneField"
       />
       <p v-if="phoneError" class="form-error-message" role="alert" aria-live="polite">
         {{ phoneError }}
@@ -356,60 +174,60 @@ watch(successMessageRef, (element) => {
         <label class="help-option" for="help-canvassing">
           <input
             id="help-canvassing"
+            v-model="helpWays"
             name="helpWays[]"
             type="checkbox"
             value="Canvassing"
-            v-model="helpWays"
           />
           Canvassing
         </label>
         <label class="help-option" for="help-events">
           <input
             id="help-events"
+            v-model="helpWays"
             name="helpWays[]"
             type="checkbox"
             value="Events"
-            v-model="helpWays"
           />
           Host a Meet &amp; Greet
         </label>
         <label class="help-option" for="help-letter-to-editor">
           <input
             id="help-letter-to-editor"
+            v-model="helpWays"
             name="helpWays[]"
             type="checkbox"
             value="Letter to the editor"
-            v-model="helpWays"
           />
           Letter to the editor
         </label>
         <label class="help-option" for="help-fundraiser">
           <input
             id="help-fundraiser"
+            v-model="helpWays"
             name="helpWays[]"
             type="checkbox"
             value="Fundraiser"
-            v-model="helpWays"
           />
           Host a fundraiser
         </label>
         <label class="help-option" for="help-campaign-team">
           <input
             id="help-campaign-team"
+            v-model="helpWays"
             name="helpWays[]"
             type="checkbox"
             value="Campaign team"
-            v-model="helpWays"
           />
           Join the campaign team
         </label>
         <label class="help-option" for="help-yard-signs">
           <input
             id="help-yard-signs"
+            v-model="helpWays"
             name="helpWays[]"
             type="checkbox"
             value="Yard signs"
-            v-model="helpWays"
           />
           Put up a yard sign
         </label>
@@ -418,8 +236,8 @@ watch(successMessageRef, (element) => {
       <label for="contact-message" class="sr-only">Message</label>
       <textarea
         id="contact-message"
-        name="message"
         v-model="message"
+        name="message"
         placeholder="How would you like to help? Tell us about your other special skills or ideas!"
         rows="5"
         @blur="validateMessageField"
