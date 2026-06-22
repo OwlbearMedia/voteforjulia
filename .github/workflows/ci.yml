@@ -192,7 +192,7 @@ jobs:
           strip_components: 1
 
       - name: Restart Python app (Passenger) in test
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
