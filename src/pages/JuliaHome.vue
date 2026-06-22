@@ -3,21 +3,10 @@ import { useHead } from '@unhead/vue';
 import { RouterLink } from 'vue-router';
 import { Image } from '@imagekit/vue';
 import JuliaContactForm from '../components/JuliaContactForm.vue';
-import { useResponsiveImageSize } from '../composables/useResponsiveImageSize';
 
 defineOptions({
   name: 'JuliaHome'
 });
-
-const { width: blueSkyImageWidth, height: blueSkyImageHeight } = useResponsiveImageSize({
-  baseWidth: 390,
-  baseHeight: 517
-});
-const { width: logoImageWidth, height: logoImageHeight } = useResponsiveImageSize({
-  baseWidth: 390,
-  baseHeight: 390
-});
-
 
 useHead({
   title: 'Home | Julia Hamann for Mankato Mayor',
@@ -144,9 +133,11 @@ useHead({
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia-hero.webp"
         class="hero-image"
-        :responsive="false"
-        :width="960"
-        :height="672"
+        sizes="(max-width: 700px) calc(100vw - 2.5rem), 960px"
+        :image-breakpoints="[320, 390, 430, 520, 640, 780, 960]"
+        :device-breakpoints="[]"
+        width="960"
+        height="672"
         alt="Julia Hamann for Mankato Mayor"
         crossorigin="anonymous"
         fetchpriority="high"
@@ -202,18 +193,22 @@ useHead({
           Julia wants to start new conversations about issues our town cares about.
         </p>
       </div>
-      <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
-        src="/julia-blue-sky.webp"
-        class="coming-soon"
-        :width="blueSkyImageWidth"
-        :height="blueSkyImageHeight"
-        alt="Julia Hamann for Mankato Mayor"
-        crossorigin="anonymous"
-        loading="lazy"
-        decoding="async"
-        :transformation="[{ width: blueSkyImageWidth, height: blueSkyImageHeight }]"
-      />
+      <div>
+        <Image
+          url-endpoint="https://ik.imagekit.io/voteforjulia"
+          src="/julia-blue-sky.webp"
+          class="coming-soon"
+          sizes="(max-width: 700px) calc(100vw - 2.5rem), 250px"
+          :image-breakpoints="[180, 250, 320, 390, 500]"
+          :device-breakpoints="[]"
+          width="390"
+          height="517"
+          alt="Julia Hamann for Mankato Mayor"
+          crossorigin="anonymous"
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
     </div>
 
     <hr />
@@ -287,18 +282,22 @@ useHead({
         <p>Join the campaign team to help with outreach, events, and voter engagement.</p>
         <JuliaContactForm />
       </div>
-      <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
-        src="/julia.avif"
-        alt="Julia Hamann for Mankato Mayor"
-        class="coming-soon"
-        :width="logoImageWidth"
-        :height="logoImageHeight"
-        crossorigin="anonymous"
-        loading="lazy"
-        decoding="async"
-        :transformation="[{ width: logoImageWidth, height: logoImageHeight }]"
-      />
+      <div>
+        <Image
+          url-endpoint="https://ik.imagekit.io/voteforjulia"
+          src="/julia.avif"
+          alt="Julia Hamann for Mankato Mayor"
+          class="coming-soon"
+          sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
+          :image-breakpoints="[240, 320, 390, 420, 560]"
+          :device-breakpoints="[]"
+          width="390"
+          height="390"
+          crossorigin="anonymous"
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
     </div>
   </section>
 </template>

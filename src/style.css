@@ -11,7 +11,7 @@
 @font-face {
   font-family: "TheBoldFont";
   font-display: swap;
-  src: url("../public/theboldfont.woff") format("woff");
+  src: url("/theboldfont.woff") format("woff");
   font-weight: normal;
   font-style: normal;
 }
@@ -19,7 +19,15 @@
 @font-face {
   font-family: "Mickle";
   font-display: swap;
-  src: url("../public/Mickle.ttf") format("truetype");
+  src: url("/Mickle.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Orelega One";
+  font-display: swap;
+  src: url("/OrelegaOne.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
 }

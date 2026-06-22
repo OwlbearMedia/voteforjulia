@@ -57,7 +57,9 @@ jobs:
       - name: Build site
         env:
           VITE_API_BASE_URL: https://api.voteforjulia.com
-        run: pnpm run build
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          PUBLIC_BASE_URL: https://voteforjulia.com
+        run: pnpm run build:deploy
 
       - name: Upload dist contents to server root
         uses: appleboy/scp-action@v0.1.7

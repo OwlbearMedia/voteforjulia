@@ -46,6 +46,7 @@ jobs:
       - name: Build site
         env:
           VITE_API_BASE_URL: https://test-api.voteforjulia.com
+          SOURCEMAP_MODE: 'true'
         run: pnpm run build
 
       - name: Write no-index robots.txt for test deploy

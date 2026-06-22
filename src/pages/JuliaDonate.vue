@@ -186,6 +186,9 @@ useHead({
           src="/julia-rect.webp"
           alt="Julia Hamann, starting a new conversation as Mayor of Mankato"
           class="hero-image"
+          sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
+          :image-breakpoints="[240, 320, 420, 560, 800]"
+          :device-breakpoints="[]"
           crossorigin="anonymous"
           decoding="async"
         />
