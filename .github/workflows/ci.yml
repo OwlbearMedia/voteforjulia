@@ -85,6 +85,10 @@ jobs:
   deploy-test-frontend:
     name: Deploy frontend to test environment
     needs: typecheck-and-tests
+    # Dependabot pull requests run without access to deployment secrets, so the
+    # test-environment deploy would always fail. Validate the bump via the
+    # typecheck-and-tests job only and skip deploys for Dependabot.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:
@@ -159,6 +163,8 @@ jobs:
   deploy-test-api:
     name: Deploy Python API to test environment
     needs: typecheck-and-tests
+    # See deploy-test-frontend: Dependabot runs lack deploy secrets.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:
