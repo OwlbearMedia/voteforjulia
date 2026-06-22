@@ -61,6 +61,7 @@ if (sourcemapPaths.length === 0) {
 }
 
 let uploaded = 0;
+let skipped = 0;
 
 for (const sourcemapPath of sourcemapPaths) {
   // Map dist/assets/foo.js.map -> https://base/assets/foo.js
@@ -76,15 +77,32 @@ for (const sourcemapPath of sourcemapPaths) {
     continue;
   }
 
-  await publish({
-    sourcemapPath,
-    javascriptUrl,
-    applicationId: APPLICATION_ID,
-    apiKey: API_KEY
-  });
+  try {
+    await publish({
+      sourcemapPath,
+      javascriptUrl,
+      applicationId: APPLICATION_ID,
+      apiKey: API_KEY
+    });
+  } catch (error) {
+    // New Relic returns 409 Conflict when a source map already exists for this
+    // javascriptUrl. Because Vite emits content-hashed filenames, an existing
+    // map for the same URL is identical content, so this is safe to ignore and
+    // keeps re-runs (e.g. a re-triggered deploy for the same commit) idempotent.
+    if (error?.status === 409) {
+      skipped += 1;
+      console.warn(`Skipping ${relPath}: source map already exists in New Relic (409 Conflict).`);
+      continue;
+    }
+    throw error;
+  }
 
   uploaded += 1;
   console.log(`Uploaded ${relPath} -> ${javascriptUrl}`);
 }
 
-console.log(`Done. Uploaded ${uploaded} source map(s) to New Relic app ${APPLICATION_ID}.`);
+console.log(
+  `Done. Uploaded ${uploaded} source map(s)` +
+    (skipped > 0 ? `, skipped ${skipped} already present` : '') +
+    ` for New Relic app ${APPLICATION_ID}.`
+);
