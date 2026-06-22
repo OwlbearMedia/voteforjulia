@@ -1,0 +1,23 @@
+/* TEAM */
+Developer: Dylan Whitney
+Site: https://github.com/OwlbearMedia
+
+Designer: Kat Baumann Hohenstein
+Site: https://katbaumann.com/
+
+Mankato Mayor: Julia Hamann
+Site: https://voteforjulia.com/
+
+/* SITE */
+Last update: 2026-06-22
+Language: English
+Doctype: HTML5
+Standards: HTML5, CSS3, TypeScript
+Components: Vue 3, Vite, Vite SSG, Flask API
+IDE: VS Code
+
+/* THANKS */
+Julia Hamann campaign supporters and volunteers
+
+/* NOTES */
+This file is served from /humans.txt
