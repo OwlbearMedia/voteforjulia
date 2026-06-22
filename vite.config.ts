@@ -6,6 +6,23 @@ import vue from '@vitejs/plugin-vue'
 
 const SITE_URL = 'https://voteforjulia.com'
 
+// Source map mode. Defaults to 'hidden': maps are generated without a
+// sourceMappingURL comment (prod uploads them to New Relic, then strips them).
+// Set SOURCEMAP_MODE=true for the test deploy to emit linked maps that browser
+// devtools load automatically.
+function resolveSourcemapMode(): 'hidden' | boolean {
+  switch (process.env.SOURCEMAP_MODE) {
+    case 'true':
+      return true
+    case 'false':
+      return false
+    default:
+      return 'hidden'
+  }
+}
+
+const SOURCEMAP_MODE = resolveSourcemapMode()
+
 let builtRoutePaths: string[] = []
 
 function buildSitemapXml(routePaths: string[]): string {
@@ -28,6 +45,11 @@ export default defineConfig({
     vue(),
   ],
   build: {
+    // Generate source maps but omit the sourceMappingURL comment so browsers
+    // don't advertise/fetch them. Maps are uploaded to New Relic for
+    // symbolicated stack traces (see scripts/upload-sourcemaps.mjs).
+    // Override via SOURCEMAP_MODE (e.g. the test deploy uses linked maps).
+    sourcemap: SOURCEMAP_MODE,
     rollupOptions: {
       output: {
         manualChunks: (id) => {
