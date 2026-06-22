@@ -9,25 +9,25 @@
 
 /* ── Base ── */
 @font-face {
-  font-family: "TheBoldFont";
+  font-family: 'TheBoldFont';
   font-display: swap;
-  src: url("/theboldfont.woff") format("woff");
+  src: url('/theboldfont.woff') format('woff');
   font-weight: normal;
   font-style: normal;
 }
 
 @font-face {
-  font-family: "Mickle";
+  font-family: 'Mickle';
   font-display: swap;
-  src: url("/Mickle.ttf") format("truetype");
+  src: url('/Mickle.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
 }
 
 @font-face {
-  font-family: "Orelega One";
+  font-family: 'Orelega One';
   font-display: swap;
-  src: url("/OrelegaOne.ttf") format("truetype");
+  src: url('/OrelegaOne.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
 }
@@ -44,10 +44,10 @@ html {
 
 body {
   font-family:
-    "Helvetica",
+    'Helvetica',
     system-ui,
     -apple-system,
-    "Segoe UI",
+    'Segoe UI',
     Roboto,
     sans-serif;
   line-height: 1.6;
@@ -89,7 +89,7 @@ header {
   z-index: 1000;
   padding: 0rem 2rem;
   color: #fff;
-  background-color: #133F30;
+  background-color: #133f30;
   backdrop-filter: blur(4px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
 }
@@ -105,7 +105,7 @@ header .container {
 
 .menu-toggle {
   display: none;
-  background-color: #E5F5DE;
+  background-color: #e5f5de;
   border-radius: 6px;
   border: none;
   cursor: pointer;
@@ -118,19 +118,19 @@ header .container {
   display: block;
   width: 28px;
   height: 3px;
-  background: #133F30;
+  background: #133f30;
   position: relative;
   border-radius: 2px;
 }
 
 .hamburger::before,
 .hamburger::after {
-  content: "";
+  content: '';
   position: absolute;
   left: 0;
   width: 28px;
   height: 3px;
-  background: #133F30;
+  background: #133f30;
   border-radius: 2px;
   transition: 0.3s;
 }
@@ -158,7 +158,7 @@ header .container {
 
 .menu-list a {
   color: #fff;
-  font-family: "TheBoldFont", sans-serif;
+  font-family: 'TheBoldFont', sans-serif;
   font-weight: 600;
   letter-spacing: 0.08em;
 }
@@ -176,12 +176,12 @@ main {
   width: 100%;
   margin: 0 auto;
   padding: 0 2rem;
-  color: #133F30;
+  color: #133f30;
 }
 
 footer {
   padding: 1.5rem 2rem;
-  background-color: #133F30;
+  background-color: #133f30;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(4px);
   text-align: center;
@@ -237,7 +237,7 @@ footer {
   right: 0;
   bottom: 0;
   height: calc(5rem + var(--safe-area-inset-bottom));
-  background-color: #133F30;
+  background-color: #133f30;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
   z-index: 1090;
   pointer-events: none;
@@ -261,11 +261,11 @@ footer {
 }
 
 .contact-social .social-icons {
-  color: #133F30;
+  color: #133f30;
 }
 
 .contact-social a {
-  color: #133F30;
+  color: #133f30;
 }
 
 /* ── Typography ── */
@@ -278,8 +278,8 @@ h5,
 h6 {
   line-height: 1.25;
   margin-bottom: 0.75rem;
-  font-family: "Mickle", serif;
-  color: #133F30;
+  font-family: 'Mickle', serif;
+  color: #133f30;
   letter-spacing: 0.05em;
 }
 
@@ -307,8 +307,8 @@ a:hover {
 
 .btn {
   display: inline-block;
-  padding: 0.75rem 1.5rem .5rem 1.5rem;
-  font-family: "TheBoldFont", sans-serif;
+  padding: 0.75rem 1.5rem 0.5rem 1.5rem;
+  font-family: 'TheBoldFont', sans-serif;
   background-color: #468445;
   color: #fff;
   border-radius: 999px;
@@ -332,19 +332,19 @@ a:hover {
 }
 
 .bigger {
-  font-family: "Orelega One", serif;
+  font-family: 'Orelega One', serif;
   font-weight: 400;
   font-style: normal;
   font-size: 1.25rem;
 }
 
 blockquote {
-  font-family: "Orelega One", serif;
+  font-family: 'Orelega One', serif;
   background-color: rgba(123, 202, 91, 0.5);
   border-left: 10px solid #468445;
   margin: 1.5em 10px;
   padding: 0.5em 10px;
-  quotes: "\201C" "\201D" "\2018" "\2019";
+  quotes: '\201C' '\201D' '\2018' '\2019';
   font-size: 1.25rem;
   font-style: italic;
 }
@@ -353,8 +353,13 @@ hr {
   border: 0;
   height: 45px;
   margin: 2rem 0;
-  background-image: url("./assets/sprout.png"), radial-gradient(circle, #e5f5de 0 20px, transparent 20px), linear-gradient(#468445, #468445);
-  background-size: 40px 40px, 40px 40px, 100% 1px;
+  background-image:
+    url('./assets/sprout.png'), radial-gradient(circle, #e5f5de 0 20px, transparent 20px),
+    linear-gradient(#468445, #468445);
+  background-size:
+    40px 40px,
+    40px 40px,
+    100% 1px;
   background-position: center, center, center;
   background-repeat: no-repeat;
 }
@@ -365,7 +370,7 @@ section {
 }
 
 .card {
-  font-family: "Orelega One", serif;
+  font-family: 'Orelega One', serif;
   font-weight: 400;
   font-style: normal;
   background-color: rgba(123, 202, 91, 0.5);
@@ -385,7 +390,9 @@ section {
 
 .contact-state-enter-active,
 .contact-state-leave-active {
-  transition: opacity 280ms ease, transform 280ms ease;
+  transition:
+    opacity 280ms ease,
+    transform 280ms ease;
 }
 
 .contact-state-enter-from,
@@ -473,7 +480,7 @@ section {
   margin: 0;
 }
 
-.help-option input[type="text"] {
+.help-option input[type='text'] {
   flex: 1 1 20rem;
   min-width: 24rem;
 }
@@ -488,7 +495,7 @@ section {
   color: #ffffff;
   font-size: 0.875rem;
   line-height: 1.6;
-  font-family: "TheBoldFont", sans-serif;
+  font-family: 'TheBoldFont', sans-serif;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-align: center;

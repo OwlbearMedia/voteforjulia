@@ -50,8 +50,34 @@ jobs:
       - name: Run typecheck
         run: pnpm exec vue-tsc -b
 
-      - name: Run frontend tests
-        run: pnpm test
+      - name: Check formatting
+        run: pnpm run format:check
+
+      - name: Run frontend tests with coverage
+        run: pnpm run test:coverage
+
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          set -euo pipefail
+          SUMMARY_FILE=coverage/coverage-summary.json
+          if [ ! -f "$SUMMARY_FILE" ]; then
+            echo "No coverage summary found at $SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          import { readFileSync } from 'node:fs';
+          const { total } = JSON.parse(readFileSync('coverage/coverage-summary.json', 'utf8'));
+          const row = (label, m) => `| ${label} | ${m.pct}% | ${m.covered}/${m.total} |`;
+          console.log('### Frontend test coverage');
+          console.log('');
+          console.log('| Metric | % | Covered / Total |');
+          console.log('| --- | --- | --- |');
+          console.log(row('Statements', total.statements));
+          console.log(row('Branches', total.branches));
+          console.log(row('Functions', total.functions));
+          console.log(row('Lines', total.lines));
+          NODE
 
       - name: Run Python API tests
         run: python -m unittest api/test_app.py api/test_models.py api/test_email_service.py

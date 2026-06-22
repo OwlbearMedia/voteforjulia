@@ -16,8 +16,11 @@
     "strip-sourcemaps": "find dist -name '*.js.map' -delete",
     "build:deploy": "pnpm build && pnpm upload-sourcemaps && pnpm strip-sourcemaps",
     "preview": "vite preview",
+    "format": "prettier --write \"src/**/*.{ts,vue,css}\" \"scripts/**/*.mjs\" \"*.{ts,json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,vue,css}\" \"scripts/**/*.mjs\" \"*.{ts,json,md}\"",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.2.0",
@@ -35,6 +38,7 @@
     "@types/node": "^24.12.3",
     "@unhead/vue": "^2.1.15",
     "@vitejs/plugin-vue": "^6.0.6",
+    "@vitest/coverage-v8": "^4.1.9",
     "@vue/test-utils": "^2.4.10",
     "@vue/tsconfig": "^0.9.1",
     "jsdom": "^29.1.1",

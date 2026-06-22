@@ -1,1 +1,1 @@
-declare module "@fontsource/orelega-one";
+declare module '@fontsource/orelega-one';

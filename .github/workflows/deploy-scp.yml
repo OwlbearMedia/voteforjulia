@@ -61,7 +61,20 @@ jobs:
           PUBLIC_BASE_URL: https://voteforjulia.com
         run: pnpm run build:deploy
 
-      - name: Upload dist contents to server root
+      - name: Prepare clean staging directory on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+            rm -rf ./public_html_next
+            mkdir -p ./public_html_next
+
+      - name: Upload dist contents to staging directory
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -70,11 +83,11 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
           source: dist/**
-          target: ./public_html
+          target: ./public_html_next
           overwrite: true
           strip_components: 1
 
-      - name: Upload .htaccess to server root
+      - name: Upload .htaccess to staging directory
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -83,9 +96,35 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
           source: dist/.htaccess
-          target: ./public_html
+          target: ./public_html_next
           overwrite: true
           strip_components: 1
+
+      - name: Atomically swap staging into the live document root
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+            if [ ! -d ./public_html_next ]; then
+              echo "Staging directory ./public_html_next is missing; aborting swap." >&2
+              exit 1
+            fi
+            # Remove the previous rollback snapshot, demote the current live
+            # document root to the rollback slot, then promote staging. The two
+            # renames are atomic on the same filesystem, so the live directory is
+            # only momentarily absent (sub-second) instead of serving a mix of old
+            # and new files during a multi-step upload.
+            rm -rf ./public_html_prev
+            if [ -d ./public_html ]; then
+              mv ./public_html ./public_html_prev
+            fi
+            mv ./public_html_next ./public_html
+            echo "Swapped new build into ./public_html (previous build kept at ./public_html_prev)."
 
       - name: Upload api contents to server api directory
         uses: appleboy/scp-action@v0.1.7
