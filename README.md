@@ -159,7 +159,7 @@ feature branches that are merged directly to `main`. There are two workflow file
 - Trigger: pull request events (`opened`, `synchronize`, `reopened`)
 - File: `.github/workflows/ci.yml`
 - Jobs (run in sequence):
-  1. **Typecheck and tests** — frontend type-check, Vitest, and Python API tests
+  1. **Typecheck and tests** — frontend type-check, Prettier format check (`pnpm format:check`), Vitest with coverage, and Python API tests. The frontend coverage totals are posted to the workflow run's job summary (baseline visibility only — no enforced threshold yet).
   2. **Deploy test frontend** — builds with `VITE_API_BASE_URL=https://test-api.voteforjulia.com` and `SOURCEMAP_MODE=true`, injects noindex tags, and uploads to `./public_html_test`
   3. **Deploy test API** — runs Python tests and uploads to `./api_test`, restarts Passenger
 
@@ -173,9 +173,14 @@ The test site always reflects the current open PR. Deploy jobs only run if tests
   1.  Install dependencies
   2.  Run frontend and Python tests
   3.  Build site with `pnpm run build:deploy` and `VITE_API_BASE_URL=https://api.voteforjulia.com` (builds, uploads source maps to New Relic, then strips them from `dist`)
-  4.  Upload `dist` to `./public_html`
+  4.  Upload `dist` to a clean `./public_html_next` staging directory, then atomically swap it into the live document root (`mv public_html public_html_prev && mv public_html_next public_html`)
   5.  Upload `api` to `./api`
   6.  Restart Passenger app
+
+The frontend swap is atomic: the new build is staged in full before a sub-second
+directory rename promotes it, so visitors never see a mix of old and new files, and
+files removed in the new build no longer linger. The previous build is retained at
+`./public_html_prev` for one-command rollback (`mv public_html public_html_broken && mv public_html_prev public_html`).
 
 If tests fail in either workflow, the job stops before any deployment steps.
 

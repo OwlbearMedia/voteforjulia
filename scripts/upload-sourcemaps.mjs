@@ -19,7 +19,10 @@ import { publishSourcemap } from '@newrelic/publish-sourcemap';
 
 const API_KEY = process.env.NEW_RELIC_API_KEY;
 const APPLICATION_ID = Number(process.env.NEW_RELIC_APP_ID ?? '653419329');
-const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? 'https://voteforjulia.com').replace(/\/$/, '');
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? 'https://voteforjulia.com').replace(
+  /\/$/,
+  ''
+);
 const DIST_DIR = resolve(process.cwd(), process.env.DIST_DIR ?? 'dist');
 
 if (!API_KEY) {
@@ -77,7 +80,7 @@ for (const sourcemapPath of sourcemapPaths) {
     sourcemapPath,
     javascriptUrl,
     applicationId: APPLICATION_ID,
-    apiKey: API_KEY,
+    apiKey: API_KEY
   });
 
   uploaded += 1;
