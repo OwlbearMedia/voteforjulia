@@ -29,8 +29,8 @@
     "@fortawesome/free-solid-svg-icons": "^7.2.0",
     "@fortawesome/vue-fontawesome": "^3.2.0",
     "@imagekit/vue": "^4.0.1",
-    "@newrelic/browser-agent": "^1.315.0",
-    "vue": "^3.5.34",
+    "@newrelic/browser-agent": "^1.316.0",
+    "vue": "^3.5.38",
     "vue-gtag": "^3.7.1"
   },
   "devDependencies": {
