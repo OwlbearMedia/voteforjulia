@@ -40,7 +40,7 @@ function containsDisallowedControlChars(value: string, allowNewlines: boolean): 
 interface TextFieldOptions {
   /** Human-readable label used to build error messages, e.g. "First name". */
   label: string;
-  /** Maximum allowed length after trimming. */
+  /** Maximum allowed length of the raw field value. */
   max: number;
   /** When true, an empty value produces a "Please enter your …" error. */
   required?: boolean;
@@ -58,7 +58,7 @@ interface TextField {
 
 /**
  * Builds a single reactive text field with its own value, error message, and
- * validator. Centralising the rules here removes the six near-identical
+ * validator. Centralizing the rules here removes the six near-identical
  * `validate*Field` functions the component used to carry.
  */
 function useTextField(options: TextFieldOptions): TextField {
@@ -78,7 +78,7 @@ function useTextField(options: TextFieldOptions): TextField {
       return false;
     }
 
-    if (normalized.length > options.max) {
+    if (value.value.length > options.max) {
       error.value = `${options.label} must be ${options.max} characters or fewer.`;
       return false;
     }

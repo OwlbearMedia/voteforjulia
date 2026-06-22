@@ -109,6 +109,13 @@ describe('useContactForm', () => {
       expect(messageError.value).toBe('Message must be 500 characters or fewer.');
     });
 
+    it('rejects whitespace-padded values over 500 raw characters', () => {
+      const { message, messageError, validateMessageField } = useContactForm();
+      message.value = `${' '.repeat(5)}${'x'.repeat(500)}${' '.repeat(5)}`;
+      expect(validateMessageField()).toBe(false);
+      expect(messageError.value).toBe('Message must be 500 characters or fewer.');
+    });
+
     it('permits newlines', () => {
       const { message, messageError, validateMessageField } = useContactForm();
       message.value = 'line one\nline two\r\nline three';
