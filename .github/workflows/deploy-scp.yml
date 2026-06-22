@@ -62,7 +62,7 @@ jobs:
         run: pnpm run build:deploy
 
       - name: Prepare clean staging directory on server
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
@@ -101,7 +101,7 @@ jobs:
           strip_components: 1
 
       - name: Atomically swap staging into the live document root
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
@@ -140,7 +140,7 @@ jobs:
           strip_components: 1
 
       - name: Restart Python app (Passenger)
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
