@@ -67,12 +67,52 @@ Build details:
 - Runs type-checking via vue-tsc.
 - Generates static pages with Vite SSG.
 - Produces deployable assets in dist.
+- Emits hidden source maps by default (`build.sourcemap: 'hidden'`): `.js.map`
+  files are generated without a `//# sourceMappingURL=` comment, so browsers
+  never fetch or advertise them. Override with the `SOURCEMAP_MODE` env var
+  (`true` for linked maps, `false` to disable).
 
 Run type-check only:
 
 ```bash
 pnpm exec vue-tsc -b
 ```
+
+### Source Maps
+
+In production, source maps are generated in `hidden` mode, uploaded to New Relic
+for symbolicated stack traces, then stripped from `dist` so they are never
+served publicly. The test deploy instead builds with `SOURCEMAP_MODE=true` and
+keeps the linked maps on the server for in-browser debugging.
+
+The source map mode is controlled by the `SOURCEMAP_MODE` env var (read in
+`vite.config.ts`):
+
+- unset (default) — `hidden`: maps emitted without a `sourceMappingURL` comment.
+- `true` — linked maps that browser devtools load automatically.
+- `false` — no source maps.
+
+Relevant scripts:
+
+- `pnpm run upload-sourcemaps` — uploads `dist/**/*.js.map` to the New Relic
+  browser app (see `scripts/upload-sourcemaps.mjs`).
+- `pnpm run strip-sourcemaps` — deletes `*.js.map` from `dist`.
+- `pnpm run build:deploy` — builds, uploads source maps, then strips them. This
+  is what the production deploy runs.
+
+Upload manually:
+
+```bash
+pnpm run build
+NEW_RELIC_API_KEY=NRAK-xxxxxxxx pnpm run upload-sourcemaps
+```
+
+Environment variables read by the upload script:
+
+- `NEW_RELIC_API_KEY` (required) — a New Relic User key (`NRAK-…`).
+- `NEW_RELIC_APP_ID` (optional) — browser application ID; defaults to the prod app.
+- `PUBLIC_BASE_URL` (optional) — public origin the JS is served from; defaults to `https://voteforjulia.com`.
+- `DIST_DIR` (optional) — build output directory; defaults to `dist`.
 
 ## Testing
 
@@ -131,7 +171,7 @@ This repository currently has three workflow files:
 - Key steps:
   1.  Install dependencies
   2.  Run frontend and Python tests
-  3.  Build site with `VITE_API_BASE_URL=https://api.voteforjulia.com`
+  3.  Build site with `pnpm run build:deploy` and `VITE_API_BASE_URL=https://api.voteforjulia.com` (builds, uploads source maps to New Relic, then strips them from `dist`)
   4.  Upload `dist` to `./public_html`
   5.  Upload `api` to `./api`
   6.  Restart Passenger app
@@ -142,9 +182,10 @@ This repository currently has three workflow files:
 - File: `.github/workflows/deploy-scp-test.yml`
 - Key differences from production deploy:
   1.  Build uses `VITE_API_BASE_URL=https://test-api.voteforjulia.com`
-  2.  Writes a no-index `robots.txt`
-  3.  Injects noindex meta tags in built HTML
-  4.  Uploads to `./public_html_test` and `./api_test`
+  2.  Builds with `SOURCEMAP_MODE=true` and keeps the linked source maps on the test server (does not upload them to New Relic)
+  3.  Writes a no-index `robots.txt`
+  4.  Injects noindex meta tags in built HTML
+  5.  Uploads to `./public_html_test` and `./api_test`
 
 If tests fail in either CI or deploy workflows, the job stops before deployment steps.
 
@@ -155,6 +196,7 @@ If tests fail in either CI or deploy workflows, the job stops before deployment 
 - SSH_PRIVATE_KEY
 - SSH_PASSPHRASE
 - SSH_PORT
+- NEW_RELIC_API_KEY (New Relic User key, `NRAK-…`, for uploading source maps in the production deploy)
 
 ## Project Structure (Relevant)
 
