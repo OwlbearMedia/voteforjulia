@@ -1,5 +1,8 @@
 # [voteforjulia.com](https://voteforjulia.com/)
 
+[![CI](https://github.com/OwlbearMedia/voteforjulia/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OwlbearMedia/voteforjulia/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia/branch/main/graph/badge.svg)](https://codecov.io/gh/OwlbearMedia/voteforjulia)
+
 ![image](https://raw.githubusercontent.com/OwlbearMedia/voteforjulia/refs/heads/main/public/julia-social-banner.avif)
 
 The official campaign website for Julia Hamann, candidate for Mayor of Mankato.
@@ -159,11 +162,12 @@ feature branches that are merged directly to `main`. There are two workflow file
 - Trigger: pull request events (`opened`, `synchronize`, `reopened`)
 - File: `.github/workflows/ci.yml`
 - Jobs (run in sequence):
-  1. **Typecheck and tests** — frontend type-check, Prettier format check (`pnpm format:check`), Vitest with coverage, and Python API tests. The frontend coverage totals are posted to the workflow run's job summary (baseline visibility only — no enforced threshold yet).
+  1. **Typecheck and tests** — frontend type-check, Prettier format check (`pnpm format:check`), Vitest with coverage, and Python API tests. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) (baseline visibility only — no enforced threshold yet). The Codecov upload is skipped for Dependabot PRs, which do not have access to repository secrets.
   2. **Deploy test frontend** — builds with `VITE_API_BASE_URL=https://test-api.voteforjulia.com` and `SOURCEMAP_MODE=true`, injects noindex tags, and uploads to `./public_html_test`
   3. **Deploy test API** — runs Python tests and uploads to `./api_test`, restarts Passenger
 
-The test site always reflects the current open PR. Deploy jobs only run if tests pass.
+The test site always reflects the current open PR. Deploy jobs only run if tests
+pass, and the test-environment deploy jobs are skipped for Dependabot PRs.
 
 ### Production deploy workflow
 
@@ -192,6 +196,23 @@ If tests fail in either workflow, the job stops before any deployment steps.
 - SSH_PASSPHRASE
 - SSH_PORT
 - NEW_RELIC_API_KEY (New Relic User key, `NRAK-…`, for uploading source maps in the production deploy)
+- CODECOV_TOKEN (repository upload token from [codecov.io](https://codecov.io); enables the coverage upload and the README coverage badge)
+
+### Test coverage (Codecov)
+
+The CI workflow runs Vitest with V8 coverage and uploads the `lcov` report to
+Codecov. The status and coverage badges at the top of this README reflect the
+latest run on `main`.
+
+One-time setup:
+
+1. Sign in to [codecov.io](https://codecov.io) with GitHub and enable the
+   `OwlbearMedia/voteforjulia` repository.
+2. Add the repository upload token as a `CODECOV_TOKEN` GitHub Actions secret
+   (Settings → Secrets and variables → Actions).
+
+Until the first upload completes, the coverage badge reads `unknown`. There is no
+enforced coverage threshold yet — coverage is tracked for visibility only.
 
 ## Project Structure (Relevant)
 

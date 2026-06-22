@@ -79,6 +79,18 @@ jobs:
           console.log(row('Lines', total.lines));
           NODE
 
+      - name: Upload coverage to Codecov
+        # Secrets are unavailable to Dependabot runs, and a Codecov hiccup should
+        # never fail CI, so guard the actor and never block the pipeline.
+        if: github.actor != 'dependabot[bot]'
+        continue-on-error: true
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          flags: frontend
+          fail_ci_if_error: false
+
       - name: Run Python API tests
         run: python -m unittest api/test_app.py api/test_models.py api/test_email_service.py
 

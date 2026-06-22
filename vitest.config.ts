@@ -11,7 +11,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       // Baseline visibility only — no thresholds, so coverage never fails CI yet.
-      reporter: ['text', 'text-summary', 'json-summary', 'html'],
+      reporter: ['text', 'text-summary', 'json-summary', 'lcov', 'html'],
       reportsDirectory: './coverage',
       include: ['src/**/*.{ts,vue}'],
       exclude: ['src/main.ts', 'src/env.d.ts', 'src/**/*.d.ts']
