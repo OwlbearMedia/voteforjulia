@@ -1,10 +1,12 @@
-import type { BrowserAgent } from '@newrelic/browser-agent/loaders/browser-agent';
-
 // Single source of truth for the New Relic browser agent configuration.
 // These values are public by design (the agent runs in the browser), so it is
 // fine for them to live in client code. Typing against the constructor's own
 // parameter type removes the need for the `@ts-ignore` the inline version used.
-type BrowserAgentOptions = ConstructorParameters<typeof BrowserAgent>[0];
+// The `typeof import(...)` query references the constructor type without
+// emitting a runtime import, so the agent stays lazily loaded below.
+type BrowserAgentOptions = ConstructorParameters<
+  typeof import('@newrelic/browser-agent/loaders/browser-agent').BrowserAgent
+>[0];
 
 const NEW_RELIC_OPTIONS: BrowserAgentOptions = {
   info: {
@@ -49,7 +51,7 @@ const NEW_RELIC_OPTIONS: BrowserAgentOptions = {
  */
 export function initNewRelic(): void {
   void import('@newrelic/browser-agent/loaders/browser-agent').then(({ BrowserAgent }) => {
-    new BrowserAgent(NEW_RELIC_OPTIONS);
+    new BrowserAgent(NEW_RELIC_OPTIONS); // NOSONAR S1848 — constructor registers the agent globally as a side effect
   });
 }
 
