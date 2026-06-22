@@ -75,7 +75,7 @@ jobs:
             mkdir -p ./public_html_next
 
       - name: Upload dist contents to staging directory
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
@@ -88,7 +88,7 @@ jobs:
           strip_components: 1
 
       - name: Upload .htaccess to staging directory
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
@@ -127,7 +127,7 @@ jobs:
             echo "Swapped new build into ./public_html (previous build kept at ./public_html_prev)."
 
       - name: Upload api contents to server api directory
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}

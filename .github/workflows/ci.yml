@@ -131,7 +131,7 @@ jobs:
           done
 
       - name: Upload dist contents to test server root
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
@@ -144,7 +144,7 @@ jobs:
           strip_components: 1
 
       - name: Upload .htaccess to test server root
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
@@ -179,7 +179,7 @@ jobs:
         run: python -m unittest api/test_models.py api/test_email_service.py
 
       - name: Upload api contents to test api directory
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
