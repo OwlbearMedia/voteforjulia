@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
-import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-import { faEnvelope } from '@fortawesome/free-regular-svg-icons';
-import { faInstagram, faFacebookF } from '@fortawesome/free-brands-svg-icons';
 import { trackDonateClick, trackFooterIconClick } from '../lib/analytics';
+import IconInstagram from './icons/IconInstagram.vue';
+import IconFacebook from './icons/IconFacebook.vue';
+import IconEnvelope from './icons/IconEnvelope.vue';
 
 defineOptions({
   name: 'JuliaFooter'
@@ -164,8 +164,7 @@ onBeforeUnmount(() => {
                 'Julia on Instagram'
               )
             "
-            ><FontAwesomeIcon :icon="faInstagram"
-          /></a>
+            ><IconInstagram /></a>
           <a
             href="https://www.facebook.com/profile.php?id=61590411090366"
             aria-label="Julia on Facebook"
@@ -177,14 +176,12 @@ onBeforeUnmount(() => {
                 'Julia on Facebook'
               )
             "
-            ><FontAwesomeIcon :icon="faFacebookF"
-          /></a>
+            ><IconFacebook /></a>
           <a
             href="mailto:info@juliahamann.com"
             aria-label="Email Julia"
             @click="handleFooterIconClick('mailto:info@juliahamann.com', 'Email Julia')"
-            ><FontAwesomeIcon :icon="faEnvelope"
-          /></a>
+            ><IconEnvelope /></a>
         </div>
       </div>
       <div class="footer-support">

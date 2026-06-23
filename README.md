@@ -1,7 +1,7 @@
 # [voteforjulia.com](https://voteforjulia.com/)
 
 [![CI](https://github.com/OwlbearMedia/voteforjulia/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OwlbearMedia/voteforjulia/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia/branch/main/graph/badge.svg)](https://codecov.io/gh/OwlbearMedia/voteforjulia)
+[![codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia/graph/badge.svg)](https://codecov.io/gh/OwlbearMedia/voteforjulia)
 
 ![image](https://raw.githubusercontent.com/OwlbearMedia/voteforjulia/refs/heads/main/public/julia-social-banner.avif)
 
@@ -161,25 +161,26 @@ feature branches that are merged directly to `main`. There are two workflow file
 
 - Trigger: pull request events (`opened`, `synchronize`, `reopened`)
 - File: `.github/workflows/ci.yml`
-- Jobs (run in sequence):
-  1. **Typecheck and tests** — frontend type-check, Prettier format check (`pnpm format:check`), Vitest with coverage, and Python API tests. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) (baseline visibility only — no enforced threshold yet). The Codecov upload is skipped for Dependabot PRs, which do not have access to repository secrets.
-  2. **Deploy test frontend** — builds with `VITE_API_BASE_URL=https://test-api.voteforjulia.com` and `SOURCEMAP_MODE=true`, injects noindex tags, and uploads to `./public_html_test`
-  3. **Deploy test API** — runs Python tests and uploads to `./api_test`, restarts Passenger
+- Jobs:
+  - **Typecheck and frontend tests** and **Python API tests** run in parallel first:
+    - **Typecheck and frontend tests** — type-check, Prettier format check (`pnpm format:check`), ESLint, Vitest with coverage. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) (baseline visibility only — no enforced threshold yet). The Codecov upload is skipped for Dependabot PRs, which do not have access to repository secrets.
+    - **Python API tests** — runs all three test files (`test_app.py`, `test_models.py`, `test_email_service.py`)
+  - **Deploy test frontend** and **Deploy test API** run in parallel once both test jobs pass:
+    - **Deploy test frontend** — builds with `VITE_API_BASE_URL=https://test-api.voteforjulia.com` and `SOURCEMAP_MODE=true`, injects noindex tags, and uploads to `./public_html_test`
+    - **Deploy test API** — uploads to `./api_test` and restarts Passenger
 
-The test site always reflects the current open PR. Deploy jobs only run if tests
-pass, and the test-environment deploy jobs are skipped for Dependabot PRs.
+The test site always reflects the current open PR. Deploy jobs only run if both
+test jobs pass, and the test-environment deploy jobs are skipped for Dependabot PRs.
 
 ### Production deploy workflow
 
 - Trigger: merged pull request into `main`
 - File: `.github/workflows/deploy-scp.yml`
-- Key steps:
-  1.  Install dependencies
-  2.  Run frontend and Python tests
-  3.  Build site with `pnpm run build:deploy` and `VITE_API_BASE_URL=https://api.voteforjulia.com` (builds, uploads source maps to New Relic, then strips them from `dist`)
-  4.  Upload `dist` to a clean `./public_html_next` staging directory, then atomically swap it into the live document root (`mv public_html public_html_prev && mv public_html_next public_html`)
-  5.  Upload `api` to `./api`
-  6.  Restart Passenger app
+- Jobs:
+  - **Run tests** — installs dependencies and runs the full frontend and Python test suites. Gates the two deploy jobs below.
+  - **Deploy frontend** and **Deploy Python API** run in parallel once tests pass:
+    - **Deploy frontend** — builds with `pnpm run build:deploy` and `VITE_API_BASE_URL=https://api.voteforjulia.com` (builds, uploads source maps to New Relic, then strips them from `dist`), uploads `dist` to a clean `./public_html_next` staging directory, atomically swaps it into the live document root (`mv public_html public_html_prev && mv public_html_next public_html`), then verifies the site is responding.
+    - **Deploy Python API** — uploads `api` to `./api`, restarts Passenger, then verifies the API is responding.
 
 The frontend swap is atomic: the new build is staged in full before a sub-second
 directory rename promotes it, so visitors never see a mix of old and new files, and

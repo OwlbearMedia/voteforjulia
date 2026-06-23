@@ -1,6 +1,9 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     types:
       - opened
@@ -15,8 +18,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  typecheck-and-tests:
-    name: Typecheck and tests
+  test-frontend:
+    name: Typecheck and frontend tests
     runs-on: ubuntu-latest
 
     steps:
@@ -36,16 +39,8 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Install Python dependencies
-        run: python -m pip install -r api/requirements.txt
 
       - name: Run typecheck
         run: pnpm exec vue-tsc -b
@@ -94,16 +89,36 @@ jobs:
           flags: frontend
           fail_ci_if_error: false
 
+  test-api:
+    name: Python API tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+
+      - name: Install Python dependencies
+        run: python -m pip install -r api/requirements.txt
+
       - name: Run Python API tests
         run: python -m unittest api/test_app.py api/test_models.py api/test_email_service.py
 
   deploy-test-frontend:
     name: Deploy frontend to test environment
-    needs: typecheck-and-tests
-    # Dependabot pull requests run without access to deployment secrets, so the
-    # test-environment deploy would always fail. Validate the bump via the
-    # typecheck-and-tests job only and skip deploys for Dependabot.
-    if: github.actor != 'dependabot[bot]'
+    needs: [test-frontend, test-api]
+    # Only deploy on pull_request events — push-to-main runs exist solely to
+    # keep the CI badge and Codecov coverage current for the main branch.
+    # Dependabot PRs lack deploy secrets, so skip those too.
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:
@@ -177,9 +192,9 @@ jobs:
 
   deploy-test-api:
     name: Deploy Python API to test environment
-    needs: typecheck-and-tests
-    # See deploy-test-frontend: Dependabot runs lack deploy secrets.
-    if: github.actor != 'dependabot[bot]'
+    needs: [test-frontend, test-api]
+    # See deploy-test-frontend: push-to-main runs and Dependabot PRs are skipped.
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:
@@ -187,17 +202,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Python dependencies
-        run: python -m pip install -r api/requirements.txt
-
-      - name: Run Python API tests
-        run: python -m unittest api/test_models.py api/test_email_service.py
 
       - name: Upload api contents to test api directory
         uses: appleboy/scp-action@v0.1.7

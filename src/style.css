@@ -725,6 +725,20 @@ section {
   }
 }
 
+@keyframes icon-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.icon-spin {
+  animation: icon-spin 2s linear infinite;
+  vertical-align: -0.125em;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .contact-state-enter-active,
   .contact-state-leave-active {
@@ -735,6 +749,10 @@ section {
   .contact-state-leave-to {
     opacity: 1;
     transform: none;
+  }
+
+  .icon-spin {
+    animation: none;
   }
 
   header,
