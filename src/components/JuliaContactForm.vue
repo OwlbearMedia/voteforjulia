@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue';
-import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-import { faSpinner } from '@fortawesome/free-solid-svg-icons';
 import sprout from '../assets/sprout.png';
+import IconSpinner from './icons/IconSpinner.vue';
 import { useContactForm } from '../composables/useContactForm';
 
 defineOptions({
@@ -247,7 +246,7 @@ watch(successMessageRef, (element) => {
       </p>
 
       <button type="submit" :disabled="hasValidationError || isSubmitting">
-        Send Message <FontAwesomeIcon v-if="isSubmitting" :icon="faSpinner" spin />
+        Send Message <IconSpinner v-if="isSubmitting" />
       </button>
       <p v-if="submitError" class="form-error-message" role="alert" aria-live="assertive">
         {{ submitError }}

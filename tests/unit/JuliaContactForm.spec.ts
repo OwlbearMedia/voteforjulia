@@ -155,7 +155,7 @@ describe('JuliaContactForm', () => {
     const submitButton = wrapper.find('button[type="submit"]');
     expect(submitButton.exists()).toBe(true);
     expect(submitButton.attributes('disabled')).toBeDefined();
-    expect(wrapper.findComponent({ name: 'FontAwesomeIcon' }).exists()).toBe(true);
+    expect(wrapper.find('svg.icon-spin').exists()).toBe(true);
 
     resolveSubmission();
     await flushPromises();

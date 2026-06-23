@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { RouterLink } from 'vue-router';
-import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-import { faInstagram, faFacebookF } from '@fortawesome/free-brands-svg-icons';
 import { Image } from '@imagekit/vue';
+import IconInstagram from './icons/IconInstagram.vue';
+import IconFacebook from './icons/IconFacebook.vue';
 import { trackDonateClick } from '../lib/analytics';
 
 defineOptions({
@@ -80,14 +80,14 @@ function handleDonateClick() {
               aria-label="Julia on Instagram"
               target="_blank"
               rel="noopener noreferrer"
-              ><FontAwesomeIcon :icon="faInstagram"
+              ><IconInstagram
             /></a>
             <a
               href="https://www.facebook.com/profile.php?id=61590411090366"
               aria-label="Julia on Facebook"
               target="_blank"
               rel="noopener noreferrer"
-              ><FontAwesomeIcon :icon="faFacebookF"
+              ><IconFacebook
             /></a>
           </li>
         </ul>
