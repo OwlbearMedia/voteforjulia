@@ -170,10 +170,8 @@ feature branches that are merged directly to `main`. There are two workflow file
   - Push to `main` — runs test jobs only (no deploys). This keeps the CI badge and Codecov coverage current for the main branch after each merge, and is what triggers the production deploy workflow.
 - File: `.github/workflows/ci.yml`
 - Jobs:
-  - **Typecheck and frontend tests** and **Python API tests** run in parallel:
-    - **Typecheck and frontend tests** — type-check, Prettier format check (`pnpm format:check`), ESLint, Vitest with coverage. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) (baseline visibility only — no enforced threshold yet). The Codecov upload is skipped for Dependabot PRs, which do not have access to repository secrets.
-    - **Python API tests** — runs all three test files (`test_app.py`, `test_models.py`, `test_email_service.py`)
-The CI badge and Codecov coverage reflect the latest run on `main`.
+  - **Typecheck and frontend tests** and **Python API tests** run in parallel: - **Typecheck and frontend tests** — type-check, Prettier format check (`pnpm format:check`), ESLint, Vitest with coverage. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) (baseline visibility only — no enforced threshold yet). The Codecov upload is skipped for Dependabot PRs, which do not have access to repository secrets. - **Python API tests** — runs all three test files (`test_app.py`, `test_models.py`, `test_email_service.py`)
+    The CI badge and Codecov coverage reflect the latest run on `main`.
 
 ### Test environment deploy workflow
 
