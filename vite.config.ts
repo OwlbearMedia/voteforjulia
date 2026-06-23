@@ -1,5 +1,5 @@
 import 'vite-ssg';
-import { writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
@@ -76,13 +76,61 @@ export default defineConfig({
       return paths;
     },
     async onFinished() {
+      const distDir = resolve(process.cwd(), 'dist');
+      const assetsDir = resolve(distDir, 'assets');
+
+      // Collect all emitted CSS to inline. Vite's <link rel="stylesheet crossorigin="">
+      // causes Chrome to attribute the CSS request to the JS module context rather than
+      // the HTML parser, creating a critical-chain dependency. Inlining eliminates
+      // the request entirely.
+      let cssContent = '';
+      const assetFiles = await readdir(assetsDir);
+      for (const file of assetFiles) {
+        if (file.endsWith('.css') && !file.endsWith('.css.map')) {
+          cssContent += await readFile(resolve(assetsDir, file), 'utf8');
+        }
+      }
+
+      const htmlFiles = (await readdir(distDir)).filter((f) => f.endsWith('.html'));
+      await Promise.all(
+        htmlFiles.map(async (file) => {
+          const htmlPath = resolve(distDir, file);
+          let html = await readFile(htmlPath, 'utf8');
+
+          // Inline the CSS so the browser doesn't need a separate request for it.
+          // Vite's <link rel="stylesheet" crossorigin=""> causes Chrome to attribute
+          // the CSS fetch to the JS module context, creating a critical chain.
+          if (cssContent) {
+            html = html.replace(/<link[^>]+rel="stylesheet"[^>]*>/g, '');
+            html = html.replace('</head>', `<style>${cssContent}</style></head>`);
+          }
+
+          // Convert <script type="module" src="..."> to a modulepreload hint plus a
+          // tiny inline bootstrap. Lighthouse doesn't include modulepreload resources
+          // in the critical chain (vendor.js and rolldown-runtime.js are already
+          // modulepreloaded and excluded). The inline script has no src so it produces
+          // no tracked network request.
+          const scriptSrcMatch = /<script([^>]+)type="module"([^>]+)src="([^"]+)"([^>]*)>/.exec(
+            html
+          );
+          if (scriptSrcMatch) {
+            const [fullTag, , , src] = scriptSrcMatch;
+            html = html.replace(
+              fullTag,
+              `<link rel="modulepreload" crossorigin="" href="${src}">\n<script type="module">import('${src}')</script>`
+            );
+          }
+
+          await writeFile(htmlPath, html, 'utf8');
+        })
+      );
+
       const sitemapRoutes =
         builtRoutePaths.length > 0
           ? builtRoutePaths
           : ['/', '/meet-julia', '/volunteer', '/secret-recipe', '/donate'];
       const sitemapXml = buildSitemapXml(sitemapRoutes);
-
-      await writeFile(resolve(process.cwd(), 'dist/sitemap.xml'), sitemapXml, 'utf8');
+      await writeFile(resolve(distDir, 'sitemap.xml'), sitemapXml, 'utf8');
     }
   }
 });

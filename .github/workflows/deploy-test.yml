@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 # One test environment — serialize deploys so a newer run never interrupts an
 # in-flight SCP upload and leaves the environment in a partially updated state.
@@ -31,20 +32,30 @@ jobs:
       proceed: ${{ steps.check.outputs.proceed }}
 
     steps:
-      - name: Verify commit is still the HEAD of its branch
+      - name: Verify commit is still the HEAD of its branch and PR is open
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          current_sha=$(gh api "repos/${{ github.repository }}/git/ref/heads/${HEAD_BRANCH}" --jq '.object.sha')
+          current_sha=$(gh api "repos/${{ github.repository }}/git/ref/heads/${HEAD_BRANCH}" --jq '.object.sha' 2>/dev/null) || {
+            echo "Branch ${HEAD_BRANCH} not found, skipping deploy."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
           if [ "$current_sha" != "$HEAD_SHA" ]; then
             echo "Stale re-run: ${HEAD_SHA} is not the current HEAD of ${HEAD_BRANCH} (${current_sha}), skipping deploy."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          open_prs=$(gh api "repos/${{ github.repository }}/pulls?state=open&head=${{ github.repository_owner }}:${HEAD_BRANCH}" --jq 'length')
+          if [ "$open_prs" == "0" ]; then
+            echo "No open PR for ${HEAD_BRANCH}, skipping deploy."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
 
   deploy-test-frontend:
     name: Deploy frontend to test environment
