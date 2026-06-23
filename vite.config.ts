@@ -1,10 +1,33 @@
 import 'vite-ssg';
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
 const SITE_URL = 'https://voteforjulia.com';
+
+// Vite injects <script type="module"> before <link rel="stylesheet"> in the
+// generated HTML. Lighthouse's preload scanner then sees the CSS as a level-3
+// dependency (HTML → JS → CSS) instead of level-2. Moving the stylesheet link
+// before the module script breaks that chain.
+function cssBeforeJs(): Plugin {
+  return {
+    name: 'css-before-js',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        const cssLinks: string[] = [];
+        const stripped = html.replace(/<link[^>]+rel="stylesheet"[^>]*>/g, (match) => {
+          cssLinks.push(match);
+          return '';
+        });
+        if (cssLinks.length === 0) return html;
+        return stripped.replace(/(<script type="module")/, `${cssLinks.join('\n')}\n$1`);
+      }
+    }
+  };
+}
 
 // Source map mode. Defaults to 'hidden': maps are generated without a
 // sourceMappingURL comment (prod uploads them to New Relic, then strips them).
@@ -41,7 +64,7 @@ function buildSitemapXml(routePaths: string[]): string {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), cssBeforeJs()],
   build: {
     // Generate source maps but omit the sourceMappingURL comment so browsers
     // don't advertise/fetch them. Maps are uploaded to New Relic for
