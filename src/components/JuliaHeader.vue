@@ -80,13 +80,15 @@ function handleDonateClick() {
               aria-label="Julia on Instagram"
               target="_blank"
               rel="noopener noreferrer"
-              ><IconInstagram /></a>
+              ><IconInstagram
+            /></a>
             <a
               href="https://www.facebook.com/profile.php?id=61590411090366"
               aria-label="Julia on Facebook"
               target="_blank"
               rel="noopener noreferrer"
-              ><IconFacebook /></a>
+              ><IconFacebook
+            /></a>
           </li>
         </ul>
       </nav>

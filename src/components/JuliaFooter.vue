@@ -164,7 +164,8 @@ onBeforeUnmount(() => {
                 'Julia on Instagram'
               )
             "
-            ><IconInstagram /></a>
+            ><IconInstagram
+          /></a>
           <a
             href="https://www.facebook.com/profile.php?id=61590411090366"
             aria-label="Julia on Facebook"
@@ -176,12 +177,14 @@ onBeforeUnmount(() => {
                 'Julia on Facebook'
               )
             "
-            ><IconFacebook /></a>
+            ><IconFacebook
+          /></a>
           <a
             href="mailto:info@juliahamann.com"
             aria-label="Email Julia"
             @click="handleFooterIconClick('mailto:info@juliahamann.com', 'Email Julia')"
-            ><IconEnvelope /></a>
+            ><IconEnvelope
+          /></a>
         </div>
       </div>
       <div class="footer-support">
