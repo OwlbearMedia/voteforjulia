@@ -590,6 +590,49 @@ section {
   margin-top: 1rem;
 }
 
+.event {
+  background: #133f30;
+  color: #fff;
+  padding: 1rem 2rem;
+  border-radius: 2rem;
+  margin-bottom: 2rem;
+}
+
+.event h3 {
+  font-size: 2rem;
+  color: #92F06C;
+}
+
+.event-date {
+  border-bottom: 1px solid #92F06C;
+  padding-bottom: 1rem;
+}
+
+.event dl {
+  display: grid;
+  grid-template-columns: 125px 1fr;
+  align-items: center;
+  margin: 2rem 0;
+}
+
+.event dt {
+  font-weight: 600;
+  font-size: 1.25rem;
+  color: #92F06C;
+  font-family: 'Mickle', serif;
+}
+
+.event dd {
+  background-color: #7bca5b80;
+  border-radius: .5rem;
+  margin: 0.5rem 0;
+  padding: 0.75rem 1rem;
+  font-family: 'Orelega One', serif;
+  font-size: 1.25rem;
+  font-style: normal;
+  font-weight: 400;
+}
+
 @media (max-width: 700px) {
   header {
     padding: 1rem;

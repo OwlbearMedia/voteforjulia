@@ -5,5 +5,6 @@ export const routes: RouteRecordRaw[] = [
   { path: '/meet-julia', component: () => import('../pages/JuliaAbout.vue') },
   { path: '/volunteer', component: () => import('../pages/JuliaVolunteer.vue') },
   { path: '/secret-recipe', component: () => import('../pages/JuliaSecretRecipe.vue') },
-  { path: '/donate', component: () => import('../pages/JuliaDonate.vue') }
+  { path: '/donate', component: () => import('../pages/JuliaDonate.vue') },
+  { path: '/events', component: () => import('../pages/JuliaEvents.vue') }
 ];

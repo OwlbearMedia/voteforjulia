@@ -105,22 +105,6 @@ export default defineConfig({
             html = html.replace('</head>', `<style>${cssContent}</style></head>`);
           }
 
-          // Convert <script type="module" src="..."> to a modulepreload hint plus a
-          // tiny inline bootstrap. Lighthouse doesn't include modulepreload resources
-          // in the critical chain (vendor.js and rolldown-runtime.js are already
-          // modulepreloaded and excluded). The inline script has no src so it produces
-          // no tracked network request.
-          const scriptSrcMatch = /<script([^>]+)type="module"([^>]+)src="([^"]+)"([^>]*)>/.exec(
-            html
-          );
-          if (scriptSrcMatch) {
-            const [fullTag, , , src] = scriptSrcMatch;
-            html = html.replace(
-              fullTag,
-              `<link rel="modulepreload" crossorigin="" href="${src}">\n<script type="module">import('${src}')</script>`
-            );
-          }
-
           await writeFile(htmlPath, html, 'utf8');
         })
       );
