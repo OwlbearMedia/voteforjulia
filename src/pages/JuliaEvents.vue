@@ -132,7 +132,9 @@ useHead({
     <div class="event">
       <h3>Campaign Launch Party!</h3>
       <p>
-        <a href="https://maps.app.goo.gl/bE9THdo92AbrKKeJ7" target="_blank">Mankato Makerspace, 1700 3rd Ave</a>
+        <a href="https://maps.app.goo.gl/bE9THdo92AbrKKeJ7" target="_blank"
+          >Mankato Makerspace, 1700 3rd Ave</a
+        >
       </p>
       <p class="event-date">Monday. June 29, 2026 at 5:30 - 9pm</p>
       <div>
@@ -147,30 +149,23 @@ useHead({
 
         <dl>
           <dt>5:30PM</dt>
-          <dd>
-            Social hour - Mingle, snack, &amp; craft
-          </dd>
+          <dd>Social hour - Mingle, snack, &amp; craft</dd>
 
           <dt>6:45PM</dt>
-          <dd>
-            Candidate speeches
-          </dd>
-          
+          <dd>Candidate speeches</dd>
+
           <dt>7:00PM</dt>
-          <dd>
-            Music by Ark &amp; Grum
-          </dd>
+          <dd>Music by Ark &amp; Grum</dd>
 
           <dt>8:00PM</dt>
-          <dd>
-            Music by Laura Schultz &amp; Colin Scharf
-          </dd>
+          <dd>Music by Laura Schultz &amp; Colin Scharf</dd>
         </dl>
 
         <p>
-          <a href="https://www.facebook.com/foodnotbombs.mankato" target="_blank">Food Not Bombs</a> will also be collecting in kind donations of tote bags, reusable water
-          bottles, shelf stable snack items and travel hygiene items to support the group's mutual
-          aide efforts. A list of needed items will be posted in the event thread.
+          <a href="https://www.facebook.com/foodnotbombs.mankato" target="_blank">Food Not Bombs</a>
+          will also be collecting in kind donations of tote bags, reusable water bottles, shelf
+          stable snack items and travel hygiene items to support the group's mutual aide efforts. A
+          list of needed items will be posted in the event thread.
         </p>
       </div>
     </div>
@@ -179,10 +174,16 @@ useHead({
       <h3>Primary Election Day!</h3>
       <p class="event-date">August 11, 2026</p>
       <p>
-        Check your voter registration: <a href="https://www.sos.mn.gov/elections-voting/register-to-vote/" target="_blank">https://www.sos.mn.gov/elections-voting/register-to-vote/</a>
+        Check your voter registration:
+        <a href="https://www.sos.mn.gov/elections-voting/register-to-vote/" target="_blank"
+          >https://www.sos.mn.gov/elections-voting/register-to-vote/</a
+        >
       </p>
       <p>
-        Find your polling place: <a href="https://www.sos.mn.gov/elections-voting/election-day-voting" target="_blank">https://www.sos.mn.gov/elections-voting/election-day-voting</a>
+        Find your polling place:
+        <a href="https://www.sos.mn.gov/elections-voting/election-day-voting" target="_blank"
+          >https://www.sos.mn.gov/elections-voting/election-day-voting</a
+        >
       </p>
     </div>
   </section>

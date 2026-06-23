@@ -600,11 +600,11 @@ section {
 
 .event h3 {
   font-size: 2rem;
-  color: #92F06C;
+  color: #92f06c;
 }
 
 .event-date {
-  border-bottom: 1px solid #92F06C;
+  border-bottom: 1px solid #92f06c;
   padding-bottom: 1rem;
 }
 
@@ -618,13 +618,13 @@ section {
 .event dt {
   font-weight: 600;
   font-size: 1.25rem;
-  color: #92F06C;
+  color: #92f06c;
   font-family: 'Mickle', serif;
 }
 
 .event dd {
   background-color: #7bca5b80;
-  border-radius: .5rem;
+  border-radius: 0.5rem;
   margin: 0.5rem 0;
   padding: 0.75rem 1rem;
   font-family: 'Orelega One', serif;
