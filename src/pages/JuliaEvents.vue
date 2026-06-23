@@ -139,6 +139,8 @@ useHead({
         >
       </div>
 
+      <hr />
+
       <div>
         <p>
           Join us for a launch party to celebrate campaign season kick off and build momentum for
@@ -177,6 +179,9 @@ useHead({
         <h3>Primary Election Day!</h3>
         <div class="event-date">August 11, 2026</div>
       </div>
+
+      <hr />
+
       <p>
         Check your voter registration:
         <a href="https://www.sos.mn.gov/elections-voting/register-to-vote/" target="_blank"
