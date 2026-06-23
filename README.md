@@ -160,34 +160,38 @@ This repository uses a trunk-based workflow. All development happens on short-li
 feature branches that are merged directly to `main`. There are two workflow files:
 
 - `.github/workflows/ci.yml`
-- `.github/workflows/deploy-scp.yml`
+- `.github/workflows/deploy-test.yml`
+- `.github/workflows/deploy-production.yml`
 
-### CI workflow (pull requests → main)
+### CI workflow
 
 - Triggers:
   - Pull request events (`opened`, `synchronize`, `reopened`) — runs all jobs including test-environment deploys.
-  - Push to `main` — runs test jobs only (no deploys), keeping the CI badge and Codecov coverage current for the main branch after each merge.
+  - Push to `main` — runs test jobs only (no deploys). This keeps the CI badge and Codecov coverage current for the main branch after each merge, and is what triggers the production deploy workflow.
 - File: `.github/workflows/ci.yml`
 - Jobs:
-  - **Typecheck and frontend tests** and **Python API tests** run in parallel first:
+  - **Typecheck and frontend tests** and **Python API tests** run in parallel:
     - **Typecheck and frontend tests** — type-check, Prettier format check (`pnpm format:check`), ESLint, Vitest with coverage. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) (baseline visibility only — no enforced threshold yet). The Codecov upload is skipped for Dependabot PRs, which do not have access to repository secrets.
     - **Python API tests** — runs all three test files (`test_app.py`, `test_models.py`, `test_email_service.py`)
-  - **Deploy test frontend** and **Deploy test API** run in parallel once both test jobs pass (pull request events only):
-    - **Deploy test frontend** — builds with `VITE_API_BASE_URL=https://test-api.voteforjulia.com` and `SOURCEMAP_MODE=true`, injects noindex tags, and uploads to `./public_html_test`
-    - **Deploy test API** — uploads to `./api_test` and restarts Passenger
+The CI badge and Codecov coverage reflect the latest run on `main`.
 
-The test site always reflects the current open PR. Deploy jobs only run on pull
-request events, and are skipped for Dependabot PRs which lack deploy secrets.
+### Test environment deploy workflow
+
+- Trigger: CI workflow completes successfully on a pull request branch (not main). Dependabot PRs are skipped as they lack deploy secrets.
+- File: `.github/workflows/deploy-test.yml`
+- Jobs — **Deploy test frontend** and **Deploy test API** run in parallel, both checking out the exact commit CI verified:
+  - **Deploy test frontend** — builds with `VITE_API_BASE_URL=https://test-api.voteforjulia.com` and `SOURCEMAP_MODE=true`, injects noindex/nofollow tags, and uploads to `./public_html_test`
+  - **Deploy test API** — uploads to `./api_test` and restarts Passenger
+
+The test site always reflects the latest PR that passed CI. Since there is one test environment, concurrent PR deploys are serialized by a concurrency group — the most recently passing PR wins.
 
 ### Production deploy workflow
 
-- Trigger: merged pull request into `main`
-- File: `.github/workflows/deploy-scp.yml`
-- Jobs:
-  - **Run tests** — installs dependencies and runs the full frontend and Python test suites. Gates the two deploy jobs below.
-  - **Deploy frontend** and **Deploy Python API** run in parallel once tests pass:
-    - **Deploy frontend** — builds with `pnpm run build:deploy` and `VITE_API_BASE_URL=https://api.voteforjulia.com` (builds, uploads source maps to New Relic, then strips them from `dist`), uploads `dist` to a clean `./public_html_next` staging directory, atomically swaps it into the live document root (`mv public_html public_html_prev && mv public_html_next public_html`), then verifies the site is responding.
-    - **Deploy Python API** — uploads `api` to `./api`, restarts Passenger, then verifies the API is responding.
+- Trigger: CI workflow completes successfully on `main`. This fires after every merged PR — CI is the single test gate, so tests are not re-run here.
+- File: `.github/workflows/deploy-production.yml`
+- Jobs — **Deploy frontend** and **Deploy Python API** run in parallel:
+  - **Deploy frontend** — checks out the exact commit CI verified, builds with `pnpm run build:deploy` and `VITE_API_BASE_URL=https://api.voteforjulia.com` (builds, uploads source maps to New Relic, then strips them from `dist`), uploads `dist` to a clean `./public_html_next` staging directory, atomically swaps it into the live document root (`mv public_html public_html_prev && mv public_html_next public_html`), then verifies the site is responding.
+  - **Deploy Python API** — checks out the same commit, uploads `api` to `./api`, restarts Passenger, then verifies the API is responding.
 
 The frontend swap is atomic: the new build is staged in full before a sub-second
 directory rename promotes it, so visitors never see a mix of old and new files, and
@@ -234,4 +238,4 @@ enforced coverage threshold yet — coverage is tracked for visibility only.
 - api/: Flask API and Python tests
 - dist/: Build output generated by pnpm run build
 - .github/workflows/ci.yml: pull request validation + test environment deploy
-- .github/workflows/deploy-scp.yml: production deploy on merged PR to `main`
+- .github/workflows/deploy-production.yml: production deploy on merged PR to `main`

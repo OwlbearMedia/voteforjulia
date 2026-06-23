@@ -1,9 +1,10 @@
-name: Deploy via SCP
+name: Deploy to production
 
 on:
-  pull_request:
+  workflow_run:
+    workflows: ["CI"]
     types:
-      - closed
+      - completed
     branches:
       - main
 
@@ -15,56 +16,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Run tests
-    if: github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 11
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-          cache-dependency-path: api/requirements.txt
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Python dependencies
-        run: python -m pip install -r api/requirements.txt
-
-      - name: Run frontend tests
-        run: pnpm test
-
-      - name: Run Python API tests
-        run: python -m unittest api/test_app.py api/test_models.py api/test_email_service.py
-
   deploy-frontend:
     name: Deploy frontend
-    needs: test
+    # Only deploy when CI passed — a failed or cancelled CI run should not deploy.
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://voteforjulia.com
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          # Pin to the exact commit CI verified, not just the branch HEAD.
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 1
 
       - name: Setup pnpm
@@ -158,13 +124,17 @@ jobs:
 
   deploy-api:
     name: Deploy Python API
-    needs: test
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://api.voteforjulia.com
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 1
 
       - name: Upload api contents to server api directory
