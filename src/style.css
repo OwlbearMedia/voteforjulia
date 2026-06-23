@@ -651,6 +651,32 @@ section {
   font-weight: 400;
 }
 
+.event ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 2rem 0;
+}
+
+.event ul li {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.event ul li::before {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 40px;
+  background-image: url('./assets/sprout.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+}
+
 .event-location {
   display: inline-flex;
   align-items: center;
@@ -660,6 +686,10 @@ section {
   font-size: 1.25rem;
   font-style: normal;
   font-weight: 400;
+}
+
+.event-highlight {
+  text-decoration: underline;
 }
 
 .event-location svg {

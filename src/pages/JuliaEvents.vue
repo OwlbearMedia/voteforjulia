@@ -165,6 +165,21 @@ useHead({
           <dd>Music by Laura Schultz &amp; Colin Scharf</dd>
         </dl>
 
+        <ul>
+          <li>
+            <div>
+            <span class="event-highlight">Make your own campaign swag</span><br>
+            Screen printing, button making, &amp; block printing
+            </div>
+          </li>
+          <li>
+            <div>
+            <span class="event-highlight">Support the campaign</span><br>
+            Donate, volunteer, yard signs, &amp; campaign lit
+            </div>
+          </li>
+        </ul>
+
         <p>
           <a href="https://www.facebook.com/foodnotbombs.mankato" target="_blank">Food Not Bombs</a>
           will also be collecting in kind donations of tote bags, reusable water bottles, shelf
