@@ -38,7 +38,9 @@ function vlqDecode(str) {
   const out = [];
   let i = 0;
   while (i < str.length) {
-    let value = 0, shift = 0, cont;
+    let value = 0,
+      shift = 0,
+      cont;
     do {
       const d = B64_IDX[str[i++]];
       cont = d & 32;
@@ -122,7 +124,7 @@ function deduplicateSourcemap(data) {
     ...data,
     sources: newSources,
     mappings: newMappings,
-    ...(newContent && { sourcesContent: newContent }),
+    ...(newContent && { sourcesContent: newContent })
   };
 }
 
