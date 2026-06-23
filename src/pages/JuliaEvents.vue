@@ -168,14 +168,14 @@ useHead({
         <ul>
           <li>
             <div>
-            <span class="event-highlight">Make your own campaign swag</span><br>
-            Screen printing, button making, &amp; block printing
+              <span class="event-highlight">Make your own campaign swag</span><br />
+              Screen printing, button making, &amp; block printing
             </div>
           </li>
           <li>
             <div>
-            <span class="event-highlight">Support the campaign</span><br>
-            Donate, volunteer, yard signs, &amp; campaign lit
+              <span class="event-highlight">Support the campaign</span><br />
+              Donate, volunteer, yard signs, &amp; campaign lit
             </div>
           </li>
         </ul>

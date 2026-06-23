@@ -599,6 +599,10 @@ section {
   margin-bottom: 2rem;
 }
 
+.event a {
+  color: #92f06c;
+}
+
 .event h3 {
   font-size: 2rem;
   color: #92f06c;
