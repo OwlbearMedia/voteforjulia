@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useHead } from '@unhead/vue';
+import IconLocation from '../components/icons/IconLocation.vue';
 
 defineOptions({
   name: 'JuliaEvents'
@@ -130,13 +131,14 @@ useHead({
     <p>Check out our latest events below:</p>
 
     <div class="event">
-      <h3>Campaign Launch Party!</h3>
-      <p>
-        <a href="https://maps.app.goo.gl/bE9THdo92AbrKKeJ7" target="_blank"
-          >Mankato Makerspace, 1700 3rd Ave</a
+      <div class="event-heading">
+        <h3>Campaign Launch Party!</h3>
+        <p class="event-date">Monday, June 29 at 5:30 &ndash; 9pm</p>
+        <a class="event-location" href="https://maps.app.goo.gl/bE9THdo92AbrKKeJ7" target="_blank">
+          <IconLocation /> Mankato Makerspace, 1700 3rd Ave</a
         >
-      </p>
-      <p class="event-date">Monday. June 29, 2026 at 5:30 - 9pm</p>
+      </div>
+
       <div>
         <p>
           Join us for a launch party to celebrate campaign season kick off and build momentum for
@@ -171,8 +173,10 @@ useHead({
     </div>
 
     <div class="event">
-      <h3>Primary Election Day!</h3>
-      <p class="event-date">August 11, 2026</p>
+      <div class="event-heading">
+        <h3>Primary Election Day!</h3>
+        <div class="event-date">August 11, 2026</div>
+      </div>
       <p>
         Check your voter registration:
         <a href="https://www.sos.mn.gov/elections-voting/register-to-vote/" target="_blank"
