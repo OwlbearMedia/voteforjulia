@@ -11,22 +11,45 @@ on:
 permissions:
   contents: read
 
-# One test environment — last PR to pass CI wins.
+# One test environment — serialize deploys so a newer run never interrupts an
+# in-flight SCP upload and leaves the environment in a partially updated state.
 concurrency:
   group: deploy-test
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  deploy-test-frontend:
-    name: Deploy frontend to test environment
-    # Only deploy when CI passed on a pull_request event, and skip Dependabot
-    # PRs which lack deploy secrets.
+  gate:
+    name: Check deployment conditions
     if: |
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       !startsWith(github.event.workflow_run.head_branch, 'dependabot/') &&
       github.event.workflow_run.triggering_actor.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+
+    steps:
+      - name: Verify commit is still the HEAD of its branch
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          current_sha=$(gh api "repos/${{ github.repository }}/git/ref/heads/${HEAD_BRANCH}" --jq '.object.sha')
+          if [ "$current_sha" != "$HEAD_SHA" ]; then
+            echo "Stale re-run: ${HEAD_SHA} is not the current HEAD of ${HEAD_BRANCH} (${current_sha}), skipping deploy."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy-test-frontend:
+    name: Deploy frontend to test environment
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     environment: test
 
@@ -102,12 +125,8 @@ jobs:
 
   deploy-test-api:
     name: Deploy Python API to test environment
-    if: |
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      !startsWith(github.event.workflow_run.head_branch, 'dependabot/') &&
-      github.event.workflow_run.triggering_actor.login != 'dependabot[bot]'
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     environment: test
 
