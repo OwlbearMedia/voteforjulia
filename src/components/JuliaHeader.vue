@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { faInstagram, faFacebookF } from '@fortawesome/free-brands-svg-icons';
-import juliaLogo from '../assets/julia-hamann-for-mankato-mayor.avif';
+import { Image } from '@imagekit/vue';
 import { trackDonateClick } from '../lib/analytics';
 
 defineOptions({
@@ -36,12 +36,19 @@ function handleDonateClick() {
       <h1 class="sr-only">{{ title }}</h1>
       <div class="logo-container">
         <a href="/" aria-label="Vote for Julia Home">
-          <img
-            :src="juliaLogo"
+          <Image
+            url-endpoint="https://ik.imagekit.io/voteforjulia"
+            src="/julia-hamann-for-mankato-mayor.avif"
             alt="Julia Hamann for Mankato Mayor"
             class="logo"
+            sizes="200px"
+            :image-breakpoints="[200, 400]"
+            :device-breakpoints="[]"
             width="200"
-            height="90"
+            height="97"
+            crossorigin="anonymous"
+            fetchpriority="high"
+            loading="eager"
             decoding="async"
           />
         </a>

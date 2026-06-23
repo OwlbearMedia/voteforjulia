@@ -134,7 +134,7 @@ useHead({
         src="/julia-hero.webp"
         class="hero-image"
         sizes="(max-width: 700px) calc(100vw - 2.5rem), 960px"
-        :image-breakpoints="[320, 390, 430, 520, 640, 780, 960]"
+        :image-breakpoints="[320, 390, 430, 520, 640, 780, 960, 1440, 1920]"
         :device-breakpoints="[]"
         width="960"
         height="672"
