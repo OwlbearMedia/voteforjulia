@@ -163,4 +163,4 @@ jobs:
             touch ./api/tmp/restart.txt
 
       - name: Verify API is responding
-        run: curl --fail --max-time 15 --retry 5 --retry-delay 5 https://api.voteforjulia.com
+        run: curl --fail --max-time 15 --retry 5 --retry-delay 5 https://api.voteforjulia.com/health
