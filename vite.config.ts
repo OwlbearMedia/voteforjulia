@@ -1,33 +1,10 @@
 import 'vite-ssg';
-import { writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
 const SITE_URL = 'https://voteforjulia.com';
-
-// Vite injects <script type="module"> before <link rel="stylesheet"> in the
-// generated HTML. Lighthouse's preload scanner then sees the CSS as a level-3
-// dependency (HTML → JS → CSS) instead of level-2. Moving the stylesheet link
-// before the module script breaks that chain.
-function cssBeforeJs(): Plugin {
-  return {
-    name: 'css-before-js',
-    apply: 'build',
-    transformIndexHtml: {
-      order: 'post',
-      handler(html) {
-        const cssLinks: string[] = [];
-        const stripped = html.replace(/<link[^>]+rel="stylesheet"[^>]*>/g, (match) => {
-          cssLinks.push(match);
-          return '';
-        });
-        if (cssLinks.length === 0) return html;
-        return stripped.replace(/(<script type="module")/, `${cssLinks.join('\n')}\n$1`);
-      }
-    }
-  };
-}
 
 // Source map mode. Defaults to 'hidden': maps are generated without a
 // sourceMappingURL comment (prod uploads them to New Relic, then strips them).
@@ -64,7 +41,7 @@ function buildSitemapXml(routePaths: string[]): string {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue(), cssBeforeJs()],
+  plugins: [vue()],
   build: {
     // Generate source maps but omit the sourceMappingURL comment so browsers
     // don't advertise/fetch them. Maps are uploaded to New Relic for
@@ -99,13 +76,40 @@ export default defineConfig({
       return paths;
     },
     async onFinished() {
+      const distDir = resolve(process.cwd(), 'dist');
+      const assetsDir = resolve(distDir, 'assets');
+
+      // Collect all emitted CSS to inline. Vite's <link rel="stylesheet crossorigin="">
+      // causes Chrome to attribute the CSS request to the JS module context rather than
+      // the HTML parser, creating a critical-chain dependency. Inlining eliminates
+      // the request entirely.
+      let cssContent = '';
+      const assetFiles = await readdir(assetsDir);
+      for (const file of assetFiles) {
+        if (file.endsWith('.css') && !file.endsWith('.css.map')) {
+          cssContent += await readFile(resolve(assetsDir, file), 'utf8');
+        }
+      }
+
+      const htmlFiles = (await readdir(distDir)).filter((f) => f.endsWith('.html'));
+      await Promise.all(
+        htmlFiles.map(async (file) => {
+          const htmlPath = resolve(distDir, file);
+          let html = await readFile(htmlPath, 'utf8');
+          if (cssContent) {
+            html = html.replace(/<link[^>]+rel="stylesheet"[^>]*>/g, '');
+            html = html.replace('</head>', `<style>${cssContent}</style></head>`);
+          }
+          await writeFile(htmlPath, html, 'utf8');
+        })
+      );
+
       const sitemapRoutes =
         builtRoutePaths.length > 0
           ? builtRoutePaths
           : ['/', '/meet-julia', '/volunteer', '/secret-recipe', '/donate'];
       const sitemapXml = buildSitemapXml(sitemapRoutes);
-
-      await writeFile(resolve(process.cwd(), 'dist/sitemap.xml'), sitemapXml, 'utf8');
+      await writeFile(resolve(distDir, 'sitemap.xml'), sitemapXml, 'utf8');
     }
   }
 });
