@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useHead } from '@unhead/vue';
 import IconLocation from '../components/icons/IconLocation.vue';
+import IconCalendar from '../components/icons/IconCalendar.vue';
 
 defineOptions({
   name: 'JuliaEvents'
@@ -133,8 +134,21 @@ useHead({
     <div class="event">
       <div class="event-heading">
         <h3>Campaign Launch Party!</h3>
-        <p class="event-date">Monday, June 29 at 5:30 &ndash; 9pm</p>
-        <a class="event-location" href="https://maps.app.goo.gl/bE9THdo92AbrKKeJ7" target="_blank">
+        <div>
+          <a
+            class="event-date"
+            href="https://www.facebook.com/events/1000640362322768"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><IconCalendar /> Monday, June 29 at 5:30 &ndash; 9pm</a
+          >
+        </div>
+        <a
+          class="event-location"
+          href="https://maps.app.goo.gl/bE9THdo92AbrKKeJ7"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <IconLocation /> Mankato Makerspace, 1700 3rd Ave</a
         >
       </div>
@@ -149,6 +163,16 @@ useHead({
         <p>
           Connect with candidate Julia Hamann for Mankato Mayor and show your support for the
           campaign!
+        </p>
+
+        <p>
+          Light refreshments will be available, prepared by
+          <a
+            href="https://www.facebook.com/foodnotbombs.mankato"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Food Not Bombs</a
+          >
         </p>
 
         <dl>
@@ -183,8 +207,13 @@ useHead({
         <p>
           <a href="https://www.facebook.com/foodnotbombs.mankato" target="_blank">Food Not Bombs</a>
           will also be collecting in kind donations of tote bags, reusable water bottles, shelf
-          stable snack items and travel hygiene items to support the group's mutual aide efforts. A
-          list of needed items will be posted in the event thread.
+          stable snack items and travel hygiene items to support the group's mutual aide efforts.
+          <a
+            href="http://facebook.com/photo?fbid=122114030805347036&set=gm.1006781185042019&idorvanity=1000640362322768"
+            target="_blank"
+            rel="noopener noreferrer"
+            >A list of needed items is available here</a
+          >.
         </p>
       </div>
     </div>
@@ -192,7 +221,13 @@ useHead({
     <div class="event">
       <div class="event-heading">
         <h3>Primary Election Day!</h3>
-        <div class="event-date">August 11, 2026</div>
+        <a
+          class="event-date"
+          href="https://www.sos.mn.gov/elections-voting/election-day-voting"
+          target="_blank"
+          rel="noopener noreferrer"
+          ><IconCalendar /> August 11, 2026</a
+        >
       </div>
 
       <hr />
