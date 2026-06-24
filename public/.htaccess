@@ -80,12 +80,12 @@ FileETag MTime Size
 	# worker-src: New Relic browser agent spawns blob: workers for some features.
 	Header always set Content-Security-Policy "\
 default-src 'self'; \
-script-src 'self' https://www.googletagmanager.com https://donorbox.org; \
-style-src 'self' 'unsafe-inline'; \
-img-src 'self' data: https://ik.imagekit.io https://www.google-analytics.com; \
-font-src 'self'; \
-connect-src 'self' https://bam.nr-data.net https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com https://donorbox.org; \
-frame-src https://donorbox.org; \
+script-src 'self' https://www.googletagmanager.com https://donorbox.org https://js.stripe.com https://cdn.jsdelivr.net https://jspm.dev; \
+style-src 'self' 'unsafe-inline' https://donorbox.org https://rsms.me; \
+img-src 'self' data: https://ik.imagekit.io https://www.google-analytics.com https://donorbox.org; \
+font-src 'self' https://rsms.me; \
+connect-src 'self' https://bam.nr-data.net https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com https://donorbox.org https://api.stripe.com https://m.stripe.com https://m.stripe.network https://q.stripe.com; \
+frame-src https://donorbox.org https://js.stripe.com; \
 worker-src 'self' blob:; \
 frame-ancestors 'none'; \
 object-src 'none'; \
