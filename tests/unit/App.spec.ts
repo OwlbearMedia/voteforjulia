@@ -8,7 +8,8 @@ const allRoutes = [
   { path: '/meet-julia', component: { template: '<div />' } },
   { path: '/volunteer', component: { template: '<div />' } },
   { path: '/donate', component: { template: '<div />' } },
-  { path: '/secret-recipe', component: { template: '<div />' } }
+  { path: '/secret-recipe', component: { template: '<div />' } },
+  { path: '/events', component: { template: '<div />' } }
 ];
 
 async function mountAtPath(path: string) {
@@ -37,6 +38,7 @@ describe('App — pageHeaderTitle', () => {
     ['/meet-julia', 'Get to Know Julia Hamann — Mankato Mayor Candidate'],
     ['/volunteer', 'Join Julia’s Team — Volunteer in Mankato'],
     ['/donate', 'Support Julia Hamann’s Campaign for Mankato Mayor'],
+    ['/events', 'Upcoming Campaign Events — Julia Hamann for Mankato Mayor'],
     ['/secret-recipe', 'Julia’s Famous Shrimp Salad Supreme Recipe']
   ])('passes the correct title for %s', async (path, expectedTitle) => {
     const wrapper = await mountAtPath(path);

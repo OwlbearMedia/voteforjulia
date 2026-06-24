@@ -135,12 +135,12 @@ pnpm run test:watch
 
 Tests are organized in a dedicated directory:
 
-- tests/unit/App.spec.ts
+- tests/unit/App.spec.ts — pageHeaderTitle computed per route
 - tests/unit/JuliaHeader.spec.ts
 - tests/unit/JuliaFooter.spec.ts
 - tests/unit/JuliaContactForm.spec.ts
-- tests/unit/pages.spec.ts
-- tests/unit/routes.spec.ts
+- tests/unit/pages.spec.ts — render + SEO metadata for all page components (Home, About, Events, Volunteer, Donate, Secret Recipe)
+- tests/unit/routes.spec.ts — route paths and no `.html` aliases
 - tests/unit/useContactForm.spec.ts
 - tests/unit/analytics.spec.ts
 - tests/unit/api.spec.ts

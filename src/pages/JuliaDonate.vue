@@ -123,11 +123,11 @@ useHead({
     },
     {
       property: 'og:image:width',
-      content: '200'
+      content: '1200'
     },
     {
       property: 'og:image:height',
-      content: '93'
+      content: '583'
     },
     {
       property: 'og:image:alt',

@@ -11,6 +11,7 @@ const pageHeaderTitle = computed(() => {
     '/meet-julia': 'Get to Know Julia Hamann — Mankato Mayor Candidate',
     '/volunteer': 'Join Julia’s Team — Volunteer in Mankato',
     '/donate': 'Support Julia Hamann’s Campaign for Mankato Mayor',
+    '/events': 'Upcoming Campaign Events — Julia Hamann for Mankato Mayor',
     '/secret-recipe': 'Julia’s Famous Shrimp Salad Supreme Recipe'
   };
 

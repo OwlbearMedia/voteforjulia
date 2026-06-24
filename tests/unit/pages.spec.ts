@@ -5,6 +5,7 @@ import JuliaAbout from '../../src/pages/JuliaAbout.vue';
 import JuliaDonate from '../../src/pages/JuliaDonate.vue';
 import JuliaHome from '../../src/pages/JuliaHome.vue';
 import JuliaSecretRecipe from '../../src/pages/JuliaSecretRecipe.vue';
+import JuliaEvents from '../../src/pages/JuliaEvents.vue';
 import JuliaVolunteer from '../../src/pages/JuliaVolunteer.vue';
 
 vi.mock('@unhead/vue', () => ({
@@ -60,6 +61,23 @@ describe('Page components', () => {
           expect.objectContaining({
             rel: 'canonical',
             href: 'https://voteforjulia.com/meet-julia'
+          })
+        ])
+      })
+    );
+  });
+
+  it('JuliaEvents renders events content and configures page SEO metadata', () => {
+    const wrapper = mount(JuliaEvents);
+
+    expect(wrapper.text()).toContain('Upcoming Events');
+    expect(useHeadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Events | Julia Hamann for Mankato Mayor',
+        link: expect.arrayContaining([
+          expect.objectContaining({
+            rel: 'canonical',
+            href: 'https://voteforjulia.com/events'
           })
         ])
       })
