@@ -56,12 +56,13 @@ export default defineConfig({
         } | null> {
           const spreadsheetId = getSpreadsheetId(env);
           const worksheet =
-            env.GOOGLE_SHEETS_WORKSHEET ?? process.env.GOOGLE_SHEETS_WORKSHEET ?? 'Sheet1';
+            (env.GOOGLE_SHEETS_WORKSHEET as string | undefined) ??
+            process.env.GOOGLE_SHEETS_WORKSHEET;
           const sheets = buildSheetsClient(env);
 
           const response = await sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: `${worksheet}!A:G`
+            range: worksheet ? `${worksheet}!A:G` : 'A:G'
           });
 
           const rows = response.data.values ?? [];
@@ -75,7 +76,8 @@ export default defineConfig({
         async deleteSheetRow({ rowIndex }: { rowIndex: number }): Promise<true> {
           const spreadsheetId = getSpreadsheetId(env);
           const worksheet =
-            env.GOOGLE_SHEETS_WORKSHEET ?? process.env.GOOGLE_SHEETS_WORKSHEET ?? 'Sheet1';
+            (env.GOOGLE_SHEETS_WORKSHEET as string | undefined) ??
+            process.env.GOOGLE_SHEETS_WORKSHEET;
           const sheets = buildSheetsClient(env);
 
           // Resolve the numeric sheetId for the named worksheet.
