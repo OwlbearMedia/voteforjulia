@@ -14,6 +14,7 @@ dist-ssr
 .venv
 .vite
 coverage
+CLAUDE.md
 
 cypress.env.json
 cypress/screenshots

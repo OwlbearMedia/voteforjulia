@@ -19,7 +19,10 @@ function getCredentials(env: CypressEnv): object {
 
 function getSpreadsheetId(env: CypressEnv): string {
   const id = env.GOOGLE_SHEETS_SPREADSHEET_ID ?? process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  if (!id) throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID is not set in cypress.env.json or as an env var.');
+  if (!id)
+    throw new Error(
+      'GOOGLE_SHEETS_SPREADSHEET_ID is not set in cypress.env.json or as an env var.'
+    );
   return id;
 }
 
@@ -47,7 +50,8 @@ export default defineConfig({
           row: string[];
         } | null> {
           const spreadsheetId = getSpreadsheetId(env);
-          const worksheet = env.GOOGLE_SHEETS_WORKSHEET ?? process.env.GOOGLE_SHEETS_WORKSHEET ?? 'Sheet1';
+          const worksheet =
+            env.GOOGLE_SHEETS_WORKSHEET ?? process.env.GOOGLE_SHEETS_WORKSHEET ?? 'Sheet1';
           const sheets = buildSheetsClient(env);
 
           const response = await sheets.spreadsheets.values.get({
@@ -65,14 +69,13 @@ export default defineConfig({
 
         async deleteSheetRow({ rowIndex }: { rowIndex: number }): Promise<true> {
           const spreadsheetId = getSpreadsheetId(env);
-          const worksheet = env.GOOGLE_SHEETS_WORKSHEET ?? process.env.GOOGLE_SHEETS_WORKSHEET ?? 'Sheet1';
+          const worksheet =
+            env.GOOGLE_SHEETS_WORKSHEET ?? process.env.GOOGLE_SHEETS_WORKSHEET ?? 'Sheet1';
           const sheets = buildSheetsClient(env);
 
           // Resolve the numeric sheetId for the named worksheet.
           const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
-          const sheet = spreadsheet.data.sheets?.find(
-            (s) => s.properties?.title === worksheet
-          );
+          const sheet = spreadsheet.data.sheets?.find((s) => s.properties?.title === worksheet);
           const sheetId = sheet?.properties?.sheetId ?? 0;
 
           await sheets.spreadsheets.batchUpdate({
