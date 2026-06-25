@@ -84,7 +84,7 @@ script-src 'self' https://www.googletagmanager.com https://donorbox.org https://
 style-src 'self' 'unsafe-inline' https://donorbox.org https://rsms.me; \
 img-src 'self' data: https://ik.imagekit.io https://www.google-analytics.com https://donorbox.org; \
 font-src 'self' https://rsms.me; \
-connect-src 'self' https://test-api.voteforjulia.com https://bam.nr-data.net https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com https://donorbox.org https://api.stripe.com https://m.stripe.com https://m.stripe.network https://q.stripe.com https://jspm.dev; \
+connect-src 'self' https://api.voteforjulia.com https://test-api.voteforjulia.com https://bam.nr-data.net https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com https://donorbox.org https://api.stripe.com https://m.stripe.com https://m.stripe.network https://q.stripe.com https://jspm.dev; \
 frame-src https://donorbox.org https://js.stripe.com; \
 worker-src 'self' blob:; \
 frame-ancestors 'none'; \
