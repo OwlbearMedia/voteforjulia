@@ -22,7 +22,9 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "cypress run",
+    "test:e2e:open": "cypress open"
   },
   "dependencies": {
     "@imagekit/vue": "^4.0.1",
@@ -39,10 +41,12 @@
     "@vitest/coverage-v8": "^4.1.9",
     "@vue/test-utils": "^2.4.10",
     "@vue/tsconfig": "^0.9.1",
+    "cypress": "^15.18.0",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-vue": "^10.0.0",
     "globals": "^16.0.0",
+    "googleapis": "^173.0.0",
     "jsdom": "^29.1.1",
     "prettier": "3.8.4",
     "typescript": "~6.0.2",
