@@ -48,6 +48,58 @@ useHead({
               'Affordable housing',
               'Community-led safety'
             ]
+          },
+          {
+            '@type': 'Event',
+            name: 'Campaign Launch Party!',
+            description:
+              'A launch party to celebrate campaign season kick off and build momentum for the primary on August 11th. Connect with candidate Julia Hamann for Mankato Mayor, with candidate speeches, live music, campaign swag-making, and light refreshments by Food Not Bombs.',
+            startDate: '2026-06-29T17:30:00-05:00',
+            endDate: '2026-06-29T21:00:00-05:00',
+            eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+            eventStatus: 'https://schema.org/EventScheduled',
+            url: 'https://www.facebook.com/events/1000640362322768',
+            location: {
+              '@type': 'Place',
+              name: 'Mankato Makerspace',
+              address: {
+                '@type': 'PostalAddress',
+                streetAddress: '1700 3rd Ave',
+                addressLocality: 'Mankato',
+                addressRegion: 'MN',
+                addressCountry: 'US'
+              }
+            },
+            organizer: {
+              '@type': 'Person',
+              name: 'Julia Hamann',
+              url: 'https://voteforjulia.com/'
+            },
+            performer: [
+              { '@type': 'MusicGroup', name: 'Ark & Grum' },
+              { '@type': 'Person', name: 'Laura Schultz' },
+              { '@type': 'Person', name: 'Colin Scharf' }
+            ]
+          },
+          {
+            '@type': 'Event',
+            name: 'Primary Election Day',
+            description:
+              'Minnesota primary election day. Check your voter registration and find your polling place to vote in the Mankato mayoral primary.',
+            startDate: '2026-08-11',
+            eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+            eventStatus: 'https://schema.org/EventScheduled',
+            url: 'https://voteforjulia.com/events',
+            location: {
+              '@type': 'Place',
+              name: 'Mankato, Minnesota',
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: 'Mankato',
+                addressRegion: 'MN',
+                addressCountry: 'US'
+              }
+            }
           }
         ]
       })
@@ -102,7 +154,7 @@ useHead({
     },
     {
       name: 'twitter:card',
-      content: 'summary'
+      content: 'summary_large_image'
     },
     {
       name: 'twitter:title',
