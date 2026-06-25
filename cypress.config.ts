@@ -2,13 +2,18 @@ import { readFileSync } from 'fs';
 import { defineConfig } from 'cypress';
 import { google } from 'googleapis';
 
-type CypressEnv = Record<string, string | undefined>;
+type CypressEnv = Record<string, unknown>;
 
 function getCredentials(env: CypressEnv): object {
   const json = env.GOOGLE_SERVICE_ACCOUNT_JSON ?? process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (json) return JSON.parse(json) as object;
+  if (json) {
+    if (typeof json === 'object') return json;
+    if (typeof json === 'string') return JSON.parse(json) as object;
+  }
 
-  const file = env.GOOGLE_SERVICE_ACCOUNT_FILE ?? process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
+  const file =
+    (env.GOOGLE_SERVICE_ACCOUNT_FILE as string | undefined) ??
+    process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
   if (file) return JSON.parse(readFileSync(file, 'utf8')) as object;
 
   throw new Error(
@@ -19,7 +24,7 @@ function getCredentials(env: CypressEnv): object {
 
 function getSpreadsheetId(env: CypressEnv): string {
   const id = env.GOOGLE_SHEETS_SPREADSHEET_ID ?? process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  if (!id)
+  if (!id || typeof id !== 'string')
     throw new Error(
       'GOOGLE_SHEETS_SPREADSHEET_ID is not set in cypress.env.json or as an env var.'
     );
