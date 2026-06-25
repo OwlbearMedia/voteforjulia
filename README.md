@@ -14,6 +14,7 @@ The official campaign website for Julia Hamann, candidate for Mayor of Mankato.
 - Backend API: Flask (Python)
 - Monitoring: New Relic Browser Agent + Google Analytics (via `gtag`)
 - Frontend tests: Vitest + @vue/test-utils + jsdom
+- E2E tests: Cypress
 - CI/CD: GitHub Actions + SCP deploy
 
 ## Prerequisites
@@ -145,6 +146,34 @@ Tests are organized in a dedicated directory:
 - tests/unit/analytics.spec.ts
 - tests/unit/api.spec.ts
 - tests/unit/newrelic.spec.ts
+
+### E2E Tests (Cypress)
+
+Runs the volunteer form end-to-end against the staging site, submits a real form, verifies the entry was written to Google Sheets, and deletes it.
+
+Required environment variables (add to `cypress.env.json` locally, or set as environment variables):
+
+- `GOOGLE_SHEETS_SPREADSHEET_ID` — the spreadsheet ID from the sheet URL
+- `GOOGLE_SERVICE_ACCOUNT_JSON` — full JSON contents of the service account key file
+- `GOOGLE_SHEETS_WORKSHEET` (optional) — worksheet name, defaults to `Sheet1`
+
+Run in headless mode against the staging site:
+
+```bash
+pnpm test:e2e
+```
+
+Open the Cypress app for interactive debugging:
+
+```bash
+pnpm test:e2e:open
+```
+
+To run against a local dev server instead:
+
+```bash
+CYPRESS_BASE_URL=http://localhost:5173 pnpm test:e2e
+```
 
 ### Python API Tests
 

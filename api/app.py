@@ -176,12 +176,15 @@ def send_email():
             logger.error("SMTP refused recipients: %s", ", ".join(refused.keys()))
             return jsonify({'error': 'Unable to deliver email to recipient.'}), 502
 
-        confirmation_refused = send_confirmation_email(email_config, submission)
-        if confirmation_refused:
-            logger.warning(
-                "Confirmation email refused for %s",
-                ", ".join(confirmation_refused.keys()),
-            )
+        try:
+            confirmation_refused = send_confirmation_email(email_config, submission)
+            if confirmation_refused:
+                logger.warning(
+                    "Confirmation email refused for %s",
+                    ", ".join(confirmation_refused.keys()),
+                )
+        except smtplib.SMTPException:
+            logger.warning("Failed to send confirmation email to %s", submission.email)
 
         logger.info(
             "Email accepted by SMTP for %d recipient(s)",
