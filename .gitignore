@@ -16,6 +16,8 @@ dist-ssr
 coverage
 
 cypress.env.json
+cypress/screenshots
+cypress/videos
 
 # Editor directories and files
 .vscode
