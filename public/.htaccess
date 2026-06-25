@@ -43,6 +43,56 @@ FileETag MTime Size
 </IfModule>
 
 <IfModule mod_headers.c>
+	# --- Security headers ---
+
+	# Prevent MIME-type sniffing.
+	Header always set X-Content-Type-Options "nosniff"
+
+	# Prevent cross-origin windows from retaining a reference to this page.
+	Header always set Cross-Origin-Opener-Policy "same-origin"
+
+	# Tell browsers to only connect over HTTPS for the next year, including subdomains.
+	Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# Clickjacking protection (frame-ancestors in CSP covers modern browsers;
+	# X-Frame-Options covers older ones).
+	Header always set X-Frame-Options "DENY"
+
+	# Only send the origin as the referrer when crossing to a different origin,
+	# and never over plain HTTP.
+	Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+	# Disable browser features this site does not use.
+	Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(self https://donorbox.org)"
+
+	# Content Security Policy.
+	#
+	# script-src: self (bundled app) + GA4 loader + Donorbox widget.
+	#   No 'unsafe-inline' needed — vue-gtag and New Relic are fully bundled; only
+	#   external <script src="..."> tags are injected at runtime.
+	#
+	# style-src: 'unsafe-inline' is required because the Vite build inlines all CSS
+	#   into <style> blocks. CSS injection is far less dangerous than script injection,
+	#   so this trade-off is acceptable.
+	#
+	# frame-src: Donorbox renders its donation form inside an iframe on /donate.
+	#
+	# worker-src: New Relic browser agent spawns blob: workers for some features.
+	Header always set Content-Security-Policy "\
+default-src 'self'; \
+script-src 'self' https://www.googletagmanager.com https://donorbox.org https://js.stripe.com https://cdn.jsdelivr.net https://jspm.dev; \
+style-src 'self' 'unsafe-inline' https://donorbox.org https://rsms.me; \
+img-src 'self' data: https://ik.imagekit.io https://www.google-analytics.com https://donorbox.org; \
+font-src 'self' https://rsms.me; \
+connect-src 'self' https://api.voteforjulia.com https://test-api.voteforjulia.com https://bam.nr-data.net https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com https://donorbox.org https://api.stripe.com https://m.stripe.com https://m.stripe.network https://q.stripe.com https://jspm.dev; \
+frame-src https://donorbox.org https://js.stripe.com; \
+worker-src 'self' blob:; \
+frame-ancestors 'none'; \
+object-src 'none'; \
+base-uri 'self'"
+
+	# --- Cache-control headers ---
+
 	# HTML should always be revalidated so navigation picks up new deploys.
 	<FilesMatch "\.(?:html)$">
 		Header set Cache-Control "no-cache, max-age=0, must-revalidate"

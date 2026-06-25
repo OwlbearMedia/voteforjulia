@@ -52,6 +52,7 @@ async function scrollToSuccessMessage(): Promise<void> {
   const scrollTop = Math.max(targetTop - headerHeight - 8, 0);
 
   window.scrollTo({ top: scrollTop, behavior: 'smooth' });
+  successElement.focus();
   hasScrolledToSuccess.value = true;
 }
 
@@ -81,6 +82,7 @@ watch(successMessageRef, (element) => {
       ref="successMessageRef"
       class="contact-form"
       aria-live="polite"
+      tabindex="-1"
     >
       <h3>Thanks so much for your support, {{ firstName.trim() || 'friend' }}!</h3>
       <p>
@@ -110,11 +112,19 @@ watch(successMessageRef, (element) => {
             type="text"
             placeholder="First Name *"
             :class="{ 'input-error': firstNameError }"
+            :aria-invalid="!!firstNameError || undefined"
+            :aria-describedby="firstNameError ? 'contact-first-name-error' : undefined"
             autocomplete="given-name"
             required
             @blur="validateFirstNameField"
           />
-          <p v-if="firstNameError" class="form-error-message" role="alert" aria-live="polite">
+          <p
+            v-if="firstNameError"
+            id="contact-first-name-error"
+            class="form-error-message"
+            role="alert"
+            aria-live="polite"
+          >
             {{ firstNameError }}
           </p>
         </div>
@@ -127,10 +137,18 @@ watch(successMessageRef, (element) => {
             name="lastName"
             type="text"
             placeholder="Last Name"
+            :aria-invalid="!!lastNameError || undefined"
+            :aria-describedby="lastNameError ? 'contact-last-name-error' : undefined"
             autocomplete="family-name"
             @blur="validateLastNameField"
           />
-          <p v-if="lastNameError" class="form-error-message" role="alert" aria-live="polite">
+          <p
+            v-if="lastNameError"
+            id="contact-last-name-error"
+            class="form-error-message"
+            role="alert"
+            aria-live="polite"
+          >
             {{ lastNameError }}
           </p>
         </div>
@@ -145,12 +163,20 @@ watch(successMessageRef, (element) => {
         name="email"
         type="email"
         :class="{ 'input-error': emailError }"
+        :aria-invalid="!!emailError || undefined"
+        :aria-describedby="emailError ? 'contact-email-error' : undefined"
         placeholder="Email *"
         autocomplete="email"
         required
         @blur="validateEmailField"
       />
-      <p v-if="emailError" class="form-error-message" role="alert" aria-live="polite">
+      <p
+        v-if="emailError"
+        id="contact-email-error"
+        class="form-error-message"
+        role="alert"
+        aria-live="polite"
+      >
         {{ emailError }}
       </p>
 
@@ -161,10 +187,18 @@ watch(successMessageRef, (element) => {
         name="phone"
         type="tel"
         placeholder="Phone"
+        :aria-invalid="!!phoneError || undefined"
+        :aria-describedby="phoneError ? 'contact-phone-error' : undefined"
         autocomplete="tel"
         @blur="validatePhoneField"
       />
-      <p v-if="phoneError" class="form-error-message" role="alert" aria-live="polite">
+      <p
+        v-if="phoneError"
+        id="contact-phone-error"
+        class="form-error-message"
+        role="alert"
+        aria-live="polite"
+      >
         {{ phoneError }}
       </p>
 
@@ -238,10 +272,18 @@ watch(successMessageRef, (element) => {
         v-model="message"
         name="message"
         placeholder="How would you like to help? Tell us about your other special skills or ideas!"
+        :aria-invalid="!!messageError || undefined"
+        :aria-describedby="messageError ? 'contact-message-error' : undefined"
         rows="5"
         @blur="validateMessageField"
       ></textarea>
-      <p v-if="messageError" class="form-error-message" role="alert" aria-live="polite">
+      <p
+        v-if="messageError"
+        id="contact-message-error"
+        class="form-error-message"
+        role="alert"
+        aria-live="polite"
+      >
         {{ messageError }}
       </p>
 
