@@ -45,6 +45,7 @@ export default defineConfig({
     //   CYPRESS_BASE_URL=http://localhost:5173 pnpm test:e2e
     baseUrl: 'https://test.voteforjulia.com',
     allowCypressEnv: false,
+    experimentalModifyObstructiveThirdPartyCode: true,
     defaultCommandTimeout: 10000,
     setupNodeEvents(on, config) {
       const env = config.env as CypressEnv;

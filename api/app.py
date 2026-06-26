@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 import logging
 import smtplib
+import threading
 from time import monotonic
 
 from flask import Flask, jsonify, request
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 _RATE_LIMIT_WINDOW_SECONDS = max(int(env('RATE_LIMIT_WINDOW_SECONDS', '60')), 1)
 _RATE_LIMIT_MAX_REQUESTS = max(int(env('RATE_LIMIT_MAX_REQUESTS', '5')), 1)
 _RATE_LIMIT_BUCKETS: dict[str, deque[float]] = {}
+_RATE_LIMIT_LOCK = threading.Lock()
 
 _CORS_ALLOWED_ORIGINS = {
     item.strip()
@@ -110,18 +112,27 @@ def _rate_limit_key() -> str:
 def _consume_rate_limit() -> int | None:
     now = monotonic()
     key = _rate_limit_key()
-    bucket = _RATE_LIMIT_BUCKETS.setdefault(key, deque())
     cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
 
-    while bucket and bucket[0] <= cutoff:
-        bucket.popleft()
+    with _RATE_LIMIT_LOCK:
+        bucket = _RATE_LIMIT_BUCKETS.get(key)
 
-    if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
-        retry_after = max(1, int(bucket[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
-        return retry_after
+        if bucket is not None:
+            while bucket and bucket[0] <= cutoff:
+                bucket.popleft()
+            if not bucket:
+                del _RATE_LIMIT_BUCKETS[key]
+                bucket = None
 
-    bucket.append(now)
-    return None
+        if bucket is not None and len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
+            retry_after = max(1, int(bucket[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
+            return retry_after
+
+        if bucket is None:
+            _RATE_LIMIT_BUCKETS[key] = deque([now])
+        else:
+            bucket.append(now)
+        return None
 
 
 @app.route('/health', methods=['GET'])
