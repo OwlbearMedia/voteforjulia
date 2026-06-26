@@ -47,6 +47,10 @@ useHead({
               'Government transparency',
               'Affordable housing',
               'Community-led safety'
+            ],
+            sameAs: [
+              'https://www.facebook.com/profile.php?id=61590411090366',
+              'https://www.instagram.com/voteforjuliahamann/'
             ]
           },
           {
@@ -118,6 +122,10 @@ useHead({
     {
       property: 'og:type',
       content: 'website'
+    },
+    {
+      property: 'og:locale',
+      content: 'en_US'
     },
     {
       property: 'og:site_name',
