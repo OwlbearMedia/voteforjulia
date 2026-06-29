@@ -198,7 +198,7 @@ jobs:
           cache: pnpm
 
       - name: Run Cypress e2e tests
-        uses: cypress-io/github-action@v6
+        uses: cypress-io/github-action@v7
         with:
           install-command: pnpm install --frozen-lockfile
           browser: chrome
