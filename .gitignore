@@ -15,6 +15,7 @@ dist-ssr
 .vite
 coverage
 CLAUDE.md
+.claude
 
 cypress.env.json
 cypress/screenshots

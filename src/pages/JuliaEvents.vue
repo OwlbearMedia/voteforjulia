@@ -181,7 +181,39 @@ useHead({
   <section id="events">
     <h2>Upcoming Events</h2>
 
-    <p>Check out our latest events below:</p>
+    <p>Check out upcoming events below:</p>
+
+    <div class="event">
+      <div class="event-heading">
+        <h3>Primary Election Day!</h3>
+        <a
+          class="event-date"
+          href="https://www.sos.mn.gov/elections-voting/election-day-voting"
+          target="_blank"
+          rel="noopener noreferrer"
+          ><IconCalendar /> August 11, 2026</a
+        >
+      </div>
+
+      <hr />
+
+      <p>
+        Check your voter registration:
+        <a href="https://www.sos.mn.gov/elections-voting/register-to-vote/" target="_blank"
+          >https://www.sos.mn.gov/elections-voting/register-to-vote/</a
+        >
+      </p>
+      <p>
+        Find your polling place:
+        <a href="https://www.sos.mn.gov/elections-voting/election-day-voting" target="_blank"
+          >https://www.sos.mn.gov/elections-voting/election-day-voting</a
+        >
+      </p>
+    </div>
+  </section>
+
+  <section id="past-events">
+    <h2>Past Events</h2>
 
     <div class="event">
       <div class="event-heading">
@@ -268,34 +300,6 @@ useHead({
           >.
         </p>
       </div>
-    </div>
-
-    <div class="event">
-      <div class="event-heading">
-        <h3>Primary Election Day!</h3>
-        <a
-          class="event-date"
-          href="https://www.sos.mn.gov/elections-voting/election-day-voting"
-          target="_blank"
-          rel="noopener noreferrer"
-          ><IconCalendar /> August 11, 2026</a
-        >
-      </div>
-
-      <hr />
-
-      <p>
-        Check your voter registration:
-        <a href="https://www.sos.mn.gov/elections-voting/register-to-vote/" target="_blank"
-          >https://www.sos.mn.gov/elections-voting/register-to-vote/</a
-        >
-      </p>
-      <p>
-        Find your polling place:
-        <a href="https://www.sos.mn.gov/elections-voting/election-day-voting" target="_blank"
-          >https://www.sos.mn.gov/elections-voting/election-day-voting</a
-        >
-      </p>
     </div>
   </section>
 </template>
