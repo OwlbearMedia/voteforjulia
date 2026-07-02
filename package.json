@@ -8,6 +8,7 @@
     "url": "git+https://github.com/OwlbearMedia/voteforjulia.git"
   },
   "version": "1.0.0",
+  "packageManager": "pnpm@11.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
