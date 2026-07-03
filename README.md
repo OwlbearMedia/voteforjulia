@@ -212,9 +212,10 @@ The CI badge and Codecov coverage reflect the latest run on `main`.
 
 - Trigger: CI workflow completes successfully on a pull request branch (not main). Dependabot PRs are skipped as they lack deploy secrets.
 - File: `.github/workflows/deploy-test.yml`
-- Jobs — **Deploy test frontend** and **Deploy test API** run in parallel, both checking out the exact commit CI verified:
-  - **Deploy test frontend** — builds with `VITE_API_BASE_URL=https://test-api.voteforjulia.com` and `SOURCEMAP_MODE=true`, injects noindex/nofollow tags, and uploads to `./public_html_test`
+- Jobs — a `gate` job checks the commit is still the branch HEAD and has an open PR, then **frontend** and **API** deploy chains run in parallel, each split into discrete jobs linked with `needs:` so a failure downstream doesn't force re-running the expensive steps upstream:
+  - **Build test frontend → Deploy test frontend** — the build job builds with `VITE_API_BASE_URL=https://test-api.voteforjulia.com` and `SOURCEMAP_MODE=true`, injects noindex/nofollow tags, and uploads the `dist` output as a build artifact; the deploy job downloads that artifact and uploads it to `./public_html_test`. Rerunning just the deploy job (e.g. after a flaky SCP upload) reuses the existing build instead of rebuilding.
   - **Deploy test API** — uploads to `./api_test` and restarts Passenger
+  - **Cypress e2e tests** — runs against the test site once both deploy jobs succeed
 
 The test site always reflects the latest PR that passed CI. Since there is one test environment, concurrent PR deploys are serialized by a concurrency group — the most recently passing PR wins.
 
@@ -222,16 +223,18 @@ The test site always reflects the latest PR that passed CI. Since there is one t
 
 - Trigger: CI workflow completes successfully on `main`. This fires after every merged PR — CI is the single test gate, so tests are not re-run here.
 - File: `.github/workflows/deploy-production.yml`
-- Jobs — **Deploy frontend** and **Deploy Python API** run in parallel:
-  - **Deploy frontend** — checks out the exact commit CI verified, builds with `pnpm run build:deploy` and `VITE_API_BASE_URL=https://api.voteforjulia.com` (builds, uploads source maps to New Relic, then strips them from `dist`), uploads `dist` to a clean `./public_html_next` staging directory, atomically swaps it into the live document root (`mv public_html public_html_prev && mv public_html_next public_html`), then verifies the site is responding.
-  - **Deploy Python API** — checks out the same commit, uploads `api` to `./api`, restarts Passenger, then verifies the API is responding.
+- Jobs — the frontend and API deploy chains run in parallel, each split into discrete jobs linked with `needs:` so a failed verification step can be rerun on its own instead of rebuilding and re-uploading everything:
+  - **Build frontend → Deploy frontend → Verify frontend** — the build job checks out the exact commit CI verified and builds with `pnpm run build:deploy` and `VITE_API_BASE_URL=https://api.voteforjulia.com` (builds, uploads source maps to New Relic, then strips them from `dist`), uploading `dist` as a build artifact. The deploy job downloads that artifact, uploads it to a clean `./public_html_next` staging directory, and atomically swaps it into the live document root (`mv public_html public_html_prev && mv public_html_next public_html`). The verify job then checks the site is responding — if only this step fails (e.g. a transient network blip), rerunning it alone re-checks the already-deployed site without rebuilding or re-uploading anything.
+  - **Deploy Python API → Verify Python API** — the deploy job checks out the same commit, uploads `api` to `./api`, and restarts Passenger; the verify job then checks the API is responding, independently rerunnable for the same reason as above.
 
 The frontend swap is atomic: the new build is staged in full before a sub-second
 directory rename promotes it, so visitors never see a mix of old and new files, and
 files removed in the new build no longer linger. The previous build is retained at
 `./public_html_prev` for one-command rollback (`mv public_html public_html_broken && mv public_html_prev public_html`).
 
-If tests fail in either workflow, the job stops before any deployment steps.
+If tests fail in either workflow, the job stops before any deployment steps. When a
+downstream job (e.g. a verify job) fails, use GitHub Actions' "Re-run failed jobs" to
+retry only that job and its dependents, rather than "Re-run all jobs".
 
 ### Required GitHub Secrets
 

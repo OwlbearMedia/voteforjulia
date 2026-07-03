@@ -57,12 +57,11 @@ jobs:
           fi
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
-  deploy-test-frontend:
-    name: Deploy frontend to test environment
+  build-test-frontend:
+    name: Build frontend for test environment
     needs: gate
     if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
-    environment: test
 
     steps:
       - name: Checkout repository
@@ -105,6 +104,27 @@ jobs:
               sed -i 's#</head>#  <meta name="robots" content="noindex,nofollow,noarchive" />\n</head>#I' "$file"
             fi
           done
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-frontend-dist
+          path: dist
+          include-hidden-files: true
+          retention-days: 1
+
+  deploy-test-frontend:
+    name: Deploy frontend to test environment
+    needs: build-test-frontend
+    runs-on: ubuntu-latest
+    environment: test
+
+    steps:
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: test-frontend-dist
+          path: dist
 
       - name: Upload dist contents to test server root
         uses: appleboy/scp-action@v0.1.7
