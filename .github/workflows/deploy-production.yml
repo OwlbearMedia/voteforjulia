@@ -16,14 +16,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy-frontend:
-    name: Deploy frontend
+  build-frontend:
+    name: Build frontend
     # Only deploy when CI passed — a failed or cancelled CI run should not deploy.
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://voteforjulia.com
 
     steps:
       - name: Checkout repository
@@ -51,6 +48,29 @@ jobs:
           NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
           PUBLIC_BASE_URL: https://voteforjulia.com
         run: pnpm run build:deploy
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+          include-hidden-files: true
+          retention-days: 1
+
+  deploy-frontend:
+    name: Deploy frontend
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://voteforjulia.com
+
+    steps:
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
 
       - name: Prepare clean staging directory on server
         uses: appleboy/ssh-action@v1.2.5
@@ -117,6 +137,12 @@ jobs:
             mv ./public_html_next ./public_html
             echo "Swapped new build into ./public_html (previous build kept at ./public_html_prev)."
 
+  verify-frontend:
+    name: Verify frontend
+    needs: deploy-frontend
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Verify frontend is responding
         run: curl --fail --max-time 15 --retry 3 --retry-delay 5 https://voteforjulia.com
 
@@ -160,5 +186,11 @@ jobs:
             mkdir -p ./api/tmp
             touch ./api/tmp/restart.txt
 
+  verify-api:
+    name: Verify Python API
+    needs: deploy-api
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Verify API is responding
         run: curl --fail --max-time 15 --retry 5 --retry-delay 5 https://api.voteforjulia.com/health
