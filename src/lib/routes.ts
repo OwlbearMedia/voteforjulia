@@ -1,10 +1,16 @@
 import type { RouteRecordRaw } from 'vue-router';
+import { appRoutePaths } from './routePaths';
 
-export const routes: RouteRecordRaw[] = [
-  { path: '/', component: () => import('../pages/JuliaHome.vue') },
-  { path: '/meet-julia', component: () => import('../pages/JuliaAbout.vue') },
-  { path: '/volunteer', component: () => import('../pages/JuliaVolunteer.vue') },
-  { path: '/secret-recipe', component: () => import('../pages/JuliaSecretRecipe.vue') },
-  { path: '/donate', component: () => import('../pages/JuliaDonate.vue') },
-  { path: '/events', component: () => import('../pages/JuliaEvents.vue') }
-];
+const pageImports: Record<(typeof appRoutePaths)[number], () => Promise<unknown>> = {
+  '/': () => import('../pages/JuliaHome.vue'),
+  '/meet-julia': () => import('../pages/JuliaAbout.vue'),
+  '/volunteer': () => import('../pages/JuliaVolunteer.vue'),
+  '/secret-recipe': () => import('../pages/JuliaSecretRecipe.vue'),
+  '/donate': () => import('../pages/JuliaDonate.vue'),
+  '/events': () => import('../pages/JuliaEvents.vue')
+};
+
+export const routes: RouteRecordRaw[] = appRoutePaths.map((path) => ({
+  path,
+  component: pageImports[path]
+}));

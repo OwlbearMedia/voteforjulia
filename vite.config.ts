@@ -3,8 +3,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-
-const SITE_URL = 'https://voteforjulia.com';
+import { buildSitemapXml, resolveSitemapRoutes } from './sitemap.build';
 
 // Source map mode. Defaults to 'hidden': maps are generated without a
 // sourceMappingURL comment (prod uploads them to New Relic, then strips them).
@@ -24,20 +23,6 @@ function resolveSourcemapMode(): 'hidden' | boolean {
 const SOURCEMAP_MODE = resolveSourcemapMode();
 
 let builtRoutePaths: string[] = [];
-
-function buildSitemapXml(routePaths: string[]): string {
-  const today = new Date().toISOString().split('T')[0];
-  const urls = routePaths
-    .map((route) => {
-      const loc = route === '/' ? `${SITE_URL}/` : `${SITE_URL}${route}`;
-      const priority = route === '/' ? '1.0' : '0.9';
-
-      return `  <url>\n    <loc>${loc}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>${priority}</priority>\n  </url>`;
-    })
-    .join('\n');
-
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
-}
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -109,11 +94,7 @@ export default defineConfig({
         })
       );
 
-      const sitemapRoutes =
-        builtRoutePaths.length > 0
-          ? builtRoutePaths
-          : ['/', '/meet-julia', '/volunteer', '/secret-recipe', '/donate'];
-      const sitemapXml = buildSitemapXml(sitemapRoutes);
+      const sitemapXml = buildSitemapXml(resolveSitemapRoutes(builtRoutePaths));
       await writeFile(resolve(distDir, 'sitemap.xml'), sitemapXml, 'utf8');
     }
   }
