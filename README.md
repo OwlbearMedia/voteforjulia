@@ -118,6 +118,11 @@ Environment variables read by the upload script:
 - `PUBLIC_BASE_URL` (optional) — public origin the JS is served from; defaults to `https://voteforjulia.com`.
 - `DIST_DIR` (optional) — build output directory; defaults to `dist`.
 
+Upload failures (missing API key, a New Relic rejection, network errors, etc.)
+are logged as warnings and do not fail the script or the build — sourcemap
+upload is best-effort observability, not a build requirement. Check the deploy
+logs for `::warning::` lines to see whether any maps failed to upload.
+
 ## Testing
 
 ### Frontend Unit Tests (Vitest)

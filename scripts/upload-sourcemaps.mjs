@@ -26,8 +26,8 @@ const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? 'https://voteforjulia.co
 const DIST_DIR = resolve(process.cwd(), process.env.DIST_DIR ?? 'dist');
 
 if (!API_KEY) {
-  console.error('Error: NEW_RELIC_API_KEY is not set. Skipping source map upload.');
-  process.exit(1);
+  console.warn('NEW_RELIC_API_KEY is not set. Skipping source map upload.');
+  process.exit(0);
 }
 
 // Minimal Base64-VLQ codec needed to remap source indices after deduplication.
@@ -160,6 +160,7 @@ if (sourcemapPaths.length === 0) {
 
 let uploaded = 0;
 let skipped = 0;
+let failed = 0;
 
 for (const sourcemapPath of sourcemapPaths) {
   // Map dist/assets/foo.js.map -> https://base/assets/foo.js
@@ -204,13 +205,16 @@ for (const sourcemapPath of sourcemapPaths) {
       console.warn(`Skipping ${relPath}: source map already exists in New Relic (409 Conflict).`);
       continue;
     }
+    // Sourcemap upload is best-effort observability tooling, not a build
+    // requirement — log a concise reason and move on instead of failing
+    // the whole build over a New Relic-side issue (e.g. permissions).
+    failed += 1;
     const nrMessage = error?.response?.body?.message ?? error?.response?.text;
-    throw new Error(
-      nrMessage
-        ? `New Relic rejected ${relPath}: ${nrMessage}`
-        : `Failed to upload ${relPath}: ${error?.message ?? String(error)}`,
-      { cause: error }
-    );
+    const reason = nrMessage
+      ? `New Relic rejected ${relPath} (${error?.status}): ${nrMessage}`
+      : `Failed to upload ${relPath}: ${error?.message ?? String(error)}`;
+    console.error(`::warning::${reason}`);
+    continue;
   }
 
   uploaded += 1;
@@ -220,5 +224,12 @@ for (const sourcemapPath of sourcemapPaths) {
 console.log(
   `Done. Uploaded ${uploaded} source map(s)` +
     (skipped > 0 ? `, skipped ${skipped} already present` : '') +
+    (failed > 0 ? `, failed to upload ${failed}` : '') +
     ` for New Relic app ${APPLICATION_ID}.`
 );
+
+if (failed > 0) {
+  console.warn(
+    `::warning::${failed} source map(s) failed to upload to New Relic — affected stack traces won't be symbolicated, but the build is not blocked.`
+  );
+}
