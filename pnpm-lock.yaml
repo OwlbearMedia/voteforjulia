@@ -12,8 +12,8 @@ importers:
         specifier: ^4.0.1
         version: 4.0.1(vue@3.5.39(typescript@6.0.3))
       '@newrelic/browser-agent':
-        specifier: ^1.315.0
-        version: 1.316.0
+        specifier: ^1.317.0
+        version: 1.317.0
       vue:
         specifier: ^3.5.39
         version: 3.5.39(typescript@6.0.3)
@@ -331,8 +331,8 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
-  '@newrelic/browser-agent@1.316.0':
-    resolution: {integrity: sha512-tEylXfM5kNXpJAD+ckC7uX759/liWw7d9eEqXN2nO+r/PVCVAYoFwjRFzkYwhtcu6jMaI+La1aDaurgHPzprmg==}
+  '@newrelic/browser-agent@1.317.0':
+    resolution: {integrity: sha512-Hk3gnci9R0tTnskvLbM+qAQxCFTYHhJDHyYTGLMVfkwKQzzlzCeDrFroptW3sLBK3hZSqDl8QT4wQ+ChHEwWgQ==}
     engines: {node: '>=12.17.0 < 13.0.0 || >=13.7.0'}
 
   '@newrelic/publish-sourcemap@5.1.4':
@@ -351,8 +351,8 @@ packages:
   '@newrelic/rrweb-utils@1.1.2':
     resolution: {integrity: sha512-L1X22OJbJCExp3IEClx6Nh1+sw3O+t79oAgGlBLlkDV/saFSbMpg09K2NLIWpkSxZs7yzouvRSeHh8QiDlA9bg==}
 
-  '@newrelic/rrweb@1.1.0':
-    resolution: {integrity: sha512-3QmDsDf0ZTi0upNiSjTKSqmPF7Y/WIm9NvfEYQnqejfowIuV4tgDBt0FePSpgkT0usFGDigXpAGE+VZQi5OqEg==}
+  '@newrelic/rrweb@1.1.2':
+    resolution: {integrity: sha512-OU66VA1PjC9UsFo7NzHgyp2OZIt4QHidbl45tAAUf+JQESwiLF6WvzJvajju7374D7TgZzV+L9cq3f+sIxKFXQ==}
 
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
@@ -3234,9 +3234,9 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@newrelic/browser-agent@1.316.0':
+  '@newrelic/browser-agent@1.317.0':
     dependencies:
-      '@newrelic/rrweb': 1.1.0
+      '@newrelic/rrweb': 1.1.2
       fflate: 0.8.2
       web-vitals: 4.2.4
 
@@ -3259,7 +3259,7 @@ snapshots:
 
   '@newrelic/rrweb-utils@1.1.2': {}
 
-  '@newrelic/rrweb@1.1.0':
+  '@newrelic/rrweb@1.1.2':
     dependencies:
       '@newrelic/rrdom': 1.1.2
       '@newrelic/rrweb-snapshot': 1.1.2
