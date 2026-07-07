@@ -107,6 +107,49 @@ export function trackVolunteerSubmissionError(
   });
 }
 
+export function trackYardSignFormSubmit(status: 'success' | 'error'): void {
+  const windowObject = getWindowObject();
+  trackGaEvent('yard_sign_form_submit', {
+    form_id: 'yard-sign-form',
+    form_location: windowObject ? windowObject.location.pathname : '',
+    submission_status: status
+  });
+}
+
+export function trackYardSignRequestBody(requestBody: Record<string, string>): void {
+  const windowObject = getWindowObject();
+  if (!windowObject?.newrelic || typeof windowObject.newrelic.addPageAction !== 'function') {
+    return;
+  }
+
+  windowObject.newrelic.addPageAction('yard_sign_form_request', {
+    form_id: 'yard-sign-form',
+    form_location: windowObject.location.pathname,
+    request_body: JSON.stringify(requestBody)
+  });
+}
+
+export function trackYardSignSubmissionError(
+  error: unknown,
+  requestBody: Record<string, string>
+): void {
+  const windowObject = getWindowObject();
+  if (!windowObject?.newrelic || typeof windowObject.newrelic.noticeError !== 'function') {
+    return;
+  }
+
+  let normalizedError: Error | string = 'Yard sign form submission failed';
+  if (error instanceof Error || typeof error === 'string') {
+    normalizedError = error;
+  }
+
+  windowObject.newrelic.noticeError(normalizedError, {
+    form_id: 'yard-sign-form',
+    form_location: windowObject.location.pathname,
+    request_body: JSON.stringify(requestBody)
+  });
+}
+
 export function trackPageView(path: string): void {
   const windowObject = getWindowObject();
   if (!windowObject) {

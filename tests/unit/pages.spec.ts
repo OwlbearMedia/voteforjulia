@@ -7,6 +7,7 @@ import JuliaHome from '../../src/pages/JuliaHome.vue';
 import JuliaSecretRecipe from '../../src/pages/JuliaSecretRecipe.vue';
 import JuliaEvents from '../../src/pages/JuliaEvents.vue';
 import JuliaVolunteer from '../../src/pages/JuliaVolunteer.vue';
+import JuliaYardSign from '../../src/pages/JuliaYardSign.vue';
 
 vi.mock('@unhead/vue', () => ({
   useHead: vi.fn()
@@ -88,6 +89,7 @@ describe('Page components', () => {
     const wrapper = mount(JuliaVolunteer, {
       global: {
         stubs: {
+          RouterLink: RouterLinkStub,
           JuliaContactForm: true
         }
       }
@@ -96,6 +98,7 @@ describe('Page components', () => {
     expect(wrapper.text()).toContain(
       'Join the campaign team to help with outreach, events, and voter engagement.'
     );
+    expect(wrapper.text()).toContain('Request a yard sign');
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Volunteer | Julia Hamann for Mankato Mayor',
@@ -103,6 +106,31 @@ describe('Page components', () => {
           expect.objectContaining({
             rel: 'canonical',
             href: 'https://voteforjulia.com/volunteer'
+          })
+        ])
+      })
+    );
+  });
+
+  it('JuliaYardSign renders yard sign form section and configures page SEO metadata', () => {
+    const wrapper = mount(JuliaYardSign, {
+      global: {
+        stubs: {
+          JuliaYardSignForm: true
+        }
+      }
+    });
+
+    expect(wrapper.text()).toContain(
+      'Show your support and help spread the word by putting up a yard sign!'
+    );
+    expect(useHeadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Yard Sign | Julia Hamann for Mankato Mayor',
+        link: expect.arrayContaining([
+          expect.objectContaining({
+            rel: 'canonical',
+            href: 'https://voteforjulia.com/yard-signs'
           })
         ])
       })

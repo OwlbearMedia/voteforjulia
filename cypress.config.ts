@@ -50,12 +50,19 @@ export default defineConfig({
       const env = config.env as CypressEnv;
 
       on('task', {
-        async findSheetRow({ email }: { email: string }): Promise<{
+        async findSheetRow({
+          email,
+          worksheet: worksheetOverride
+        }: {
+          email: string;
+          worksheet?: string;
+        }): Promise<{
           rowIndex: number;
           row: string[];
         } | null> {
           const spreadsheetId = getSpreadsheetId(env);
           const worksheet =
+            worksheetOverride ??
             (env.GOOGLE_SHEETS_WORKSHEET as string | undefined) ??
             process.env.GOOGLE_SHEETS_WORKSHEET;
           const sheets = buildSheetsClient(env);
@@ -66,16 +73,24 @@ export default defineConfig({
           });
 
           const rows = response.data.values ?? [];
-          // Column layout: [timestamp, firstName, lastName, email, phone, helpWays, message]
+          // Column layout (contact form): [timestamp, firstName, lastName, email, phone, helpWays, message]
+          // Column layout (yard sign): [timestamp, firstName, lastName, email, phone, address]
           const rowIndex = rows.findIndex((row) => row[3] === email);
           if (rowIndex < 0) return null;
 
           return { rowIndex, row: rows[rowIndex] as string[] };
         },
 
-        async deleteSheetRow({ rowIndex }: { rowIndex: number }): Promise<true> {
+        async deleteSheetRow({
+          rowIndex,
+          worksheet: worksheetOverride
+        }: {
+          rowIndex: number;
+          worksheet?: string;
+        }): Promise<true> {
           const spreadsheetId = getSpreadsheetId(env);
           const worksheet =
+            worksheetOverride ??
             (env.GOOGLE_SHEETS_WORKSHEET as string | undefined) ??
             process.env.GOOGLE_SHEETS_WORKSHEET;
           const sheets = buildSheetsClient(env);

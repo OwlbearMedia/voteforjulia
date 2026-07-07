@@ -1,19 +1,18 @@
 <script setup lang="ts">
 import { useHead } from '@unhead/vue';
 import { Image } from '@imagekit/vue';
-import { RouterLink } from 'vue-router';
-import JuliaContactForm from '../components/JuliaContactForm.vue';
+import JuliaYardSignForm from '../components/JuliaYardSignForm.vue';
 
 defineOptions({
-  name: 'JuliaVolunteer'
+  name: 'JuliaYardSign'
 });
 
 useHead({
-  title: 'Volunteer | Julia Hamann for Mankato Mayor',
+  title: 'Yard Sign | Julia Hamann for Mankato Mayor',
   link: [
     {
       rel: 'canonical',
-      href: 'https://voteforjulia.com/volunteer'
+      href: 'https://voteforjulia.com/yard-signs'
     }
   ],
   script: [
@@ -61,8 +60,7 @@ useHead({
   meta: [
     {
       name: 'description',
-      content:
-        'Volunteer for the Julia Hamann campaign to help build a more just, community-led Mankato.'
+      content: 'Request a yard sign to show your support for Julia Hamann for Mankato Mayor.'
     },
     {
       name: 'robots',
@@ -78,16 +76,15 @@ useHead({
     },
     {
       property: 'og:title',
-      content: 'Volunteer | Julia Hamann for Mankato Mayor'
+      content: 'Yard Sign | Julia Hamann for Mankato Mayor'
     },
     {
       property: 'og:description',
-      content:
-        'Volunteer for the Julia Hamann campaign to help build a more just, community-led Mankato.'
+      content: 'Request a yard sign to show your support for Julia Hamann for Mankato Mayor.'
     },
     {
       property: 'og:url',
-      content: 'https://voteforjulia.com/volunteer'
+      content: 'https://voteforjulia.com/yard-signs'
     },
     {
       property: 'og:image',
@@ -111,12 +108,11 @@ useHead({
     },
     {
       name: 'twitter:title',
-      content: 'Volunteer | Julia Hamann for Mankato Mayor'
+      content: 'Yard Sign | Julia Hamann for Mankato Mayor'
     },
     {
       name: 'twitter:description',
-      content:
-        'Volunteer for the Julia Hamann campaign to help build a more just, community-led Mankato.'
+      content: 'Request a yard sign to show your support for Julia Hamann for Mankato Mayor.'
     },
     {
       name: 'twitter:image',
@@ -131,18 +127,14 @@ useHead({
 </script>
 
 <template>
-  <section id="contact">
-    <h2>Volunteer</h2>
+  <section id="yard-sign">
+    <h2>Get a Yard Sign</h2>
 
     <div class="stances-layout">
       <div class="stances-text">
-        <p>Join the campaign team to help with outreach, events, and voter engagement.</p>
-        <p>
-          Want to show your support at home?
-          <RouterLink to="/yard-signs">Request a yard sign</RouterLink>.
-        </p>
+        <p>Show your support and help spread the word by putting up a yard sign!</p>
 
-        <JuliaContactForm />
+        <JuliaYardSignForm />
       </div>
       <Image
         url-endpoint="https://ik.imagekit.io/voteforjulia"

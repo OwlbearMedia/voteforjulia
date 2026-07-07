@@ -13,9 +13,26 @@ except Exception:  # pragma: no cover - fallback for environments without google
     class HttpError(Exception):
         pass
 
-from api.config import EmailConfig, env, load_email_config, load_sheets_config
-from api.models import Submission, looks_like_email, validate_submission
-from api.services.email_service import send_confirmation_email, send_submission_email
+from api.config import (
+    DEFAULT_YARDSIGN_SHEETS_WORKSHEET,
+    EmailConfig,
+    env,
+    load_email_config,
+    load_sheets_config,
+)
+from api.models import (
+    Submission,
+    YardSignRequest,
+    looks_like_email,
+    validate_submission,
+    validate_yard_sign_request,
+)
+from api.services.email_service import (
+    send_confirmation_email,
+    send_submission_email,
+    send_yard_sign_confirmation_email,
+    send_yard_sign_request_email,
+)
 from api.services.sheets_service import append_row
 
 app = Flask(__name__)
@@ -93,6 +110,34 @@ def _missing_required_fields_message(submission: Submission) -> str:
     return ''
 
 
+def _yard_sign_request_from_request() -> YardSignRequest | None:
+    payload = request.get_json(silent=True)
+    if isinstance(payload, dict):
+        return YardSignRequest.from_json(payload)
+
+    if request.form:
+        return YardSignRequest.from_form(request.form)
+
+    return None
+
+
+def _missing_required_yard_sign_fields_message(yard_sign_request: YardSignRequest) -> str:
+    missing_labels = []
+    if not yard_sign_request.first_name:
+        missing_labels.append('First name')
+    if not yard_sign_request.email:
+        missing_labels.append('Email')
+    if not yard_sign_request.address:
+        missing_labels.append('Address')
+
+    if not missing_labels:
+        return ''
+    if len(missing_labels) == 1:
+        return f'{missing_labels[0]} is required.'
+
+    return f"{', '.join(missing_labels[:-1])} and {missing_labels[-1]} are required."
+
+
 def _rate_limit_key() -> str:
     forwarded_for = request.headers.get('X-Forwarded-For', '')
     if forwarded_for:
@@ -124,6 +169,99 @@ def _consume_rate_limit() -> int | None:
     return None
 
 
+_SMTP_UNAVAILABLE_MESSAGE = 'Unable to send email right now.'
+
+
+def _rate_limited_response(retry_after: int):
+    response = jsonify({'error': 'Too many requests. Please try again later.'})
+    response.status_code = 429
+    response.headers['Retry-After'] = str(retry_after)
+    return response
+
+
+def _handle_form_submission(
+    *,
+    sheets_config,
+    parse_request,
+    missing_fields_message,
+    validate,
+    get_email,
+    send_notification_email,
+    send_confirmation_email_fn,
+    to_sheet_row,
+    endpoint_name,
+):
+    email_config = load_email_config()
+
+    config_error = _validate_email_config(email_config)
+    if config_error:
+        logger.error(config_error)
+        return jsonify({'error': 'Email service is not configured.'}), 500
+
+    try:
+        parsed = parse_request()
+        if parsed is None:
+            return jsonify({'error': 'Request body must be valid JSON or form data.'}), 400
+
+        missing_message = missing_fields_message(parsed)
+        if missing_message:
+            return jsonify({'error': missing_message}), 400
+
+        validation_error = validate(parsed)
+        if validation_error:
+            return jsonify({'error': validation_error}), 400
+
+        if not looks_like_email(get_email(parsed)):
+            return jsonify({'error': 'Please provide a valid email address.'}), 400
+
+        refused = send_notification_email(email_config, parsed)
+
+        if refused:
+            logger.error("SMTP refused recipients: %s", ", ".join(refused.keys()))
+            return jsonify({'error': 'Unable to deliver email to recipient.'}), 502
+
+        try:
+            confirmation_refused = send_confirmation_email_fn(email_config, parsed)
+            if confirmation_refused:
+                logger.warning(
+                    "Confirmation email refused for %s",
+                    ", ".join(confirmation_refused.keys()),
+                )
+        except smtplib.SMTPException:
+            logger.warning("Failed to send confirmation email to %s", get_email(parsed))
+
+        logger.info(
+            "Email accepted by SMTP for %d recipient(s)",
+            len(email_config.recipients),
+        )
+
+        sheet_row = to_sheet_row(parsed)
+
+        try:
+            append_row(sheets_config, sheet_row)
+            if sheets_config.spreadsheet_id:
+                logger.info("Submission appended to Google Sheet")
+        except (ValueError, OSError, HttpError):
+            logger.exception("Failed to append submission to Google Sheet")
+            return jsonify({'error': 'Email sent, but failed to save submission.'}), 502
+
+        return jsonify({'message': 'Email sent successfully!'}), 200
+
+    except smtplib.SMTPAuthenticationError:
+        logger.exception("SMTP authentication failed")
+        return jsonify({'error': _SMTP_UNAVAILABLE_MESSAGE}), 502
+    except smtplib.SMTPException:
+        logger.exception("SMTP error while sending email")
+        return jsonify({'error': _SMTP_UNAVAILABLE_MESSAGE}), 502
+    except ValueError:
+        logger.exception("Invalid SMTP configuration")
+        return jsonify({'error': 'Server email configuration is invalid.'}), 500
+
+    except Exception:
+        logger.exception("Unexpected error while handling %s", endpoint_name)
+        return jsonify({'error': 'Internal server error.'}), 500
+
+
 @app.route('/health', methods=['GET'])
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -141,81 +279,43 @@ def send_email():
 
     retry_after = _consume_rate_limit()
     if retry_after is not None:
-        response = jsonify({'error': 'Too many requests. Please try again later.'})
-        response.status_code = 429
-        response.headers['Retry-After'] = str(retry_after)
-        return response
+        return _rate_limited_response(retry_after)
 
-    email_config = load_email_config()
-    sheets_config = load_sheets_config()
+    return _handle_form_submission(
+        sheets_config=load_sheets_config(),
+        parse_request=_submission_from_request,
+        missing_fields_message=_missing_required_fields_message,
+        validate=validate_submission,
+        get_email=lambda submission: submission.email,
+        send_notification_email=send_submission_email,
+        send_confirmation_email_fn=send_confirmation_email,
+        to_sheet_row=lambda submission: submission.to_sheet_row(),
+        endpoint_name='/send-email',
+    )
 
-    config_error = _validate_email_config(email_config)
-    if config_error:
-        logger.error(config_error)
-        return jsonify({'error': 'Email service is not configured.'}), 500
+@app.route('/yard-sign', methods=['POST', 'OPTIONS'])
+@app.route('/api/yard-sign', methods=['POST', 'OPTIONS'])
+def yard_sign():
+    if request.method == 'OPTIONS':
+        return ('', 204)
 
-    try:
-        submission = _submission_from_request()
-        if submission is None:
-            return jsonify({'error': 'Request body must be valid JSON or form data.'}), 400
+    retry_after = _consume_rate_limit()
+    if retry_after is not None:
+        return _rate_limited_response(retry_after)
 
-        missing_fields_message = _missing_required_fields_message(submission)
-        if missing_fields_message:
-            return jsonify({'error': missing_fields_message}), 400
-
-        validation_error = validate_submission(submission)
-        if validation_error:
-            return jsonify({'error': validation_error}), 400
-
-        if not looks_like_email(submission.email):
-            return jsonify({'error': 'Please provide a valid email address.'}), 400
-
-        refused = send_submission_email(email_config, submission)
-
-        if refused:
-            logger.error("SMTP refused recipients: %s", ", ".join(refused.keys()))
-            return jsonify({'error': 'Unable to deliver email to recipient.'}), 502
-
-        try:
-            confirmation_refused = send_confirmation_email(email_config, submission)
-            if confirmation_refused:
-                logger.warning(
-                    "Confirmation email refused for %s",
-                    ", ".join(confirmation_refused.keys()),
-                )
-        except smtplib.SMTPException:
-            logger.warning("Failed to send confirmation email to %s", submission.email)
-
-        logger.info(
-            "Email accepted by SMTP for %d recipient(s)",
-            len(email_config.recipients),
-        )
-
-        sheet_row = submission.to_sheet_row()
-
-        try:
-            append_row(sheets_config, sheet_row)
-            if sheets_config.spreadsheet_id:
-                logger.info("Submission appended to Google Sheet")
-        except (ValueError, OSError, HttpError):
-            logger.exception("Failed to append submission to Google Sheet")
-            return jsonify({'error': 'Email sent, but failed to save submission.'}), 502
-
-        return jsonify({'message': 'Email sent successfully!'}), 200
-
-    except smtplib.SMTPAuthenticationError:
-        logger.exception("SMTP authentication failed")
-        return jsonify({'error': 'Unable to send email right now.'}), 502
-    except smtplib.SMTPException:
-        logger.exception("SMTP error while sending email")
-        return jsonify({'error': 'Unable to send email right now.'}), 502
-    except ValueError:
-        logger.exception("Invalid SMTP configuration")
-        return jsonify({'error': 'Server email configuration is invalid.'}), 500
-
-    except Exception:
-        logger.exception("Unexpected error while handling /send-email")
-        return jsonify({'error': 'Internal server error.'}), 500
+    return _handle_form_submission(
+        sheets_config=load_sheets_config(
+            'GOOGLE_SHEETS_YARDSIGN_WORKSHEET', DEFAULT_YARDSIGN_SHEETS_WORKSHEET
+        ),
+        parse_request=_yard_sign_request_from_request,
+        missing_fields_message=_missing_required_yard_sign_fields_message,
+        validate=validate_yard_sign_request,
+        get_email=lambda yard_sign_request: yard_sign_request.email,
+        send_notification_email=send_yard_sign_request_email,
+        send_confirmation_email_fn=send_yard_sign_confirmation_email,
+        to_sheet_row=lambda yard_sign_request: yard_sign_request.to_sheet_row(),
+        endpoint_name='/yard-sign',
+    )
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=int(env('PORT', '5000')), debug=False)

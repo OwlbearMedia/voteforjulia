@@ -7,7 +7,8 @@ const pageImports: Record<(typeof appRoutePaths)[number], () => Promise<unknown>
   '/volunteer': () => import('../pages/JuliaVolunteer.vue'),
   '/secret-recipe': () => import('../pages/JuliaSecretRecipe.vue'),
   '/donate': () => import('../pages/JuliaDonate.vue'),
-  '/events': () => import('../pages/JuliaEvents.vue')
+  '/events': () => import('../pages/JuliaEvents.vue'),
+  '/yard-signs': () => import('../pages/JuliaYardSign.vue')
 };
 
 export const routes: RouteRecordRaw[] = appRoutePaths.map((path) => ({

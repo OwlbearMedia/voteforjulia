@@ -3,8 +3,13 @@ from email import message_from_string
 from unittest.mock import patch
 
 from api.config import EmailConfig
-from api.models import Submission
-from api.services.email_service import send_confirmation_email, send_submission_email
+from api.models import Submission, YardSignRequest
+from api.services.email_service import (
+    send_confirmation_email,
+    send_submission_email,
+    send_yard_sign_confirmation_email,
+    send_yard_sign_request_email,
+)
 
 
 class FakeSmtpServer:
@@ -191,6 +196,92 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(server.starttls_calls, 1)
         self.assertEqual(server.login_args, ("info@example.com", "placeholder-value"))
         self.assertEqual(server.quit_calls, 1)
+
+
+class YardSignEmailServiceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        FakeSmtpServer.instances.clear()
+        self.config = EmailConfig(
+            smtp_server="mail.example.com",
+            smtp_port=465,
+            smtp_security="ssl",
+            email_address="info@example.com",
+            email_password="placeholder-value",
+            recipients=["team@example.com"],
+            plain_text_confirmation_only=False,
+        )
+        self.yard_sign_request = YardSignRequest(
+            first_name="Julia",
+            last_name="Hamann",
+            name="Julia Hamann",
+            email="supporter@example.com",
+            phone="555-555-5555",
+            address="123 Main St, Mankato, MN 56001",
+        )
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_send_yard_sign_request_email_sends_to_campaign_recipients(self) -> None:
+        refused = send_yard_sign_request_email(self.config, self.yard_sign_request)
+
+        self.assertEqual(refused, {})
+        self.assertEqual(len(FakeSmtpServer.instances), 1)
+        server = FakeSmtpServer.instances[0]
+        self.assertEqual(len(server.sent_messages), 1)
+
+        from_address, recipients, raw_message = server.sent_messages[0]
+        parsed = message_from_string(raw_message)
+
+        self.assertEqual(from_address, "info@example.com")
+        self.assertEqual(recipients, ["team@example.com"])
+        self.assertEqual(parsed["Reply-To"], "supporter@example.com")
+        self.assertEqual(parsed["Subject"], "New yard sign request from Julia Hamann")
+        self.assertIn(
+            "Address: 123 Main St, Mankato, MN 56001", parsed.get_payload()[0].get_payload()
+        )
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_send_yard_sign_confirmation_email_sends_to_submitter(self) -> None:
+        refused = send_yard_sign_confirmation_email(self.config, self.yard_sign_request)
+
+        self.assertEqual(refused, {})
+        self.assertEqual(len(FakeSmtpServer.instances), 1)
+        server = FakeSmtpServer.instances[0]
+        self.assertEqual(len(server.sent_messages), 1)
+
+        _, recipients, raw_message = server.sent_messages[0]
+        parsed = message_from_string(raw_message)
+        plain_text_payload = parsed.get_payload()[0].get_payload()
+        html_payload = parsed.get_payload()[1].get_payload()
+
+        self.assertEqual(recipients, ["supporter@example.com"])
+        self.assertEqual(
+            parsed["Subject"], "Thanks for requesting a yard sign for Julia Hamann for Mayor"
+        )
+        self.assertIn("Hi Julia!", plain_text_payload)
+        self.assertIn("requesting a yard sign", plain_text_payload)
+        self.assertIn("Hi Julia!", html_payload)
+        self.assertIn("requesting a yard sign", html_payload)
+        self.assertIn("Paid for by Julia Hamann for Mankato Mayor", html_payload)
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_send_yard_sign_confirmation_email_uses_there_when_name_missing(self) -> None:
+        nameless_request = YardSignRequest(
+            first_name="",
+            last_name="",
+            name="",
+            email="supporter@example.com",
+            phone="",
+            address="123 Main St, Mankato, MN 56001",
+        )
+
+        refused = send_yard_sign_confirmation_email(self.config, nameless_request)
+
+        self.assertEqual(refused, {})
+        _, _, raw_message = FakeSmtpServer.instances[0].sent_messages[0]
+        parsed = message_from_string(raw_message)
+        plain_text_payload = parsed.get_payload()[0].get_payload()
+
+        self.assertIn("Hi there!", plain_text_payload)
 
 
 if __name__ == "__main__":

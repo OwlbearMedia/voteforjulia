@@ -12,6 +12,7 @@ MAX_PHONE_LENGTH = 32
 MAX_MESSAGE_LENGTH = 500
 MAX_HELP_WAYS_COUNT = 10
 MAX_HELP_WAY_LENGTH = 100
+MAX_ADDRESS_LENGTH = 200
 
 _EMAIL_PATTERN = re.compile(
     r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+$",
@@ -223,4 +224,107 @@ class Submission:
             self.phone,
             ", ".join(self.help_ways),
             self.message,
+        ]
+
+
+def validate_yard_sign_request(yard_sign_request: "YardSignRequest") -> str:
+    if contains_disallowed_control_chars(yard_sign_request.first_name, allow_newlines=False):
+        return "First name contains invalid characters."
+    if contains_disallowed_control_chars(yard_sign_request.last_name, allow_newlines=False):
+        return "Last name contains invalid characters."
+    if contains_disallowed_control_chars(yard_sign_request.name, allow_newlines=False):
+        return "Name contains invalid characters."
+    if contains_disallowed_control_chars(yard_sign_request.email, allow_newlines=False):
+        return "Email contains invalid characters."
+    if contains_disallowed_control_chars(yard_sign_request.phone, allow_newlines=False):
+        return "Phone contains invalid characters."
+    if contains_disallowed_control_chars(yard_sign_request.address, allow_newlines=False):
+        return "Address contains invalid characters."
+
+    if len(yard_sign_request.first_name) > MAX_FIRST_NAME_LENGTH:
+        return f"First name must be {MAX_FIRST_NAME_LENGTH} characters or fewer."
+    if len(yard_sign_request.last_name) > MAX_LAST_NAME_LENGTH:
+        return f"Last name must be {MAX_LAST_NAME_LENGTH} characters or fewer."
+    if len(yard_sign_request.email) > MAX_EMAIL_LENGTH:
+        return f"Email must be {MAX_EMAIL_LENGTH} characters or fewer."
+    if len(yard_sign_request.phone) > MAX_PHONE_LENGTH:
+        return f"Phone must be {MAX_PHONE_LENGTH} characters or fewer."
+    if len(yard_sign_request.address) > MAX_ADDRESS_LENGTH:
+        return f"Address must be {MAX_ADDRESS_LENGTH} characters or fewer."
+
+    return ""
+
+
+@dataclass(frozen=True)
+class YardSignRequest:
+    first_name: str
+    last_name: str
+    name: str
+    email: str
+    phone: str
+    address: str
+
+    @classmethod
+    def from_json(cls, payload: dict) -> "YardSignRequest":
+        first_name, last_name = _split_name(
+            payload.get("name"),
+            payload.get("firstName"),
+            payload.get("lastName"),
+        )
+
+        return cls(
+            first_name=first_name,
+            last_name=last_name,
+            name=_compose_name(
+                payload.get("name"),
+                payload.get("firstName"),
+                payload.get("lastName"),
+            ),
+            email=normalize_text(payload.get("email")),
+            phone=normalize_text(payload.get("phone")),
+            address=normalize_text(payload.get("address")),
+        )
+
+    @classmethod
+    def from_form(cls, form_data) -> "YardSignRequest":
+        first_name, last_name = _split_name(
+            form_data.get("name"),
+            form_data.get("firstName"),
+            form_data.get("lastName"),
+        )
+
+        return cls(
+            first_name=first_name,
+            last_name=last_name,
+            name=_compose_name(
+                form_data.get("name"),
+                form_data.get("firstName"),
+                form_data.get("lastName"),
+            ),
+            email=normalize_text(form_data.get("email")),
+            phone=normalize_text(form_data.get("phone")),
+            address=normalize_text(form_data.get("address")),
+        )
+
+    def to_email_body(self) -> str:
+        lines = [
+            f"Name: {self.name}",
+            f"Email: {self.email}",
+        ]
+
+        if self.phone:
+            lines.append(f"Phone: {self.phone}")
+
+        lines.append(f"Address: {self.address}")
+
+        return "\n".join(lines)
+
+    def to_sheet_row(self) -> list[str]:
+        return [
+            datetime.now(timezone.utc).isoformat(),
+            self.first_name,
+            self.last_name,
+            self.email,
+            self.phone,
+            self.address,
         ]

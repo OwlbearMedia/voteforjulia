@@ -5,5 +5,6 @@ export const appRoutePaths = [
   '/volunteer',
   '/secret-recipe',
   '/donate',
-  '/events'
+  '/events',
+  '/yard-signs'
 ] as const;
