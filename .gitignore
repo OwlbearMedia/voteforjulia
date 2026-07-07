@@ -21,6 +21,10 @@ cypress.env.json
 cypress/screenshots
 cypress/videos
 
+# Python
+__pycache__
+*.pyc
+
 # Editor directories and files
 .vscode
 !.vscode/extensions.json
