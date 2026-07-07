@@ -138,8 +138,8 @@ useHead({
       </div>
       <Image
         url-endpoint="https://ik.imagekit.io/voteforjulia"
-        src="/julia.avif"
-        alt="Julia Hamann for Mankato Mayor"
+        src="/yard-sign.webp"
+        alt="Yard sign for Julia Hamann for Mankato Mayor"
         class="coming-soon"
         sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
         :image-breakpoints="[240, 320, 420, 560, 767]"
