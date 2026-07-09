@@ -185,8 +185,25 @@ describe('useYardSignForm', () => {
         lastName: 'Hamann',
         email: 'julia@example.com',
         phone: '555-111-2222',
-        address: '123 Main St, Mankato, MN 56001'
+        address: '123 Main St, Mankato, MN 56001',
+        preferredPayment: ''
       });
+    });
+
+    it('joins selected preferred payment options into a comma-separated string', async () => {
+      vi.mocked(submitYardSignForm).mockResolvedValueOnce();
+      const { firstName, email, address, preferredPayment, handleSubmit } = useYardSignForm();
+      firstName.value = 'Julia';
+      email.value = 'julia@example.com';
+      address.value = '123 Main St, Mankato, MN 56001';
+      preferredPayment.value = ['Online', 'Check'];
+
+      handleSubmit(fakeEvent());
+      await flushPromises();
+
+      expect(submitYardSignForm).toHaveBeenCalledWith(
+        expect.objectContaining({ preferredPayment: 'Online, Check' })
+      );
     });
 
     it('sets isSubmitted and tracks success on a resolved API call', async () => {

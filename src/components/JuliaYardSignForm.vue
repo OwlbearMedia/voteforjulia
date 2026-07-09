@@ -24,6 +24,7 @@ const {
   address,
   addressError,
   validateAddressField,
+  preferredPayment,
   submitError,
   isSubmitted,
   isSubmitting,
@@ -224,6 +225,40 @@ watch(successMessageRef, (element) => {
       >
         {{ addressError }}
       </p>
+
+      <fieldset class="help-options">
+        <legend>Preferred payment</legend>
+        <label class="help-option" for="yard-sign-payment-online">
+          <input
+            id="yard-sign-payment-online"
+            v-model="preferredPayment"
+            name="preferredPayment[]"
+            type="checkbox"
+            value="Online"
+          />
+          Online
+        </label>
+        <label class="help-option" for="yard-sign-payment-cash">
+          <input
+            id="yard-sign-payment-cash"
+            v-model="preferredPayment"
+            name="preferredPayment[]"
+            type="checkbox"
+            value="Cash"
+          />
+          Cash
+        </label>
+        <label class="help-option" for="yard-sign-payment-check">
+          <input
+            id="yard-sign-payment-check"
+            v-model="preferredPayment"
+            name="preferredPayment[]"
+            type="checkbox"
+            value="Check"
+          />
+          Check
+        </label>
+      </fieldset>
 
       <button type="submit" :disabled="hasValidationError || isSubmitting">
         Request a Yard Sign <IconSpinner v-if="isSubmitting" />

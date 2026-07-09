@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import secrets
 import smtplib
 from email.message import Message
-from email.utils import formatdate, make_msgid
+from email.utils import formatdate
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from html import escape
@@ -29,11 +30,20 @@ def _message_id_domain(email_address: str) -> str:
     return domain or "localhost"
 
 
+def _generate_message_id(domain: str) -> str:
+    # A cryptographically random, purely alphanumeric (hex) local part tied to
+    # our own sending domain. Some spam filters penalize Message-IDs whose
+    # domain doesn't match the sender, or whose local part looks low-entropy
+    # or bot-generated (e.g. sequential/short); 128 bits of secrets-grade
+    # randomness avoids both.
+    return f"<{secrets.token_hex(16)}@{domain}>"
+
+
 def _set_common_headers(msg: Message, *, from_address: str, to_address: str, subject: str) -> None:
     msg["From"] = _formatted_sender(from_address)
     msg["To"] = to_address
     msg["Date"] = formatdate(localtime=True)
-    msg["Message-ID"] = make_msgid(domain=_message_id_domain(from_address))
+    msg["Message-ID"] = _generate_message_id(_message_id_domain(from_address))
     msg["Subject"] = subject
 
 
@@ -46,7 +56,7 @@ def _build_submission_message(config: EmailConfig, submission: Submission) -> MI
         subject=f"New message from {submission.name}",
     )
     msg["Reply-To"] = submission.email
-    msg.attach(MIMEText(submission.to_email_body(), "plain"))
+    msg.attach(MIMEText(submission.to_email_body(), "plain", "utf-8"))
     return msg
 
 
@@ -86,11 +96,11 @@ def _build_confirmation_message(config: EmailConfig, submission: Submission) -> 
     plain_text_body, html_body = _build_confirmation_content(submission)
 
     if config.plain_text_confirmation_only:
-        msg = MIMEText(plain_text_body, "plain")
+        msg = MIMEText(plain_text_body, "plain", "utf-8")
     else:
         msg = MIMEMultipart("alternative")
-        msg.attach(MIMEText(plain_text_body, "plain"))
-        msg.attach(MIMEText(html_body, "html"))
+        msg.attach(MIMEText(plain_text_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     _set_common_headers(
         msg,
@@ -157,7 +167,7 @@ def _build_yard_sign_request_message(config: EmailConfig, yard_sign_request: Yar
         subject=f"New yard sign request from {yard_sign_request.name}",
     )
     msg["Reply-To"] = yard_sign_request.email
-    msg.attach(MIMEText(yard_sign_request.to_email_body(), "plain"))
+    msg.attach(MIMEText(yard_sign_request.to_email_body(), "plain", "utf-8"))
     return msg
 
 
@@ -193,11 +203,11 @@ def _build_yard_sign_confirmation_message(config: EmailConfig, yard_sign_request
     plain_text_body, html_body = _build_yard_sign_confirmation_content(yard_sign_request)
 
     if config.plain_text_confirmation_only:
-        msg = MIMEText(plain_text_body, "plain")
+        msg = MIMEText(plain_text_body, "plain", "utf-8")
     else:
         msg = MIMEMultipart("alternative")
-        msg.attach(MIMEText(plain_text_body, "plain"))
-        msg.attach(MIMEText(html_body, "html"))
+        msg.attach(MIMEText(plain_text_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     _set_common_headers(
         msg,

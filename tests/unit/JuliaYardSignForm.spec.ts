@@ -66,14 +66,16 @@ describe('JuliaYardSignForm', () => {
       lastName: 'Hamann',
       email: 'julia@example.com',
       phone: '555-111-2222',
-      address: '123 Main St, Mankato, MN 56001'
+      address: '123 Main St, Mankato, MN 56001',
+      preferredPayment: ''
     });
     expect(trackYardSignRequestBody).toHaveBeenCalledWith({
       firstName: 'Julia',
       lastName: 'Hamann',
       email: 'julia@example.com',
       phone: '555-111-2222',
-      address: '123 Main St, Mankato, MN 56001'
+      address: '123 Main St, Mankato, MN 56001',
+      preferredPayment: ''
     });
     expect(trackYardSignFormSubmit).toHaveBeenCalledWith('success');
     expect(wrapper.find('form').exists()).toBe(false);
@@ -115,10 +117,43 @@ describe('JuliaYardSignForm', () => {
       lastName: '',
       email: 'julia@example.com',
       phone: '',
-      address: '123 Main St'
+      address: '123 Main St',
+      preferredPayment: ''
     });
     expect(trackYardSignFormSubmit).toHaveBeenCalledWith('error');
     expect(wrapper.text()).toContain('Server unavailable');
+  });
+
+  // ─── Checkbox selection ─────────────────────────────────────────────────────
+
+  describe('preferred payment checkboxes', () => {
+    it('joins multiple selected checkboxes into a comma-separated string', async () => {
+      vi.mocked(submitYardSignForm).mockResolvedValueOnce();
+      const wrapper = mount(JuliaYardSignForm);
+      await wrapper.find('#yard-sign-first-name').setValue('Julia');
+      await wrapper.find('#yard-sign-email').setValue('julia@example.com');
+      await wrapper.find('#yard-sign-address').setValue('123 Main St');
+      await wrapper.find('#yard-sign-payment-online').setValue(true);
+      await wrapper.find('#yard-sign-payment-check').setValue(true);
+      await wrapper.find('form').trigger('submit');
+      await flushPromises();
+      expect(submitYardSignForm).toHaveBeenCalledWith(
+        expect.objectContaining({ preferredPayment: 'Online, Check' })
+      );
+    });
+
+    it('submits an empty string when no checkboxes are selected', async () => {
+      vi.mocked(submitYardSignForm).mockResolvedValueOnce();
+      const wrapper = mount(JuliaYardSignForm);
+      await wrapper.find('#yard-sign-first-name').setValue('Julia');
+      await wrapper.find('#yard-sign-email').setValue('julia@example.com');
+      await wrapper.find('#yard-sign-address').setValue('123 Main St');
+      await wrapper.find('form').trigger('submit');
+      await flushPromises();
+      expect(submitYardSignForm).toHaveBeenCalledWith(
+        expect.objectContaining({ preferredPayment: '' })
+      );
+    });
   });
 
   // ─── Blur validation ─────────────────────────────────────────────────────────

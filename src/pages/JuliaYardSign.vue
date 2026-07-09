@@ -128,11 +128,20 @@ useHead({
 
 <template>
   <section id="yard-sign">
-    <h2>Get a Yard Sign</h2>
+    <h2>Get a Yard Sign Today!</h2>
+
+    <p class="card">
+      Yard signs are a great way to show your support and help spread the word about Julia’s
+      campaign.
+    </p>
 
     <div class="stances-layout">
       <div class="stances-text">
-        <p>Show your support and help spread the word by putting up a yard sign!</p>
+        <p>
+          As a grassroots campaign, every dollar makes a significant impact. We’re asking for a $10
+          minimum sign contribution to help cover costs, and a $20 suggested donation to help us
+          spread our reach to voters.
+        </p>
 
         <JuliaYardSignForm />
       </div>

@@ -25,6 +25,7 @@ describe('Yard sign form', () => {
     cy.get('#yard-sign-email').type(TEST_EMAIL);
     cy.get('#yard-sign-phone').type('5551234567');
     cy.get('#yard-sign-address').type(TEST_ADDRESS);
+    cy.get('#yard-sign-payment-online').check();
 
     cy.get('button[type="submit"]').click();
 
@@ -42,11 +43,12 @@ describe('Yard sign form', () => {
       expect(result, 'Sheet row should exist after successful submission').to.not.equal(null);
 
       const { rowIndex, row } = result!;
-      // Column layout: [timestamp, firstName, lastName, email, phone, address]
+      // Column layout: [timestamp, firstName, lastName, email, phone, address, preferredPayment]
       expect(row[1]).to.equal(TEST_FIRST_NAME);
       expect(row[2]).to.equal(TEST_LAST_NAME);
       expect(row[3]).to.equal(TEST_EMAIL);
       expect(row[5]).to.equal(TEST_ADDRESS);
+      expect(row[6]).to.equal('Online');
 
       sheetRowIndex = rowIndex;
     });

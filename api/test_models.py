@@ -197,6 +197,33 @@ class YardSignRequestParsingTests(unittest.TestCase):
         self.assertEqual(yard_sign_request.name, "Julia Hamann")
         self.assertEqual(yard_sign_request.address, "123 Main St, Mankato, MN 56001")
 
+    def test_from_json_uses_preferred_payment_array_values(self) -> None:
+        payload = {
+            "firstName": "Julia",
+            "email": "julia@example.com",
+            "address": "123 Main St, Mankato, MN 56001",
+            "preferredPayment": ["Cash", "Check"],
+        }
+
+        yard_sign_request = YardSignRequest.from_json(payload)
+
+        self.assertEqual(yard_sign_request.preferred_payment, ["Cash", "Check"])
+
+    def test_from_form_uses_preferred_payment_array_values(self) -> None:
+        form_data = FakeFormData(
+            [
+                ("firstName", "Julia"),
+                ("email", "julia@example.com"),
+                ("address", "123 Main St, Mankato, MN 56001"),
+                ("preferredPayment[]", "Online"),
+                ("preferredPayment[]", "Cash"),
+            ]
+        )
+
+        yard_sign_request = YardSignRequest.from_form(form_data)
+
+        self.assertEqual(yard_sign_request.preferred_payment, ["Online", "Cash"])
+
     def test_to_sheet_row_uses_timestamp_first_and_last_name(self) -> None:
         yard_sign_request = YardSignRequest(
             first_name="Julia",
@@ -205,6 +232,7 @@ class YardSignRequestParsingTests(unittest.TestCase):
             email="julia@example.com",
             phone="555-555-5555",
             address="123 Main St, Mankato, MN 56001",
+            preferred_payment=["Online", "Cash"],
         )
 
         mocked_timestamp = "2026-05-29T12:00:00+00:00"
@@ -221,6 +249,7 @@ class YardSignRequestParsingTests(unittest.TestCase):
                 "julia@example.com",
                 "555-555-5555",
                 "123 Main St, Mankato, MN 56001",
+                "Online, Cash",
             ],
         )
 
@@ -234,6 +263,7 @@ class YardSignRequestValidationTests(unittest.TestCase):
             email="julia@example.com",
             phone="555-555-5555",
             address="123 Main St, Mankato, MN 56001",
+            preferred_payment=[],
         )
 
         self.assertEqual(
@@ -249,11 +279,49 @@ class YardSignRequestValidationTests(unittest.TestCase):
             email="julia@example.com",
             phone="555-555-5555",
             address="x" * (models.MAX_ADDRESS_LENGTH + 1),
+            preferred_payment=[],
         )
 
         self.assertEqual(
             validate_yard_sign_request(yard_sign_request),
             f"Address must be {models.MAX_ADDRESS_LENGTH} characters or fewer.",
+        )
+
+    def test_validate_yard_sign_request_rejects_control_characters_in_preferred_payment(
+        self,
+    ) -> None:
+        yard_sign_request = YardSignRequest(
+            first_name="Julia",
+            last_name="Hamann",
+            name="Julia Hamann",
+            email="julia@example.com",
+            phone="555-555-5555",
+            address="123 Main St, Mankato, MN 56001",
+            preferred_payment=["Cash\r"],
+        )
+
+        self.assertEqual(
+            validate_yard_sign_request(yard_sign_request),
+            "Preferred payment contains invalid characters.",
+        )
+
+    def test_validate_yard_sign_request_rejects_too_many_preferred_payment_options(self) -> None:
+        yard_sign_request = YardSignRequest(
+            first_name="Julia",
+            last_name="Hamann",
+            name="Julia Hamann",
+            email="julia@example.com",
+            phone="555-555-5555",
+            address="123 Main St, Mankato, MN 56001",
+            preferred_payment=["Online", "Cash", "Check", "Extra"],
+        )
+
+        self.assertEqual(
+            validate_yard_sign_request(yard_sign_request),
+            (
+                f"Please select no more than {models.MAX_PREFERRED_PAYMENT_COUNT} "
+                "preferred payment options."
+            ),
         )
 
 

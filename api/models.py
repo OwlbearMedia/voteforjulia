@@ -13,6 +13,8 @@ MAX_MESSAGE_LENGTH = 500
 MAX_HELP_WAYS_COUNT = 10
 MAX_HELP_WAY_LENGTH = 100
 MAX_ADDRESS_LENGTH = 200
+MAX_PREFERRED_PAYMENT_COUNT = 3
+MAX_PREFERRED_PAYMENT_LENGTH = 20
 
 _EMAIL_PATTERN = re.compile(
     r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+$",
@@ -240,6 +242,9 @@ def validate_yard_sign_request(yard_sign_request: "YardSignRequest") -> str:
         return "Phone contains invalid characters."
     if contains_disallowed_control_chars(yard_sign_request.address, allow_newlines=False):
         return "Address contains invalid characters."
+    for payment_option in yard_sign_request.preferred_payment:
+        if contains_disallowed_control_chars(payment_option, allow_newlines=False):
+            return "Preferred payment contains invalid characters."
 
     if len(yard_sign_request.first_name) > MAX_FIRST_NAME_LENGTH:
         return f"First name must be {MAX_FIRST_NAME_LENGTH} characters or fewer."
@@ -251,6 +256,15 @@ def validate_yard_sign_request(yard_sign_request: "YardSignRequest") -> str:
         return f"Phone must be {MAX_PHONE_LENGTH} characters or fewer."
     if len(yard_sign_request.address) > MAX_ADDRESS_LENGTH:
         return f"Address must be {MAX_ADDRESS_LENGTH} characters or fewer."
+    if len(yard_sign_request.preferred_payment) > MAX_PREFERRED_PAYMENT_COUNT:
+        return f"Please select no more than {MAX_PREFERRED_PAYMENT_COUNT} preferred payment options."
+
+    for payment_option in yard_sign_request.preferred_payment:
+        if len(payment_option) > MAX_PREFERRED_PAYMENT_LENGTH:
+            return (
+                f"Each preferred payment option must be {MAX_PREFERRED_PAYMENT_LENGTH} "
+                "characters or fewer."
+            )
 
     return ""
 
@@ -263,6 +277,7 @@ class YardSignRequest:
     email: str
     phone: str
     address: str
+    preferred_payment: list[str]
 
     @classmethod
     def from_json(cls, payload: dict) -> "YardSignRequest":
@@ -271,6 +286,10 @@ class YardSignRequest:
             payload.get("firstName"),
             payload.get("lastName"),
         )
+
+        preferred_payment = normalize_string_list(payload.get("preferredPayment"))
+        if not preferred_payment:
+            preferred_payment = normalize_string_list(payload.get("preferredPayment[]"))
 
         return cls(
             first_name=first_name,
@@ -283,6 +302,7 @@ class YardSignRequest:
             email=normalize_text(payload.get("email")),
             phone=normalize_text(payload.get("phone")),
             address=normalize_text(payload.get("address")),
+            preferred_payment=preferred_payment,
         )
 
     @classmethod
@@ -292,6 +312,16 @@ class YardSignRequest:
             form_data.get("firstName"),
             form_data.get("lastName"),
         )
+
+        preferred_payment = [
+            item.strip() for item in form_data.getlist("preferredPayment[]") if item.strip()
+        ]
+        if not preferred_payment:
+            preferred_payment = [
+                item.strip() for item in form_data.getlist("preferredPayment") if item.strip()
+            ]
+        if not preferred_payment:
+            preferred_payment = normalize_string_list(form_data.get("preferredPayment"))
 
         return cls(
             first_name=first_name,
@@ -304,6 +334,7 @@ class YardSignRequest:
             email=normalize_text(form_data.get("email")),
             phone=normalize_text(form_data.get("phone")),
             address=normalize_text(form_data.get("address")),
+            preferred_payment=preferred_payment,
         )
 
     def to_email_body(self) -> str:
@@ -317,6 +348,9 @@ class YardSignRequest:
 
         lines.append(f"Address: {self.address}")
 
+        if self.preferred_payment:
+            lines.append(f"Preferred payment: {', '.join(self.preferred_payment)}")
+
         return "\n".join(lines)
 
     def to_sheet_row(self) -> list[str]:
@@ -327,4 +361,5 @@ class YardSignRequest:
             self.email,
             self.phone,
             self.address,
+            ", ".join(self.preferred_payment),
         ]

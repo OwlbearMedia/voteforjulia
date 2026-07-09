@@ -45,6 +45,7 @@ export function useYardSignForm() {
 
   const fields = [firstNameField, lastNameField, emailField, phoneField, addressField];
 
+  const preferredPayment = ref<string[]>([]);
   const submitError = ref('');
   const isSubmitted = ref(false);
   const isSubmitting = ref(false);
@@ -64,7 +65,8 @@ export function useYardSignForm() {
       lastName: lastNameField.value.value,
       email: emailField.value.value,
       phone: phoneField.value.value,
-      address: addressField.value.value
+      address: addressField.value.value,
+      preferredPayment: [...preferredPayment.value].join(', ')
     };
 
     try {
@@ -118,6 +120,7 @@ export function useYardSignForm() {
     address: addressField.value,
     addressError: addressField.error,
     validateAddressField: addressField.validate,
+    preferredPayment,
     submitError,
     isSubmitted,
     isSubmitting,

@@ -122,7 +122,7 @@ describe('Page components', () => {
     });
 
     expect(wrapper.text()).toContain(
-      'Show your support and help spread the word by putting up a yard sign!'
+      'Yard signs are a great way to show your support and help spread the word about Julia’s campaign.'
     );
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({

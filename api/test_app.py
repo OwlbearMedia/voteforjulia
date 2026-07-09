@@ -243,6 +243,7 @@ class AppYardSignTests(unittest.TestCase):
             "email": "julia@example.com",
             "phone": "555-555-5555",
             "address": "123 Main St, Mankato, MN 56001",
+            "preferredPayment": ["Online", "Check"],
         }
 
         response = self.client.post(
@@ -255,6 +256,7 @@ class AppYardSignTests(unittest.TestCase):
         self.assertEqual(len(self.sent_requests), 1)
         self.assertEqual(len(self.confirmation_requests), 1)
         self.assertEqual(len(self.sheet_rows), 1)
+        self.assertEqual(self.sheet_rows[0][-1], "Online, Check")
         self.assertEqual(
             self.sheets_config_calls,
             [("GOOGLE_SHEETS_YARDSIGN_WORKSHEET", "Yard Signs")],

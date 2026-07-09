@@ -1,5 +1,6 @@
 import unittest
 from email import message_from_string
+from email.message import Message
 from unittest.mock import patch
 
 from api.config import EmailConfig
@@ -10,6 +11,10 @@ from api.services.email_service import (
     send_yard_sign_confirmation_email,
     send_yard_sign_request_email,
 )
+
+
+def _decode_payload(part: Message) -> str:
+    return part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8")
 
 
 class FakeSmtpServer:
@@ -90,6 +95,46 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(parsed["To"], "team@example.com")
         self.assertEqual(parsed["Reply-To"], "supporter@example.com")
         self.assertEqual(parsed["Subject"], "New message from Julia Hamann")
+        self.assertRegex(parsed["Message-ID"], r"^<[0-9a-f]{32}@example\.com>$")
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_send_submission_email_uses_distinct_high_entropy_message_ids(self) -> None:
+        send_submission_email(self.config, self.submission)
+        send_submission_email(self.config, self.submission)
+
+        first_message_id = message_from_string(FakeSmtpServer.instances[0].sent_messages[0][2])[
+            "Message-ID"
+        ]
+        second_message_id = message_from_string(FakeSmtpServer.instances[1].sent_messages[0][2])[
+            "Message-ID"
+        ]
+
+        self.assertNotEqual(first_message_id, second_message_id)
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_send_submission_email_encodes_non_ascii_body_as_utf8(self) -> None:
+        submission = Submission(
+            first_name="José",
+            last_name="Muñoz",
+            name="José Muñoz",
+            email="jose@example.com",
+            phone="",
+            message="héllo — thanks! 😀",
+            help_ways=[],
+        )
+
+        refused = send_submission_email(self.config, submission)
+
+        self.assertEqual(refused, {})
+        _, _, raw_message = FakeSmtpServer.instances[0].sent_messages[0]
+        # Mirrors what smtplib.sendmail does internally for a str message: it
+        # must be fully ASCII-transport-safe even though the content is UTF-8.
+        raw_message.encode("ascii")
+
+        parsed = message_from_string(raw_message)
+        body_part = parsed.get_payload()[0]
+        self.assertEqual(body_part.get_content_charset(), "utf-8")
+        self.assertIn("héllo — thanks! 😀", _decode_payload(body_part))
 
     @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
     def test_send_confirmation_email_sends_to_submitter(self) -> None:
@@ -103,8 +148,8 @@ class EmailServiceTests(unittest.TestCase):
 
         from_address, recipients, raw_message = server.sent_messages[0]
         parsed = message_from_string(raw_message)
-        plain_text_payload = parsed.get_payload()[0].get_payload()
-        html_payload = parsed.get_payload()[1].get_payload()
+        plain_text_payload = _decode_payload(parsed.get_payload()[0])
+        html_payload = _decode_payload(parsed.get_payload()[1])
 
         self.assertEqual(from_address, "info@example.com")
         self.assertEqual(recipients, ["supporter@example.com"])
@@ -142,8 +187,8 @@ class EmailServiceTests(unittest.TestCase):
 
         _, _, raw_message = server.sent_messages[0]
         parsed = message_from_string(raw_message)
-        plain_text_payload = parsed.get_payload()[0].get_payload()
-        html_payload = parsed.get_payload()[1].get_payload()
+        plain_text_payload = _decode_payload(parsed.get_payload()[0])
+        html_payload = _decode_payload(parsed.get_payload()[1])
 
         self.assertIn("Hi there!", plain_text_payload)
         self.assertIn("Hi there!", html_payload)
@@ -172,8 +217,9 @@ class EmailServiceTests(unittest.TestCase):
 
         self.assertEqual(recipients, ["supporter@example.com"])
         self.assertEqual(parsed.get_content_type(), "text/plain")
-        self.assertIn("Hi Julia!", parsed.get_payload())
-        self.assertIn("Paid for by Julia Hamann for Mankato Mayor", parsed.get_payload())
+        plain_text_payload = _decode_payload(parsed)
+        self.assertIn("Hi Julia!", plain_text_payload)
+        self.assertIn("Paid for by Julia Hamann for Mankato Mayor", plain_text_payload)
 
     @patch("api.services.email_service.smtplib.SMTP", new=FakeSmtpServer)
     def test_send_submission_email_uses_starttls_when_configured(self) -> None:
@@ -217,6 +263,7 @@ class YardSignEmailServiceTests(unittest.TestCase):
             email="supporter@example.com",
             phone="555-555-5555",
             address="123 Main St, Mankato, MN 56001",
+            preferred_payment=["Online", "Cash"],
         )
 
     @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
@@ -235,9 +282,9 @@ class YardSignEmailServiceTests(unittest.TestCase):
         self.assertEqual(recipients, ["team@example.com"])
         self.assertEqual(parsed["Reply-To"], "supporter@example.com")
         self.assertEqual(parsed["Subject"], "New yard sign request from Julia Hamann")
-        self.assertIn(
-            "Address: 123 Main St, Mankato, MN 56001", parsed.get_payload()[0].get_payload()
-        )
+        request_body = _decode_payload(parsed.get_payload()[0])
+        self.assertIn("Address: 123 Main St, Mankato, MN 56001", request_body)
+        self.assertIn("Preferred payment: Online, Cash", request_body)
 
     @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
     def test_send_yard_sign_confirmation_email_sends_to_submitter(self) -> None:
@@ -250,8 +297,8 @@ class YardSignEmailServiceTests(unittest.TestCase):
 
         _, recipients, raw_message = server.sent_messages[0]
         parsed = message_from_string(raw_message)
-        plain_text_payload = parsed.get_payload()[0].get_payload()
-        html_payload = parsed.get_payload()[1].get_payload()
+        plain_text_payload = _decode_payload(parsed.get_payload()[0])
+        html_payload = _decode_payload(parsed.get_payload()[1])
 
         self.assertEqual(recipients, ["supporter@example.com"])
         self.assertEqual(
@@ -272,6 +319,7 @@ class YardSignEmailServiceTests(unittest.TestCase):
             email="supporter@example.com",
             phone="",
             address="123 Main St, Mankato, MN 56001",
+            preferred_payment=[],
         )
 
         refused = send_yard_sign_confirmation_email(self.config, nameless_request)
@@ -279,7 +327,7 @@ class YardSignEmailServiceTests(unittest.TestCase):
         self.assertEqual(refused, {})
         _, _, raw_message = FakeSmtpServer.instances[0].sent_messages[0]
         parsed = message_from_string(raw_message)
-        plain_text_payload = parsed.get_payload()[0].get_payload()
+        plain_text_payload = _decode_payload(parsed.get_payload()[0])
 
         self.assertIn("Hi there!", plain_text_payload)
 
