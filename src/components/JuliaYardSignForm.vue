@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue';
+import { RouterLink } from 'vue-router';
 import sprout from '../assets/sprout.png';
 import IconSpinner from './icons/IconSpinner.vue';
 import { useYardSignForm } from '../composables/useYardSignForm';
@@ -80,15 +81,18 @@ watch(successMessageRef, (element) => {
       v-if="isSubmitted"
       key="success"
       ref="successMessageRef"
-      class="contact-form"
       aria-live="polite"
       tabindex="-1"
     >
       <h3>Thanks so much for your support, {{ firstName.trim() || 'friend' }}!</h3>
-      <p>
-        Check your inbox for additional follow up. Your yard sign is on its way!
-        <img class="success-sprout" :src="sprout" alt="" aria-hidden="true" />
-      </p>
+      <div class="contact-form-success">
+        <p>
+          Check your inbox for additional follow up. Your yard sign is on its way!
+          <img class="success-sprout" :src="sprout" alt="" aria-hidden="true" />
+        </p>
+        If you plan to pay online you can <RouterLink to="/donate">make a donation</RouterLink> and
+        write "yard sign" in the comment section.
+      </div>
     </output>
 
     <form

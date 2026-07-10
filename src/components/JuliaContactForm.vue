@@ -254,16 +254,6 @@ watch(successMessageRef, (element) => {
           />
           Join the campaign team
         </label>
-        <label class="help-option" for="help-yard-signs">
-          <input
-            id="help-yard-signs"
-            v-model="helpWays"
-            name="helpWays[]"
-            type="checkbox"
-            value="Yard signs"
-          />
-          Put up a yard sign
-        </label>
       </fieldset>
 
       <label for="contact-message" class="sr-only">Message</label>

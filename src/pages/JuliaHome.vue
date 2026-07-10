@@ -203,7 +203,7 @@ useHead({
           src="/julia-blue-sky.webp"
           class="coming-soon"
           sizes="(max-width: 700px) calc(100vw - 2.5rem), 250px"
-          :image-breakpoints="[180, 250, 320, 390, 500]"
+          :image-breakpoints="[180, 250, 320, 390, 500, 700]"
           :device-breakpoints="[]"
           width="390"
           height="517"
