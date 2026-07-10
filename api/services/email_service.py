@@ -126,7 +126,7 @@ def _should_use_starttls(config: EmailConfig) -> bool:
 
 
 @contextmanager
-def smtp_connection(config: EmailConfig):
+def _smtp_connection(config: EmailConfig):
     if _should_use_starttls(config):
         server = smtplib.SMTP(config.smtp_server, config.smtp_port)
         try:
@@ -144,27 +144,17 @@ def smtp_connection(config: EmailConfig):
         yield server
 
 
-def send_submission_email(
-    config: EmailConfig, submission: Submission, server: smtplib.SMTP | None = None
-) -> dict:
+def send_submission_email(config: EmailConfig, submission: Submission) -> dict:
     msg = _build_submission_message(config, submission)
 
-    if server is not None:
-        return _send_message(server, config.email_address, config.recipients, msg)
-
-    with smtp_connection(config) as server:
+    with _smtp_connection(config) as server:
         return _send_message(server, config.email_address, config.recipients, msg)
 
 
-def send_confirmation_email(
-    config: EmailConfig, submission: Submission, server: smtplib.SMTP | None = None
-) -> dict:
+def send_confirmation_email(config: EmailConfig, submission: Submission) -> dict:
     msg = _build_confirmation_message(config, submission)
 
-    if server is not None:
-        return _send_message(server, config.email_address, [submission.email], msg)
-
-    with smtp_connection(config) as server:
+    with _smtp_connection(config) as server:
         return _send_message(server, config.email_address, [submission.email], msg)
 
 
@@ -228,25 +218,15 @@ def _build_yard_sign_confirmation_message(config: EmailConfig, yard_sign_request
     return msg
 
 
-def send_yard_sign_request_email(
-    config: EmailConfig, yard_sign_request: YardSignRequest, server: smtplib.SMTP | None = None
-) -> dict:
+def send_yard_sign_request_email(config: EmailConfig, yard_sign_request: YardSignRequest) -> dict:
     msg = _build_yard_sign_request_message(config, yard_sign_request)
 
-    if server is not None:
-        return _send_message(server, config.email_address, config.recipients, msg)
-
-    with smtp_connection(config) as server:
+    with _smtp_connection(config) as server:
         return _send_message(server, config.email_address, config.recipients, msg)
 
 
-def send_yard_sign_confirmation_email(
-    config: EmailConfig, yard_sign_request: YardSignRequest, server: smtplib.SMTP | None = None
-) -> dict:
+def send_yard_sign_confirmation_email(config: EmailConfig, yard_sign_request: YardSignRequest) -> dict:
     msg = _build_yard_sign_confirmation_message(config, yard_sign_request)
 
-    if server is not None:
-        return _send_message(server, config.email_address, [yard_sign_request.email], msg)
-
-    with smtp_connection(config) as server:
+    with _smtp_connection(config) as server:
         return _send_message(server, config.email_address, [yard_sign_request.email], msg)
