@@ -27,13 +27,14 @@ describe('Volunteer form', () => {
 
     cy.get('button[type="submit"]').click();
 
-    // The API returns 200 only after the sheet row is written, so by the time
-    // the success message renders the row is guaranteed to exist.
+    // The API returns 200 only after two blocking SMTP sends (notification +
+    // confirmation) and a Sheets API append complete, so give this real
+    // headroom — a generous timeout here is cheap, a flaky failure isn't.
     cy.contains(`Thanks so much for your support, ${TEST_FIRST_NAME}!`, {
-      timeout: 15000
+      timeout: 30000
     }).should('be.visible');
 
-    cy.task<SheetRow | null>('findSheetRow', { email: TEST_EMAIL }, { timeout: 30000 }).then(
+    cy.task<SheetRow | null>('findSheetRow', { email: TEST_EMAIL }, { timeout: 45000 }).then(
       (result) => {
         expect(result, 'Sheet row should exist after successful submission').to.not.equal(null);
 
