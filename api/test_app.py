@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import unittest
 
 import api.app as app_module
@@ -58,6 +59,7 @@ class AppRateLimitTests(unittest.TestCase):
         self._orig_send_submission_email = app_module.send_submission_email
         self._orig_send_confirmation_email = app_module.send_confirmation_email
         self._orig_append_row = app_module.append_row
+        self._orig_smtp_connection = app_module.smtp_connection
 
         app_module._RATE_LIMIT_WINDOW_SECONDS = 60
         app_module._RATE_LIMIT_MAX_REQUESTS = 1
@@ -83,20 +85,25 @@ class AppRateLimitTests(unittest.TestCase):
             service_account_json="",
         )
 
-        def fake_send_submission_email(config, submission):
+        def fake_send_submission_email(config, submission, server=None):
             self.sent_submissions.append(submission)
             return {}
 
-        def fake_send_confirmation_email(config, submission):
+        def fake_send_confirmation_email(config, submission, server=None):
             self.confirmation_submissions.append(submission)
             return {}
 
         def fake_append_row(config, row):
             self.sheet_rows.append(row)
 
+        @contextmanager
+        def fake_smtp_connection(config):
+            yield object()
+
         app_module.send_submission_email = fake_send_submission_email
         app_module.send_confirmation_email = fake_send_confirmation_email
         app_module.append_row = fake_append_row
+        app_module.smtp_connection = fake_smtp_connection
         self.client = app_module.app.test_client()
 
     def tearDown(self) -> None:
@@ -108,6 +115,7 @@ class AppRateLimitTests(unittest.TestCase):
         app_module.send_submission_email = self._orig_send_submission_email
         app_module.send_confirmation_email = self._orig_send_confirmation_email
         app_module.append_row = self._orig_append_row
+        app_module.smtp_connection = self._orig_smtp_connection
 
     def test_send_email_returns_429_after_rate_limit_is_exceeded(self) -> None:
         payload = {
@@ -180,6 +188,7 @@ class AppYardSignTests(unittest.TestCase):
         self._orig_send_yard_sign_request_email = app_module.send_yard_sign_request_email
         self._orig_send_yard_sign_confirmation_email = app_module.send_yard_sign_confirmation_email
         self._orig_append_row = app_module.append_row
+        self._orig_smtp_connection = app_module.smtp_connection
 
         app_module._RATE_LIMIT_WINDOW_SECONDS = 60
         app_module._RATE_LIMIT_MAX_REQUESTS = 5
@@ -209,21 +218,26 @@ class AppYardSignTests(unittest.TestCase):
                 service_account_json="",
             )
 
-        def fake_send_yard_sign_request_email(config, yard_sign_request):
+        def fake_send_yard_sign_request_email(config, yard_sign_request, server=None):
             self.sent_requests.append(yard_sign_request)
             return {}
 
-        def fake_send_yard_sign_confirmation_email(config, yard_sign_request):
+        def fake_send_yard_sign_confirmation_email(config, yard_sign_request, server=None):
             self.confirmation_requests.append(yard_sign_request)
             return {}
 
         def fake_append_row(config, row):
             self.sheet_rows.append(row)
 
+        @contextmanager
+        def fake_smtp_connection(config):
+            yield object()
+
         app_module.load_sheets_config = fake_load_sheets_config
         app_module.send_yard_sign_request_email = fake_send_yard_sign_request_email
         app_module.send_yard_sign_confirmation_email = fake_send_yard_sign_confirmation_email
         app_module.append_row = fake_append_row
+        app_module.smtp_connection = fake_smtp_connection
         self.client = app_module.app.test_client()
 
     def tearDown(self) -> None:
@@ -235,6 +249,7 @@ class AppYardSignTests(unittest.TestCase):
         app_module.send_yard_sign_request_email = self._orig_send_yard_sign_request_email
         app_module.send_yard_sign_confirmation_email = self._orig_send_yard_sign_confirmation_email
         app_module.append_row = self._orig_append_row
+        app_module.smtp_connection = self._orig_smtp_connection
 
     def test_yard_sign_sends_emails_and_appends_sheet_row(self) -> None:
         payload = {

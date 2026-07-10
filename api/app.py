@@ -32,6 +32,7 @@ from api.services.email_service import (
     send_submission_email,
     send_yard_sign_confirmation_email,
     send_yard_sign_request_email,
+    smtp_connection,
 )
 from api.services.sheets_service import append_row
 
@@ -221,21 +222,22 @@ def _handle_form_submission(
         if not looks_like_email(get_email(parsed)):
             return jsonify({'error': 'Please provide a valid email address.'}), 400
 
-        refused = send_notification_email(email_config, parsed)
+        with smtp_connection(email_config) as server:
+            refused = send_notification_email(email_config, parsed, server=server)
 
-        if refused:
-            logger.error("SMTP refused recipients: %s", ", ".join(refused.keys()))
-            return jsonify({'error': 'Unable to deliver email to recipient.'}), 502
+            if refused:
+                logger.error("SMTP refused recipients: %s", ", ".join(refused.keys()))
+                return jsonify({'error': 'Unable to deliver email to recipient.'}), 502
 
-        try:
-            confirmation_refused = send_confirmation_email_fn(email_config, parsed)
-            if confirmation_refused:
-                logger.warning(
-                    "Confirmation email refused for %s",
-                    ", ".join(confirmation_refused.keys()),
-                )
-        except (smtplib.SMTPException, OSError):
-            logger.warning("Failed to send confirmation email to %s", get_email(parsed))
+            try:
+                confirmation_refused = send_confirmation_email_fn(email_config, parsed, server=server)
+                if confirmation_refused:
+                    logger.warning(
+                        "Confirmation email refused for %s",
+                        ", ".join(confirmation_refused.keys()),
+                    )
+            except (smtplib.SMTPException, OSError):
+                logger.warning("Failed to send confirmation email to %s", get_email(parsed))
 
         logger.info(
             "Email accepted by SMTP for %d recipient(s)",

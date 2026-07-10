@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from api.config import SheetsConfig
-from api.services.sheets_service import append_row
+from api.services.sheets_service import append_row, reset_sheets_service_cache
 
 
 def _fake_service(sheets: list[dict]) -> MagicMock:
@@ -15,12 +15,16 @@ def _fake_service(sheets: list[dict]) -> MagicMock:
 
 class AppendRowTests(unittest.TestCase):
     def setUp(self) -> None:
+        reset_sheets_service_cache()
         self.config = SheetsConfig(
             spreadsheet_id="sheet-123",
             worksheet="2083435320",
             service_account_file="",
             service_account_json='{"type": "service_account"}',
         )
+
+    def tearDown(self) -> None:
+        reset_sheets_service_cache()
 
     def test_noop_when_spreadsheet_id_missing(self) -> None:
         config = SheetsConfig(
