@@ -46,8 +46,28 @@ export default defineConfig({
     baseUrl: 'https://test.voteforjulia.com',
     allowCypressEnv: false,
     defaultCommandTimeout: 10000,
+    // Chrome's autofill/password-manager heuristics can transiently disable
+    // the first field of a fresh form (our fields use autocomplete="given-name"
+    // etc.) in a clean CI profile, failing cy.type() with "targeted a disabled
+    // element" even though the app never disables that input. A single retry
+    // in run mode absorbs that class of infra flake without masking real
+    // failures (which fail consistently, not once).
+    retries: {
+      runMode: 1,
+      openMode: 0
+    },
     setupNodeEvents(on, config) {
       const env = config.env as CypressEnv;
+
+      on('before:browser:launch', (browser, launchOptions) => {
+        if (browser.family === 'chromium' && browser.name !== 'electron') {
+          launchOptions.args.push(
+            '--disable-features=Autofill,AutofillServerCommunication,PasswordManagerOnboarding,AutofillAssistant'
+          );
+        }
+
+        return launchOptions;
+      });
 
       on('task', {
         async findSheetRow({
