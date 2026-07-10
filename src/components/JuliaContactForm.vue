@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue';
+import { useTemplateRef } from 'vue';
 import sprout from '../assets/sprout.png';
 import IconSpinner from './icons/IconSpinner.vue';
 import { useContactForm } from '../composables/useContactForm';
+import { useScrollToSuccess } from '../composables/useScrollToSuccess';
 
 defineOptions({
   name: 'JuliaContactForm'
@@ -34,44 +35,8 @@ const {
 } = useContactForm();
 
 // View-only concern: scroll the success message into view once it renders.
-const successMessageRef = ref<HTMLElement | null>(null);
-const hasScrolledToSuccess = ref(false);
-
-async function scrollToSuccessMessage(): Promise<void> {
-  await nextTick();
-
-  const successElement = successMessageRef.value;
-  if (!successElement || hasScrolledToSuccess.value) {
-    return;
-  }
-
-  const headerElement = document.querySelector('header');
-  const headerHeight =
-    headerElement instanceof HTMLElement ? headerElement.getBoundingClientRect().height : 0;
-  const targetTop = successElement.getBoundingClientRect().top + window.scrollY;
-  const scrollTop = Math.max(targetTop - headerHeight - 8, 0);
-
-  window.scrollTo({ top: scrollTop, behavior: 'smooth' });
-  successElement.focus();
-  hasScrolledToSuccess.value = true;
-}
-
-watch(isSubmitted, (submitted) => {
-  if (!submitted) {
-    hasScrolledToSuccess.value = false;
-    return;
-  }
-
-  void scrollToSuccessMessage();
-});
-
-watch(successMessageRef, (element) => {
-  if (!element || !isSubmitted.value) {
-    return;
-  }
-
-  void scrollToSuccessMessage();
-});
+const successMessageRef = useTemplateRef<HTMLElement>('successMessageRef');
+useScrollToSuccess(successMessageRef, isSubmitted);
 </script>
 
 <template>

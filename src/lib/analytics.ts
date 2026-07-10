@@ -21,6 +21,16 @@ function getWindowObject(): Window | null {
   return null;
 }
 
+// Home addresses are more sensitive than the other fields tracked here, so
+// keep them out of the third-party analytics payload entirely.
+function redactField(requestBody: Record<string, string>, field: string): Record<string, string> {
+  if (!(field in requestBody)) {
+    return requestBody;
+  }
+
+  return { ...requestBody, [field]: '[redacted]' };
+}
+
 export function trackGaEvent(eventName: string, params: GaEventParams = {}): void {
   const windowObject = getWindowObject();
   if (!windowObject || typeof windowObject.gtag !== 'function') {
@@ -125,7 +135,7 @@ export function trackYardSignRequestBody(requestBody: Record<string, string>): v
   windowObject.newrelic.addPageAction('yard_sign_form_request', {
     form_id: 'yard-sign-form',
     form_location: windowObject.location.pathname,
-    request_body: JSON.stringify(requestBody)
+    request_body: JSON.stringify(redactField(requestBody, 'address'))
   });
 }
 
@@ -146,7 +156,7 @@ export function trackYardSignSubmissionError(
   windowObject.newrelic.noticeError(normalizedError, {
     form_id: 'yard-sign-form',
     form_location: windowObject.location.pathname,
-    request_body: JSON.stringify(requestBody)
+    request_body: JSON.stringify(redactField(requestBody, 'address'))
   });
 }
 

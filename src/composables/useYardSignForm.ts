@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import { submitYardSignForm } from '../lib/api';
-import { useTextField } from './useTextField';
+import { EMAIL_REGEX, useTextField } from './useTextField';
+import { useFormSubmission } from './useFormSubmission';
 import {
   trackYardSignFormSubmit,
   trackYardSignRequestBody,
@@ -16,8 +17,6 @@ const FIELD_LIMITS = {
   phone: 32,
   address: 200
 } as const;
-
-const EMAIL_REGEX = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+$/i;
 
 export function useYardSignForm() {
   const firstNameField = useTextField({
@@ -46,9 +45,6 @@ export function useYardSignForm() {
   const fields = [firstNameField, lastNameField, emailField, phoneField, addressField];
 
   const preferredPayment = ref<string[]>([]);
-  const submitError = ref('');
-  const isSubmitted = ref(false);
-  const isSubmitting = ref(false);
 
   const fullName = computed(() =>
     `${firstNameField.value.value.trim()} ${lastNameField.value.value.trim()}`.trim()
@@ -56,53 +52,22 @@ export function useYardSignForm() {
 
   const hasValidationError = computed(() => fields.some((field) => field.error.value));
 
-  async function submitForm(): Promise<void> {
-    submitError.value = '';
-    isSubmitting.value = true;
-
-    const formData = {
+  const { submitError, isSubmitted, isSubmitting, handleSubmit } = useFormSubmission({
+    fields,
+    buildFormData: () => ({
       firstName: firstNameField.value.value,
       lastName: lastNameField.value.value,
       email: emailField.value.value,
       phone: phoneField.value.value,
       address: addressField.value.value,
       preferredPayment: [...preferredPayment.value].join(', ')
-    };
-
-    try {
-      trackYardSignRequestBody(formData);
-      await submitYardSignForm(formData);
-      trackYardSignFormSubmit('success');
-      isSubmitted.value = true;
-    } catch (error) {
-      trackYardSignSubmissionError(error, formData);
-      trackYardSignFormSubmit('error');
-      submitError.value =
-        error instanceof Error
-          ? error.message
-          : 'Unable to send your request right now. Please try again.';
-    } finally {
-      isSubmitting.value = false;
-    }
-  }
-
-  function handleSubmit(event: Event): void {
-    event.preventDefault();
-
-    if (isSubmitting.value) {
-      return;
-    }
-
-    // Validate every field (no short-circuit) so all errors surface at once.
-    const allValid = fields.map((field) => field.validate()).every(Boolean);
-
-    if (!allValid) {
-      submitError.value = '';
-      return;
-    }
-
-    void submitForm();
-  }
+    }),
+    submit: submitYardSignForm,
+    trackRequest: trackYardSignRequestBody,
+    trackResult: trackYardSignFormSubmit,
+    trackError: trackYardSignSubmissionError,
+    fallbackErrorMessage: 'Unable to send your request right now. Please try again.'
+  });
 
   return {
     firstName: firstNameField.value,

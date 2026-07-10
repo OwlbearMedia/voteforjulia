@@ -1,5 +1,7 @@
 import { ref, type Ref } from 'vue';
 
+export const EMAIL_REGEX = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+$/i;
+
 export function containsDisallowedControlChars(value: string, allowNewlines: boolean): boolean {
   for (const character of value) {
     if (character === '\n' || character === '\r') {

@@ -96,9 +96,16 @@ def _submission_from_request() -> Submission | None:
     return None
 
 
+def _is_blank(value: str) -> bool:
+    # A value made up entirely of whitespace/control characters (e.g. a lone
+    # "\n") should be treated as missing rather than falling through to a
+    # "contains invalid characters" validation error.
+    return not value.strip()
+
+
 def _missing_required_fields_message(submission: Submission) -> str:
-    missing_first_name = not submission.first_name
-    missing_email = not submission.email
+    missing_first_name = _is_blank(submission.first_name)
+    missing_email = _is_blank(submission.email)
 
     if missing_first_name and missing_email:
         return 'First name and email are required.'
@@ -123,11 +130,11 @@ def _yard_sign_request_from_request() -> YardSignRequest | None:
 
 def _missing_required_yard_sign_fields_message(yard_sign_request: YardSignRequest) -> str:
     missing_labels = []
-    if not yard_sign_request.first_name:
+    if _is_blank(yard_sign_request.first_name):
         missing_labels.append('First name')
-    if not yard_sign_request.email:
+    if _is_blank(yard_sign_request.email):
         missing_labels.append('Email')
-    if not yard_sign_request.address:
+    if _is_blank(yard_sign_request.address):
         missing_labels.append('Address')
 
     if not missing_labels:
@@ -152,9 +159,9 @@ def _rate_limit_key() -> str:
     return request.remote_addr or 'unknown'
 
 
-def _consume_rate_limit() -> int | None:
+def _consume_rate_limit(scope: str) -> int | None:
     now = monotonic()
-    key = _rate_limit_key()
+    key = f"{scope}:{_rate_limit_key()}"
     bucket = _RATE_LIMIT_BUCKETS.setdefault(key, deque())
     cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
 
@@ -227,7 +234,7 @@ def _handle_form_submission(
                     "Confirmation email refused for %s",
                     ", ".join(confirmation_refused.keys()),
                 )
-        except smtplib.SMTPException:
+        except (smtplib.SMTPException, OSError):
             logger.warning("Failed to send confirmation email to %s", get_email(parsed))
 
         logger.info(
@@ -277,7 +284,7 @@ def send_email():
     if request.method == 'OPTIONS':
         return ('', 204)
 
-    retry_after = _consume_rate_limit()
+    retry_after = _consume_rate_limit('send-email')
     if retry_after is not None:
         return _rate_limited_response(retry_after)
 
@@ -299,7 +306,7 @@ def yard_sign():
     if request.method == 'OPTIONS':
         return ('', 204)
 
-    retry_after = _consume_rate_limit()
+    retry_after = _consume_rate_limit('yard-sign')
     if retry_after is not None:
         return _rate_limited_response(retry_after)
 

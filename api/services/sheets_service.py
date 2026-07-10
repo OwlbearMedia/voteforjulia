@@ -30,23 +30,34 @@ def _quote_sheet_title(title: str) -> str:
 def _resolve_worksheet_title(service, spreadsheet_id: str, worksheet: str) -> str:
     # A1 ranges address sheets by title, but a sheet's gid (visible in its URL as
     # #gid=...) is a separate, more stable identifier some configs store instead.
-    # Resolve a gid to its current title before building the range.
+    # Resolve a gid to its current title before building the range. A worksheet
+    # value that happens to be all digits (e.g. a tab literally titled "2026")
+    # is still a valid literal title, so check for a title match before
+    # falling back to gid resolution.
     if not worksheet.isdigit():
         return worksheet
 
-    gid = int(worksheet)
     metadata = (
         service.spreadsheets()
         .get(spreadsheetId=spreadsheet_id, fields="sheets.properties")
         .execute()
     )
+    sheets = metadata.get("sheets", [])
 
-    for sheet in metadata.get("sheets", []):
+    for sheet in sheets:
+        properties = sheet.get("properties", {})
+        if properties.get("title") == worksheet:
+            return worksheet
+
+    gid = int(worksheet)
+    for sheet in sheets:
         properties = sheet.get("properties", {})
         if properties.get("sheetId") == gid:
             return properties.get("title", worksheet)
 
-    raise ValueError(f"No worksheet found with gid {gid} in spreadsheet {spreadsheet_id}")
+    raise ValueError(
+        f"No worksheet found with title or gid {worksheet} in spreadsheet {spreadsheet_id}"
+    )
 
 
 def append_row(config: SheetsConfig, row: list[str]) -> None:

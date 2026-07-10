@@ -327,15 +327,28 @@ describe('trackYardSignRequestBody', () => {
     const addPageAction = vi.fn();
     window.newrelic = { addPageAction };
 
-    trackYardSignRequestBody({ firstName: 'Julia', address: '123 Main St' });
+    trackYardSignRequestBody({ firstName: 'Julia' });
 
     expect(addPageAction).toHaveBeenCalledWith(
       'yard_sign_form_request',
       expect.objectContaining({
         form_id: 'yard-sign-form',
-        request_body: JSON.stringify({ firstName: 'Julia', address: '123 Main St' })
+        request_body: JSON.stringify({ firstName: 'Julia' })
       })
     );
+  });
+
+  it('redacts the home address before sending it to New Relic', () => {
+    const addPageAction = vi.fn();
+    window.newrelic = { addPageAction };
+
+    trackYardSignRequestBody({ firstName: 'Julia', address: '123 Main St' });
+
+    const [, attributes] = addPageAction.mock.calls[0] as [string, { request_body: string }];
+    expect(JSON.parse(attributes.request_body)).toEqual({
+      firstName: 'Julia',
+      address: '[redacted]'
+    });
   });
 
   it('does nothing when window.newrelic is not available', () => {
@@ -367,6 +380,22 @@ describe('trackYardSignSubmissionError', () => {
       'Yard sign form submission failed',
       expect.any(Object)
     );
+  });
+
+  it('redacts the home address before sending it to New Relic', () => {
+    const noticeError = vi.fn();
+    window.newrelic = { noticeError };
+
+    trackYardSignSubmissionError(new Error('fail'), {
+      firstName: 'Julia',
+      address: '123 Main St'
+    });
+
+    const [, attributes] = noticeError.mock.calls[0] as [Error, { request_body: string }];
+    expect(JSON.parse(attributes.request_body)).toEqual({
+      firstName: 'Julia',
+      address: '[redacted]'
+    });
   });
 
   it('does nothing when window.newrelic is not available', () => {

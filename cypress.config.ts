@@ -39,6 +39,18 @@ function buildSheetsClient(env: CypressEnv) {
   return google.sheets({ version: 'v4', auth });
 }
 
+// A1 ranges require a sheet title to be single-quoted whenever it contains
+// anything other than letters, digits, or underscores (e.g. the "Yard Signs"
+// worksheet's space) — mirrors api/services/sheets_service.py's
+// _quote_sheet_title so both sides build the same range syntax.
+function quoteSheetTitle(title: string): string {
+  if (/^[A-Za-z0-9_]+$/.test(title)) {
+    return title;
+  }
+
+  return `'${title.replace(/'/g, "''")}'`;
+}
+
 export default defineConfig({
   e2e: {
     // Default to the staging site. Override with CYPRESS_BASE_URL for local dev:
@@ -89,12 +101,12 @@ export default defineConfig({
 
           const response = await sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: worksheet ? `${worksheet}!A:G` : 'A:G'
+            range: worksheet ? `${quoteSheetTitle(worksheet)}!A:G` : 'A:G'
           });
 
           const rows = response.data.values ?? [];
           // Column layout (contact form): [timestamp, firstName, lastName, email, phone, helpWays, message]
-          // Column layout (yard sign): [timestamp, firstName, lastName, email, phone, address]
+          // Column layout (yard sign): [timestamp, firstName, lastName, email, phone, address, preferredPayment]
           const rowIndex = rows.findIndex((row) => row[3] === email);
           if (rowIndex < 0) return null;
 

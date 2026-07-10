@@ -12,7 +12,8 @@ DEFAULT_YARDSIGN_SHEETS_WORKSHEET = "Yard Signs"
 
 
 def env(name: str, default: str = "") -> str:
-    return os.getenv(name, default).strip()
+    value = os.getenv(name, default).strip()
+    return value if value else default
 
 
 def env_bool(name: str, default: bool = False) -> bool:
