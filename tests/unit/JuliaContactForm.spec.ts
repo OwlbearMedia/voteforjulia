@@ -250,11 +250,10 @@ describe('JuliaContactForm', () => {
       await wrapper.find('#contact-email').setValue('julia@example.com');
       await wrapper.find('#help-canvassing').setValue(true);
       await wrapper.find('#help-events').setValue(true);
-      await wrapper.find('#help-yard-signs').setValue(true);
       await wrapper.find('form').trigger('submit');
       await flushPromises();
       expect(submitContactForm).toHaveBeenCalledWith(
-        expect.objectContaining({ helpWays: 'Canvassing, Events, Yard signs' })
+        expect.objectContaining({ helpWays: 'Canvassing, Events' })
       );
     });
 

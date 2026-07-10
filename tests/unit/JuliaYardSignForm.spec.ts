@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import JuliaYardSignForm from '../../src/components/JuliaYardSignForm.vue';
 import { submitYardSignForm } from '../../src/lib/api';
@@ -24,7 +24,7 @@ describe('JuliaYardSignForm', () => {
   });
 
   it('shows validation errors and does not submit when required fields are invalid', async () => {
-    const wrapper = mount(JuliaYardSignForm);
+    const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
 
     await wrapper.find('form').trigger('submit');
 
@@ -35,7 +35,7 @@ describe('JuliaYardSignForm', () => {
   });
 
   it('blocks submission when address exceeds the backend limit', async () => {
-    const wrapper = mount(JuliaYardSignForm);
+    const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
 
     await wrapper.find('#yard-sign-first-name').setValue('Julia');
     await wrapper.find('#yard-sign-email').setValue('julia@example.com');
@@ -50,7 +50,7 @@ describe('JuliaYardSignForm', () => {
   it('submits a valid payload and tracks success', async () => {
     vi.mocked(submitYardSignForm).mockResolvedValueOnce();
 
-    const wrapper = mount(JuliaYardSignForm);
+    const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
 
     await wrapper.find('#yard-sign-first-name').setValue('Julia');
     await wrapper.find('#yard-sign-last-name').setValue('Hamann');
@@ -85,7 +85,7 @@ describe('JuliaYardSignForm', () => {
   it('shows dedicated success state content after successful submission', async () => {
     vi.mocked(submitYardSignForm).mockResolvedValueOnce();
 
-    const wrapper = mount(JuliaYardSignForm);
+    const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
 
     await wrapper.find('#yard-sign-first-name').setValue('Julia');
     await wrapper.find('#yard-sign-email').setValue('julia@example.com');
@@ -95,15 +95,16 @@ describe('JuliaYardSignForm', () => {
     await flushPromises();
 
     expect(wrapper.find('form').exists()).toBe(false);
-    expect(wrapper.find('output.contact-form').exists()).toBe(true);
+    expect(wrapper.find('output').exists()).toBe(true);
     expect(wrapper.text()).toContain('Thanks so much for your support, Julia!');
     expect(wrapper.find('.success-sprout').exists()).toBe(true);
+    expect(wrapper.text()).toContain('make a donation');
   });
 
   it('shows API error message and tracks submission failure', async () => {
     vi.mocked(submitYardSignForm).mockRejectedValueOnce(new Error('Server unavailable'));
 
-    const wrapper = mount(JuliaYardSignForm);
+    const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
 
     await wrapper.find('#yard-sign-first-name').setValue('Julia');
     await wrapper.find('#yard-sign-email').setValue('julia@example.com');
@@ -129,7 +130,7 @@ describe('JuliaYardSignForm', () => {
   describe('preferred payment checkboxes', () => {
     it('joins multiple selected checkboxes into a comma-separated string', async () => {
       vi.mocked(submitYardSignForm).mockResolvedValueOnce();
-      const wrapper = mount(JuliaYardSignForm);
+      const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
       await wrapper.find('#yard-sign-first-name').setValue('Julia');
       await wrapper.find('#yard-sign-email').setValue('julia@example.com');
       await wrapper.find('#yard-sign-address').setValue('123 Main St');
@@ -144,7 +145,7 @@ describe('JuliaYardSignForm', () => {
 
     it('submits an empty string when no checkboxes are selected', async () => {
       vi.mocked(submitYardSignForm).mockResolvedValueOnce();
-      const wrapper = mount(JuliaYardSignForm);
+      const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
       await wrapper.find('#yard-sign-first-name').setValue('Julia');
       await wrapper.find('#yard-sign-email').setValue('julia@example.com');
       await wrapper.find('#yard-sign-address').setValue('123 Main St');
@@ -160,26 +161,26 @@ describe('JuliaYardSignForm', () => {
 
   describe('blur validation', () => {
     it('shows first name error when first name field is blurred while empty', async () => {
-      const wrapper = mount(JuliaYardSignForm);
+      const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
       await wrapper.find('#yard-sign-first-name').trigger('blur');
       expect(wrapper.text()).toContain('Please enter your first name.');
     });
 
     it('shows address error when address field is blurred while empty', async () => {
-      const wrapper = mount(JuliaYardSignForm);
+      const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
       await wrapper.find('#yard-sign-address').trigger('blur');
       expect(wrapper.text()).toContain('Please enter your address.');
     });
 
     it('shows email error when email is invalid on blur', async () => {
-      const wrapper = mount(JuliaYardSignForm);
+      const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
       await wrapper.find('#yard-sign-email').setValue('not-an-email');
       await wrapper.find('#yard-sign-email').trigger('blur');
       expect(wrapper.text()).toContain('Please enter a valid email address.');
     });
 
     it('shows phone error when phone is too long on blur', async () => {
-      const wrapper = mount(JuliaYardSignForm);
+      const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
       await wrapper.find('#yard-sign-phone').setValue('1'.repeat(33));
       await wrapper.find('#yard-sign-phone').trigger('blur');
       expect(wrapper.text()).toContain('Phone must be 32 characters or fewer.');
@@ -190,7 +191,7 @@ describe('JuliaYardSignForm', () => {
 
   describe('ARIA attributes', () => {
     it('sets aria-invalid on fields that fail validation on submit', async () => {
-      const wrapper = mount(JuliaYardSignForm);
+      const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
       await wrapper.find('form').trigger('submit');
       expect(wrapper.find('#yard-sign-first-name').attributes('aria-invalid')).toBe('true');
       expect(wrapper.find('#yard-sign-email').attributes('aria-invalid')).toBe('true');
@@ -198,7 +199,7 @@ describe('JuliaYardSignForm', () => {
     });
 
     it('removes aria-invalid once a field error is resolved', async () => {
-      const wrapper = mount(JuliaYardSignForm);
+      const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
       await wrapper.find('#yard-sign-first-name').trigger('blur');
       expect(wrapper.find('#yard-sign-first-name').attributes('aria-invalid')).toBe('true');
       await wrapper.find('#yard-sign-first-name').setValue('Julia');
@@ -211,13 +212,13 @@ describe('JuliaYardSignForm', () => {
 
   describe('submit button disabled state', () => {
     it('disables the submit button while validation errors are present', async () => {
-      const wrapper = mount(JuliaYardSignForm);
+      const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
       await wrapper.find('#yard-sign-first-name').trigger('blur');
       expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined();
     });
 
     it('re-enables the submit button once all errors are resolved', async () => {
-      const wrapper = mount(JuliaYardSignForm);
+      const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
       await wrapper.find('#yard-sign-first-name').setValue('Julia');
       await wrapper.find('#yard-sign-email').setValue('julia@example.com');
       await wrapper.find('#yard-sign-address').setValue('123 Main St');
@@ -236,7 +237,7 @@ describe('JuliaYardSignForm', () => {
 
     vi.mocked(submitYardSignForm).mockReturnValueOnce(pendingSubmission);
 
-    const wrapper = mount(JuliaYardSignForm);
+    const wrapper = mount(JuliaYardSignForm, { global: { stubs: { RouterLink: RouterLinkStub } } });
 
     await wrapper.find('#yard-sign-first-name').setValue('Julia');
     await wrapper.find('#yard-sign-email').setValue('julia@example.com');
