@@ -39,6 +39,18 @@ function buildSheetsClient(env: CypressEnv) {
   return google.sheets({ version: 'v4', auth });
 }
 
+// A1 ranges require a sheet title to be single-quoted whenever it contains
+// anything other than letters, digits, or underscores (e.g. the "Yard Signs"
+// worksheet's space) — mirrors api/services/sheets_service.py's
+// _quote_sheet_title so both sides build the same range syntax.
+function quoteSheetTitle(title: string): string {
+  if (/^[A-Za-z0-9_]+$/.test(title)) {
+    return title;
+  }
+
+  return `'${title.replace(/'/g, "''")}'`;
+}
+
 export default defineConfig({
   e2e: {
     // Default to the staging site. Override with CYPRESS_BASE_URL for local dev:
@@ -46,36 +58,71 @@ export default defineConfig({
     baseUrl: 'https://test.voteforjulia.com',
     allowCypressEnv: false,
     defaultCommandTimeout: 10000,
+    // Chrome's autofill/password-manager heuristics can transiently disable
+    // the first field of a fresh form (our fields use autocomplete="given-name"
+    // etc.) in a clean CI profile, failing cy.type() with "targeted a disabled
+    // element" even though the app never disables that input. A single retry
+    // in run mode absorbs that class of infra flake without masking real
+    // failures (which fail consistently, not once).
+    retries: {
+      runMode: 1,
+      openMode: 0
+    },
     setupNodeEvents(on, config) {
       const env = config.env as CypressEnv;
 
+      on('before:browser:launch', (browser, launchOptions) => {
+        if (browser.family === 'chromium' && browser.name !== 'electron') {
+          launchOptions.args.push(
+            '--disable-features=Autofill,AutofillServerCommunication,PasswordManagerOnboarding,AutofillAssistant'
+          );
+        }
+
+        return launchOptions;
+      });
+
       on('task', {
-        async findSheetRow({ email }: { email: string }): Promise<{
+        async findSheetRow({
+          email,
+          worksheet: worksheetOverride
+        }: {
+          email: string;
+          worksheet?: string;
+        }): Promise<{
           rowIndex: number;
           row: string[];
         } | null> {
           const spreadsheetId = getSpreadsheetId(env);
           const worksheet =
+            worksheetOverride ??
             (env.GOOGLE_SHEETS_WORKSHEET as string | undefined) ??
             process.env.GOOGLE_SHEETS_WORKSHEET;
           const sheets = buildSheetsClient(env);
 
           const response = await sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: worksheet ? `${worksheet}!A:G` : 'A:G'
+            range: worksheet ? `${quoteSheetTitle(worksheet)}!A:G` : 'A:G'
           });
 
           const rows = response.data.values ?? [];
-          // Column layout: [timestamp, firstName, lastName, email, phone, helpWays, message]
+          // Column layout (contact form): [timestamp, firstName, lastName, email, phone, helpWays, message]
+          // Column layout (yard sign): [timestamp, firstName, lastName, email, phone, address, preferredPayment]
           const rowIndex = rows.findIndex((row) => row[3] === email);
           if (rowIndex < 0) return null;
 
           return { rowIndex, row: rows[rowIndex] as string[] };
         },
 
-        async deleteSheetRow({ rowIndex }: { rowIndex: number }): Promise<true> {
+        async deleteSheetRow({
+          rowIndex,
+          worksheet: worksheetOverride
+        }: {
+          rowIndex: number;
+          worksheet?: string;
+        }): Promise<true> {
           const spreadsheetId = getSpreadsheetId(env);
           const worksheet =
+            worksheetOverride ??
             (env.GOOGLE_SHEETS_WORKSHEET as string | undefined) ??
             process.env.GOOGLE_SHEETS_WORKSHEET;
           const sheets = buildSheetsClient(env);

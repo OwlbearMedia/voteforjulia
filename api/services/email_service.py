@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import secrets
 import smtplib
 from email.message import Message
-from email.utils import formatdate, make_msgid
+from email.utils import formatdate
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from html import escape
 from pathlib import Path
 
 from api.config import EmailConfig
-from api.models import Submission
+from api.models import Submission, YardSignRequest
 
 
 _CONFIRMATION_TEMPLATE = Path(__file__).resolve().parents[1] / "email" / "email-template.html"
+_YARD_SIGN_CONFIRMATION_TEMPLATE = (
+    Path(__file__).resolve().parents[1] / "email" / "yard-sign-email-template.html"
+)
 _SENDER_DISPLAY_NAME = "Julia Hamann"
 
 
@@ -26,11 +30,20 @@ def _message_id_domain(email_address: str) -> str:
     return domain or "localhost"
 
 
+def _generate_message_id(domain: str) -> str:
+    # A cryptographically random, purely alphanumeric (hex) local part tied to
+    # our own sending domain. Some spam filters penalize Message-IDs whose
+    # domain doesn't match the sender, or whose local part looks low-entropy
+    # or bot-generated (e.g. sequential/short); 128 bits of secrets-grade
+    # randomness avoids both.
+    return f"<{secrets.token_hex(16)}@{domain}>"
+
+
 def _set_common_headers(msg: Message, *, from_address: str, to_address: str, subject: str) -> None:
     msg["From"] = _formatted_sender(from_address)
     msg["To"] = to_address
     msg["Date"] = formatdate(localtime=True)
-    msg["Message-ID"] = make_msgid(domain=_message_id_domain(from_address))
+    msg["Message-ID"] = _generate_message_id(_message_id_domain(from_address))
     msg["Subject"] = subject
 
 
@@ -43,7 +56,7 @@ def _build_submission_message(config: EmailConfig, submission: Submission) -> MI
         subject=f"New message from {submission.name}",
     )
     msg["Reply-To"] = submission.email
-    msg.attach(MIMEText(submission.to_email_body(), "plain"))
+    msg.attach(MIMEText(submission.to_email_body(), "plain", "utf-8"))
     return msg
 
 
@@ -83,11 +96,11 @@ def _build_confirmation_message(config: EmailConfig, submission: Submission) -> 
     plain_text_body, html_body = _build_confirmation_content(submission)
 
     if config.plain_text_confirmation_only:
-        msg = MIMEText(plain_text_body, "plain")
+        msg = MIMEText(plain_text_body, "plain", "utf-8")
     else:
         msg = MIMEMultipart("alternative")
-        msg.attach(MIMEText(plain_text_body, "plain"))
-        msg.attach(MIMEText(html_body, "html"))
+        msg.attach(MIMEText(plain_text_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     _set_common_headers(
         msg,
@@ -143,3 +156,79 @@ def send_confirmation_email(config: EmailConfig, submission: Submission) -> dict
 
     with _smtp_connection(config) as server:
         return _send_message(server, config.email_address, [submission.email], msg)
+
+
+def _build_yard_sign_request_message(config: EmailConfig, yard_sign_request: YardSignRequest) -> MIMEMultipart:
+    msg = MIMEMultipart()
+    _set_common_headers(
+        msg,
+        from_address=config.email_address,
+        to_address=", ".join(config.recipients),
+        subject=f"New yard sign request from {yard_sign_request.name}",
+    )
+    msg["Reply-To"] = yard_sign_request.email
+    msg.attach(MIMEText(yard_sign_request.to_email_body(), "plain", "utf-8"))
+    return msg
+
+
+def _build_yard_sign_confirmation_content(yard_sign_request: YardSignRequest) -> tuple[str, str]:
+    greeting_name = yard_sign_request.first_name or "friend"
+    plain_text_body = "\n".join([
+        f"Thanks so much for your support, {greeting_name}!",
+        "",
+        "I'm so glad you're requesting a yard sign to help spread the word for my campaign for Mankato Mayor!",
+        "",
+        "Check your inbox to coordinate sign delivery. We'll be in touch soon!",
+        "",
+        "If you plan to pay online, you can make a donation at https://voteforjulia.com/donate and write \"yard sign\" in the comment section.",
+        "",
+        "It's also super helpful if you follow my campaign on Facebook and Instagram, invite others, and share posts as they come up to encourage folks to get engaged or donate if they can.",
+        "Facebook: https://www.facebook.com/profile.php?id=61590411090366",
+        "Instagram: https://www.instagram.com/voteforjuliahamann",
+        "",
+        "Thank you again for your support!",
+        "",
+        "All my best,",
+        "Julia",
+        "",
+        "Paid for by Julia Hamann for Mankato Mayor",
+        "https://voteforjulia.com",
+    ])
+
+    template_html = _YARD_SIGN_CONFIRMATION_TEMPLATE.read_text(encoding="utf-8")
+    html_body = template_html.replace("{submission.name}", escape(greeting_name))
+
+    return plain_text_body, html_body
+
+
+def _build_yard_sign_confirmation_message(config: EmailConfig, yard_sign_request: YardSignRequest) -> Message:
+    plain_text_body, html_body = _build_yard_sign_confirmation_content(yard_sign_request)
+
+    if config.plain_text_confirmation_only:
+        msg = MIMEText(plain_text_body, "plain", "utf-8")
+    else:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(plain_text_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    _set_common_headers(
+        msg,
+        from_address=config.email_address,
+        to_address=yard_sign_request.email,
+        subject="Thanks for requesting a yard sign for Julia Hamann for Mayor",
+    )
+    return msg
+
+
+def send_yard_sign_request_email(config: EmailConfig, yard_sign_request: YardSignRequest) -> dict:
+    msg = _build_yard_sign_request_message(config, yard_sign_request)
+
+    with _smtp_connection(config) as server:
+        return _send_message(server, config.email_address, config.recipients, msg)
+
+
+def send_yard_sign_confirmation_email(config: EmailConfig, yard_sign_request: YardSignRequest) -> dict:
+    msg = _build_yard_sign_confirmation_message(config, yard_sign_request)
+
+    with _smtp_connection(config) as server:
+        return _send_message(server, config.email_address, [yard_sign_request.email], msg)

@@ -145,23 +145,27 @@ Tests are organized in a dedicated directory:
 - tests/unit/JuliaHeader.spec.ts
 - tests/unit/JuliaFooter.spec.ts
 - tests/unit/JuliaContactForm.spec.ts
-- tests/unit/pages.spec.ts — render + SEO metadata for all page components (Home, About, Events, Volunteer, Donate, Secret Recipe)
+- tests/unit/JuliaYardSignForm.spec.ts
+- tests/unit/pages.spec.ts — render + SEO metadata for all page components (Home, About, Events, Volunteer, Donate, Secret Recipe, Yard Sign)
 - tests/unit/routes.spec.ts — route paths and no `.html` aliases
 - tests/unit/sitemap.spec.ts — sitemap fallback routes and XML generation
 - tests/unit/useContactForm.spec.ts
+- tests/unit/useYardSignForm.spec.ts
 - tests/unit/analytics.spec.ts
 - tests/unit/api.spec.ts
 - tests/unit/newrelic.spec.ts
 
 ### E2E Tests (Cypress)
 
-Runs the volunteer form end-to-end against the staging site, submits a real form, verifies the entry was written to Google Sheets, and deletes it.
+Runs the volunteer form and yard sign form end-to-end against the staging site, submits a real form for each, verifies the entry was written to the corresponding Google Sheets tab, and deletes it.
 
 Required environment variables (add to `cypress.env.json` locally, or set as environment variables):
 
 - `GOOGLE_SHEETS_SPREADSHEET_ID` — the spreadsheet ID from the sheet URL
 - `GOOGLE_SERVICE_ACCOUNT_JSON` — full JSON contents of the service account key file
-- `GOOGLE_SHEETS_WORKSHEET` (optional) — worksheet name, defaults to `Sheet1`
+- `GOOGLE_SHEETS_WORKSHEET` (optional) — worksheet name used by the volunteer/contact form test, defaults to `Sheet1`
+
+The yard sign form test (`cypress/e2e/yard-sign-form.cy.ts`) targets the `Yard Signs` worksheet directly, matching the API's default `GOOGLE_SHEETS_YARDSIGN_WORKSHEET`.
 
 Run in headless mode against the staging site:
 

@@ -170,5 +170,134 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertEqual(len(self.sent_submissions), 0)
 
 
+class AppYardSignTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._orig_rate_limit_window_seconds = app_module._RATE_LIMIT_WINDOW_SECONDS
+        self._orig_rate_limit_max_requests = app_module._RATE_LIMIT_MAX_REQUESTS
+        self._orig_rate_limit_buckets = app_module._RATE_LIMIT_BUCKETS
+        self._orig_load_email_config = app_module.load_email_config
+        self._orig_load_sheets_config = app_module.load_sheets_config
+        self._orig_send_yard_sign_request_email = app_module.send_yard_sign_request_email
+        self._orig_send_yard_sign_confirmation_email = app_module.send_yard_sign_confirmation_email
+        self._orig_append_row = app_module.append_row
+
+        app_module._RATE_LIMIT_WINDOW_SECONDS = 60
+        app_module._RATE_LIMIT_MAX_REQUESTS = 5
+        app_module._RATE_LIMIT_BUCKETS = {}
+
+        self.sent_requests = []
+        self.confirmation_requests = []
+        self.sheet_rows = []
+        self.sheets_config_calls = []
+
+        app_module.load_email_config = lambda: EmailConfig(
+            smtp_server="mail.example.com",
+            smtp_port=465,
+            smtp_security="ssl",
+            email_address="info@example.com",
+            email_password="placeholder-value",
+            recipients=["team@example.com"],
+            plain_text_confirmation_only=False,
+        )
+
+        def fake_load_sheets_config(worksheet_env, default_worksheet):
+            self.sheets_config_calls.append((worksheet_env, default_worksheet))
+            return SheetsConfig(
+                spreadsheet_id="",
+                worksheet=default_worksheet,
+                service_account_file="",
+                service_account_json="",
+            )
+
+        def fake_send_yard_sign_request_email(config, yard_sign_request):
+            self.sent_requests.append(yard_sign_request)
+            return {}
+
+        def fake_send_yard_sign_confirmation_email(config, yard_sign_request):
+            self.confirmation_requests.append(yard_sign_request)
+            return {}
+
+        def fake_append_row(config, row):
+            self.sheet_rows.append(row)
+
+        app_module.load_sheets_config = fake_load_sheets_config
+        app_module.send_yard_sign_request_email = fake_send_yard_sign_request_email
+        app_module.send_yard_sign_confirmation_email = fake_send_yard_sign_confirmation_email
+        app_module.append_row = fake_append_row
+        self.client = app_module.app.test_client()
+
+    def tearDown(self) -> None:
+        app_module._RATE_LIMIT_WINDOW_SECONDS = self._orig_rate_limit_window_seconds
+        app_module._RATE_LIMIT_MAX_REQUESTS = self._orig_rate_limit_max_requests
+        app_module._RATE_LIMIT_BUCKETS = self._orig_rate_limit_buckets
+        app_module.load_email_config = self._orig_load_email_config
+        app_module.load_sheets_config = self._orig_load_sheets_config
+        app_module.send_yard_sign_request_email = self._orig_send_yard_sign_request_email
+        app_module.send_yard_sign_confirmation_email = self._orig_send_yard_sign_confirmation_email
+        app_module.append_row = self._orig_append_row
+
+    def test_yard_sign_sends_emails_and_appends_sheet_row(self) -> None:
+        payload = {
+            "firstName": "Julia",
+            "lastName": "Hamann",
+            "email": "julia@example.com",
+            "phone": "555-555-5555",
+            "address": "123 Main St, Mankato, MN 56001",
+            "preferredPayment": ["Online", "Check"],
+        }
+
+        response = self.client.post(
+            "/api/yard-sign",
+            json=payload,
+            headers={"X-Forwarded-For": "198.51.100.20"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self.sent_requests), 1)
+        self.assertEqual(len(self.confirmation_requests), 1)
+        self.assertEqual(len(self.sheet_rows), 1)
+        self.assertEqual(self.sheet_rows[0][-1], "Online, Check")
+        self.assertEqual(
+            self.sheets_config_calls,
+            [("GOOGLE_SHEETS_YARDSIGN_WORKSHEET", "Yard Signs")],
+        )
+
+    def test_yard_sign_requires_address(self) -> None:
+        payload = {
+            "firstName": "Julia",
+            "email": "julia@example.com",
+        }
+
+        response = self.client.post(
+            "/api/yard-sign",
+            json=payload,
+            headers={"X-Forwarded-For": "198.51.100.21"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json(), {"error": "Address is required."})
+        self.assertEqual(len(self.sent_requests), 0)
+
+    def test_yard_sign_rejects_control_characters_in_header_bound_fields(self) -> None:
+        payload = {
+            "firstName": "Julia\r",
+            "email": "julia@example.com",
+            "address": "123 Main St, Mankato, MN 56001",
+        }
+
+        response = self.client.post(
+            "/api/yard-sign",
+            json=payload,
+            headers={"X-Forwarded-For": "198.51.100.22"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json(),
+            {"error": "First name contains invalid characters."},
+        )
+        self.assertEqual(len(self.sent_requests), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

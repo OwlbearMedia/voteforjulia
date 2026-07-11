@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { useTemplateRef } from 'vue';
+import { RouterLink } from 'vue-router';
 import sprout from '../assets/sprout.png';
 import IconSpinner from './icons/IconSpinner.vue';
-import { useContactForm } from '../composables/useContactForm';
+import { useYardSignForm } from '../composables/useYardSignForm';
 import { useScrollToSuccess } from '../composables/useScrollToSuccess';
 
 defineOptions({
-  name: 'JuliaContactForm'
+  name: 'JuliaYardSignForm'
 });
 
 const {
@@ -22,17 +23,17 @@ const {
   phone,
   phoneError,
   validatePhoneField,
-  message,
-  messageError,
-  validateMessageField,
-  helpWays,
+  address,
+  addressError,
+  validateAddressField,
+  preferredPayment,
   submitError,
   isSubmitted,
   isSubmitting,
   fullName,
   hasValidationError,
   handleSubmit
-} = useContactForm();
+} = useYardSignForm();
 
 // View-only concern: scroll the success message into view once it renders.
 const successMessageRef = useTemplateRef<HTMLElement>('successMessageRef');
@@ -45,47 +46,50 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       v-if="isSubmitted"
       key="success"
       ref="successMessageRef"
-      class="contact-form"
       aria-live="polite"
       tabindex="-1"
     >
       <h3>Thanks so much for your support, {{ firstName.trim() || 'friend' }}!</h3>
-      <p>
-        Check your inbox for additional follow up. I look forward to working with you!
-        <img class="success-sprout" :src="sprout" alt="" aria-hidden="true" />
-      </p>
+      <div class="contact-form-success">
+        <p>
+          Check your inbox to coordinate sign delivery. We will be in touch soon!
+          <img class="success-sprout" :src="sprout" alt="" aria-hidden="true" />
+        </p>
+        If you plan to pay online you can <RouterLink to="/donate">make a donation</RouterLink> and
+        write "yard sign" in the comment section.
+      </div>
     </output>
 
     <form
       v-else
       key="form"
       class="contact-form"
-      action="/api/send-email"
+      action="/api/yard-sign"
       method="POST"
       @submit="handleSubmit"
     >
-      <h3>Volunteer for the Campaign</h3>
+      <h3>Get a Yard Sign</h3>
       <p>* Fields marked with an asterisk are required.</p>
 
       <div class="name-fields">
         <div class="name-field">
-          <label for="contact-first-name" class="sr-only">First Name *</label>
+          <label for="yard-sign-first-name" class="sr-only">First Name *</label>
           <input
-            id="contact-first-name"
+            id="yard-sign-first-name"
             v-model="firstName"
             name="firstName"
             type="text"
             placeholder="First Name *"
             :class="{ 'input-error': firstNameError }"
             :aria-invalid="!!firstNameError || undefined"
-            :aria-describedby="firstNameError ? 'contact-first-name-error' : undefined"
+            :aria-describedby="firstNameError ? 'yard-sign-first-name-error' : undefined"
             autocomplete="given-name"
             required
             @blur="validateFirstNameField"
           />
           <p
             v-if="firstNameError"
-            id="contact-first-name-error"
+            id="yard-sign-first-name-error"
             class="form-error-message"
             role="alert"
             aria-live="polite"
@@ -95,21 +99,21 @@ useScrollToSuccess(successMessageRef, isSubmitted);
         </div>
 
         <div class="name-field">
-          <label for="contact-last-name" class="sr-only">Last Name</label>
+          <label for="yard-sign-last-name" class="sr-only">Last Name</label>
           <input
-            id="contact-last-name"
+            id="yard-sign-last-name"
             v-model="lastName"
             name="lastName"
             type="text"
             placeholder="Last Name"
             :aria-invalid="!!lastNameError || undefined"
-            :aria-describedby="lastNameError ? 'contact-last-name-error' : undefined"
+            :aria-describedby="lastNameError ? 'yard-sign-last-name-error' : undefined"
             autocomplete="family-name"
             @blur="validateLastNameField"
           />
           <p
             v-if="lastNameError"
-            id="contact-last-name-error"
+            id="yard-sign-last-name-error"
             class="form-error-message"
             role="alert"
             aria-live="polite"
@@ -121,15 +125,15 @@ useScrollToSuccess(successMessageRef, isSubmitted);
 
       <input type="hidden" name="name" :value="fullName" />
 
-      <label for="contact-email" class="sr-only">Email *</label>
+      <label for="yard-sign-email" class="sr-only">Email *</label>
       <input
-        id="contact-email"
+        id="yard-sign-email"
         v-model="email"
         name="email"
         type="email"
         :class="{ 'input-error': emailError }"
         :aria-invalid="!!emailError || undefined"
-        :aria-describedby="emailError ? 'contact-email-error' : undefined"
+        :aria-describedby="emailError ? 'yard-sign-email-error' : undefined"
         placeholder="Email *"
         autocomplete="email"
         required
@@ -137,7 +141,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       />
       <p
         v-if="emailError"
-        id="contact-email-error"
+        id="yard-sign-email-error"
         class="form-error-message"
         role="alert"
         aria-live="polite"
@@ -145,21 +149,21 @@ useScrollToSuccess(successMessageRef, isSubmitted);
         {{ emailError }}
       </p>
 
-      <label for="contact-phone" class="sr-only">Phone</label>
+      <label for="yard-sign-phone" class="sr-only">Phone</label>
       <input
-        id="contact-phone"
+        id="yard-sign-phone"
         v-model="phone"
         name="phone"
         type="tel"
         placeholder="Phone"
         :aria-invalid="!!phoneError || undefined"
-        :aria-describedby="phoneError ? 'contact-phone-error' : undefined"
+        :aria-describedby="phoneError ? 'yard-sign-phone-error' : undefined"
         autocomplete="tel"
         @blur="validatePhoneField"
       />
       <p
         v-if="phoneError"
-        id="contact-phone-error"
+        id="yard-sign-phone-error"
         class="form-error-message"
         role="alert"
         aria-live="polite"
@@ -167,83 +171,66 @@ useScrollToSuccess(successMessageRef, isSubmitted);
         {{ phoneError }}
       </p>
 
-      <fieldset class="help-options">
-        <legend>Ways you'd like to help</legend>
-        <label class="help-option" for="help-canvassing">
-          <input
-            id="help-canvassing"
-            v-model="helpWays"
-            name="helpWays[]"
-            type="checkbox"
-            value="Canvassing"
-          />
-          Canvassing
-        </label>
-        <label class="help-option" for="help-events">
-          <input
-            id="help-events"
-            v-model="helpWays"
-            name="helpWays[]"
-            type="checkbox"
-            value="Events"
-          />
-          Host a Meet &amp; Greet
-        </label>
-        <label class="help-option" for="help-letter-to-editor">
-          <input
-            id="help-letter-to-editor"
-            v-model="helpWays"
-            name="helpWays[]"
-            type="checkbox"
-            value="Letter to the editor"
-          />
-          Letter to the editor
-        </label>
-        <label class="help-option" for="help-fundraiser">
-          <input
-            id="help-fundraiser"
-            v-model="helpWays"
-            name="helpWays[]"
-            type="checkbox"
-            value="Fundraiser"
-          />
-          Host a fundraiser
-        </label>
-        <label class="help-option" for="help-campaign-team">
-          <input
-            id="help-campaign-team"
-            v-model="helpWays"
-            name="helpWays[]"
-            type="checkbox"
-            value="Campaign team"
-          />
-          Join the campaign team
-        </label>
-      </fieldset>
-
-      <label for="contact-message" class="sr-only">Message</label>
-      <textarea
-        id="contact-message"
-        v-model="message"
-        name="message"
-        placeholder="How would you like to help? Tell us about your other special skills or ideas!"
-        :aria-invalid="!!messageError || undefined"
-        :aria-describedby="messageError ? 'contact-message-error' : undefined"
-        rows="5"
-        @blur="validateMessageField"
-      ></textarea>
+      <label for="yard-sign-address" class="sr-only">Address *</label>
+      <input
+        id="yard-sign-address"
+        v-model="address"
+        name="address"
+        type="text"
+        placeholder="Address *"
+        :class="{ 'input-error': addressError }"
+        :aria-invalid="!!addressError || undefined"
+        :aria-describedby="addressError ? 'yard-sign-address-error' : undefined"
+        autocomplete="street-address"
+        required
+        @blur="validateAddressField"
+      />
       <p
-        v-if="messageError"
-        id="contact-message-error"
+        v-if="addressError"
+        id="yard-sign-address-error"
         class="form-error-message"
         role="alert"
         aria-live="polite"
       >
-        {{ messageError }}
+        {{ addressError }}
       </p>
 
+      <fieldset class="help-options">
+        <legend>Preferred payment</legend>
+        <label class="help-option" for="yard-sign-payment-online">
+          <input
+            id="yard-sign-payment-online"
+            v-model="preferredPayment"
+            name="preferredPayment[]"
+            type="checkbox"
+            value="Online"
+          />
+          Online
+        </label>
+        <label class="help-option" for="yard-sign-payment-cash">
+          <input
+            id="yard-sign-payment-cash"
+            v-model="preferredPayment"
+            name="preferredPayment[]"
+            type="checkbox"
+            value="Cash"
+          />
+          Cash
+        </label>
+        <label class="help-option" for="yard-sign-payment-check">
+          <input
+            id="yard-sign-payment-check"
+            v-model="preferredPayment"
+            name="preferredPayment[]"
+            type="checkbox"
+            value="Check"
+          />
+          Check
+        </label>
+      </fieldset>
+
       <button type="submit" :disabled="hasValidationError || isSubmitting">
-        Send Message <IconSpinner v-if="isSubmitting" />
+        Request a Yard Sign <IconSpinner v-if="isSubmitting" />
       </button>
       <p v-if="submitError" class="form-error-message" role="alert" aria-live="assertive">
         {{ submitError }}

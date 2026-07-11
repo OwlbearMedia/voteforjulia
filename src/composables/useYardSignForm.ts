@@ -1,11 +1,11 @@
 import { computed, ref } from 'vue';
-import { submitContactForm } from '../lib/api';
+import { submitYardSignForm } from '../lib/api';
 import { EMAIL_REGEX, useTextField } from './useTextField';
 import { useFormSubmission } from './useFormSubmission';
 import {
-  trackVolunteerFormSubmit,
-  trackVolunteerRequestBody,
-  trackVolunteerSubmissionError
+  trackYardSignFormSubmit,
+  trackYardSignRequestBody,
+  trackYardSignSubmissionError
 } from '../lib/analytics';
 
 // Limits mirror the backend's accepted maximums so the client rejects
@@ -15,10 +15,10 @@ const FIELD_LIMITS = {
   lastName: 80,
   email: 254,
   phone: 32,
-  message: 500
+  address: 200
 } as const;
 
-export function useContactForm() {
+export function useYardSignForm() {
   const firstNameField = useTextField({
     label: 'First name',
     max: FIELD_LIMITS.firstName,
@@ -36,15 +36,15 @@ export function useContactForm() {
     }
   });
   const phoneField = useTextField({ label: 'Phone', max: FIELD_LIMITS.phone });
-  const messageField = useTextField({
-    label: 'Message',
-    max: FIELD_LIMITS.message,
-    allowNewlines: true
+  const addressField = useTextField({
+    label: 'Address',
+    max: FIELD_LIMITS.address,
+    required: true
   });
 
-  const fields = [firstNameField, lastNameField, emailField, phoneField, messageField];
+  const fields = [firstNameField, lastNameField, emailField, phoneField, addressField];
 
-  const helpWays = ref<string[]>([]);
+  const preferredPayment = ref<string[]>([]);
 
   const fullName = computed(() =>
     `${firstNameField.value.value.trim()} ${lastNameField.value.value.trim()}`.trim()
@@ -59,19 +59,17 @@ export function useContactForm() {
       lastName: lastNameField.value.value,
       email: emailField.value.value,
       phone: phoneField.value.value,
-      helpWays: [...helpWays.value].join(', '),
-      message: messageField.value.value
+      address: addressField.value.value,
+      preferredPayment: [...preferredPayment.value].join(', ')
     }),
-    submit: submitContactForm,
-    trackRequest: trackVolunteerRequestBody,
-    trackResult: trackVolunteerFormSubmit,
-    trackError: trackVolunteerSubmissionError,
-    fallbackErrorMessage: 'Unable to send your message right now. Please try again.'
+    submit: submitYardSignForm,
+    trackRequest: trackYardSignRequestBody,
+    trackResult: trackYardSignFormSubmit,
+    trackError: trackYardSignSubmissionError,
+    fallbackErrorMessage: 'Unable to send your request right now. Please try again.'
   });
 
   return {
-    // Field models — names kept identical to the original component so the
-    // template requires no changes.
     firstName: firstNameField.value,
     firstNameError: firstNameField.error,
     validateFirstNameField: firstNameField.validate,
@@ -84,11 +82,10 @@ export function useContactForm() {
     phone: phoneField.value,
     phoneError: phoneField.error,
     validatePhoneField: phoneField.validate,
-    message: messageField.value,
-    messageError: messageField.error,
-    validateMessageField: messageField.validate,
-    // Form-level state.
-    helpWays,
+    address: addressField.value,
+    addressError: addressField.error,
+    validateAddressField: addressField.validate,
+    preferredPayment,
     submitError,
     isSubmitted,
     isSubmitting,

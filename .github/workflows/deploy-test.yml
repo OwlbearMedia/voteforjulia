@@ -191,9 +191,23 @@ jobs:
             mkdir -p ./api_test/tmp
             touch ./api_test/tmp/restart.txt
 
+  verify-test-api:
+    name: Verify Python API (test)
+    needs: deploy-test-api
+    runs-on: ubuntu-latest
+
+    steps:
+      # Passenger spawns a fresh worker on the first request after a restart,
+      # which is slow (process boot + first-time OAuth token exchange for
+      # Sheets). Without this warm-up, that cold-start cost lands on whichever
+      # Cypress test happens to hit the API first, which can push it past the
+      # form-submission timeout even though the app is healthy.
+      - name: Verify API is responding
+        run: curl --fail --max-time 15 --retry 5 --retry-delay 5 https://test-api.voteforjulia.com/health
+
   e2e-tests:
     name: Cypress e2e tests
-    needs: [deploy-test-frontend, deploy-test-api]
+    needs: [deploy-test-frontend, verify-test-api]
     runs-on: ubuntu-latest
     environment: test
 

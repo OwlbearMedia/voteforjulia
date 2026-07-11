@@ -8,10 +8,12 @@ DEFAULT_SMTP_PORT = 465
 DEFAULT_SMTP_SECURITY = "auto"
 DEFAULT_RECIPIENT_EMAIL = "info@voteforjulia.com"
 DEFAULT_SHEETS_WORKSHEET = "Sheet1"
+DEFAULT_YARDSIGN_SHEETS_WORKSHEET = "Yard Signs"
 
 
 def env(name: str, default: str = "") -> str:
-    return os.getenv(name, default).strip()
+    value = os.getenv(name, default).strip()
+    return value if value else default
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -65,10 +67,13 @@ def load_email_config() -> EmailConfig:
 
 
 
-def load_sheets_config() -> SheetsConfig:
+def load_sheets_config(
+    worksheet_env: str = "GOOGLE_SHEETS_WORKSHEET",
+    default_worksheet: str = DEFAULT_SHEETS_WORKSHEET,
+) -> SheetsConfig:
     return SheetsConfig(
         spreadsheet_id=env("GOOGLE_SHEETS_SPREADSHEET_ID"),
-        worksheet=env("GOOGLE_SHEETS_WORKSHEET", DEFAULT_SHEETS_WORKSHEET),
+        worksheet=env(worksheet_env, default_worksheet),
         service_account_file=env("GOOGLE_SERVICE_ACCOUNT_FILE"),
         service_account_json=env("GOOGLE_SERVICE_ACCOUNT_JSON"),
     )
