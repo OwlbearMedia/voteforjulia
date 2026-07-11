@@ -71,6 +71,7 @@ function handleDonateClick() {
             <RouterLink :to="{ path: '/', hash: '#issues' }" @click="closeMenu">Issues</RouterLink>
           </li>
           <li><RouterLink to="/events" @click="closeMenu">Events</RouterLink></li>
+          <li><RouterLink to="/news" @click="closeMenu">News</RouterLink></li>
           <li><RouterLink to="/volunteer" @click="closeMenu">Volunteer</RouterLink></li>
           <li><RouterLink to="/yard-signs" @click="closeMenu">Yard Signs</RouterLink></li>
           <li>
