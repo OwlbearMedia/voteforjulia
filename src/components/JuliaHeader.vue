@@ -72,7 +72,7 @@ function handleDonateClick() {
           </li>
           <li><RouterLink to="/events" @click="closeMenu">Events</RouterLink></li>
           <li><RouterLink to="/volunteer" @click="closeMenu">Volunteer</RouterLink></li>
-          <li><RouterLink to="/yard-signs" @click="closeMenu">Yard Sign</RouterLink></li>
+          <li><RouterLink to="/yard-signs" @click="closeMenu">Yard Signs</RouterLink></li>
           <li>
             <RouterLink to="/donate" class="donate" @click="handleDonateClick">Donate</RouterLink>
           </li>

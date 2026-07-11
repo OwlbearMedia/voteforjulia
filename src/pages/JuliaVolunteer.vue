@@ -137,10 +137,6 @@ useHead({
     <div class="stances-layout">
       <div class="stances-text">
         <p>Join the campaign team to help with outreach, events, and voter engagement.</p>
-        <p>
-          Want to show your support at home?
-          <RouterLink to="/yard-signs">Request a yard sign</RouterLink>.
-        </p>
 
         <JuliaContactForm />
       </div>

@@ -52,7 +52,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <h3>Thanks so much for your support, {{ firstName.trim() || 'friend' }}!</h3>
       <div class="contact-form-success">
         <p>
-          Check your inbox for additional follow up. Your yard sign is on its way!
+          Check your inbox to coordinate sign delivery. We will be in touch soon!
           <img class="success-sprout" :src="sprout" alt="" aria-hidden="true" />
         </p>
         If you plan to pay online you can <RouterLink to="/donate">make a donation</RouterLink> and
