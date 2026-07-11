@@ -99,28 +99,37 @@ def _resolve_worksheet_title(service, spreadsheet_id: str, worksheet: str) -> st
     )
 
 
+def _find_next_empty_row(service, spreadsheet_id: str, worksheet_title: str) -> int:
+    # append()'s automatic "find the end of the table" can be thrown off by
+    # unrelated columns that hold values in rows with no real submission (e.g.
+    # a checkbox column defaults every cell to FALSE rather than truly empty),
+    # so determine the next open row from column A specifically -- that's
+    # always the submission timestamp, and reliably empty past the last real row.
+    range_name = f"{_quote_sheet_title(worksheet_title)}!A2:A"
+    result = (
+        service.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range=range_name)
+        .execute()
+    )
+    values = result.get("values", [])
+    return 2 + len(values)
+
+
 def append_row(config: SheetsConfig, row: list[str]) -> None:
     if not config.spreadsheet_id:
         return
 
     service = _get_sheets_service(config)
     worksheet_title = _resolve_worksheet_title(service, config.spreadsheet_id, config.worksheet)
-    range_name = f"{_quote_sheet_title(worksheet_title)}!A:A"
+    next_row = _find_next_empty_row(service, config.spreadsheet_id, worksheet_title)
+    range_name = f"{_quote_sheet_title(worksheet_title)}!A{next_row}"
 
-    result = (
-        service.spreadsheets()
-        .values()
-        .append(
-            spreadsheetId=config.spreadsheet_id,
-            range=range_name,
-            valueInputOption="RAW",
-            insertDataOption="INSERT_ROWS",
-            body={"values": [row]},
-        )
-        .execute()
-    )
+    service.spreadsheets().values().update(
+        spreadsheetId=config.spreadsheet_id,
+        range=range_name,
+        valueInputOption="RAW",
+        body={"values": [row]},
+    ).execute()
 
-    # Google's own confirmation of where the row landed, since the configured
-    # worksheet value (a title or a gid) can silently resolve to the wrong tab.
-    updated_range = (result or {}).get("updates", {}).get("updatedRange", range_name)
-    logger.info("Appended row to %s in spreadsheet %s", updated_range, config.spreadsheet_id)
+    logger.info("Wrote row to %s in spreadsheet %s", range_name, config.spreadsheet_id)

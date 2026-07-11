@@ -49,9 +49,35 @@ class AppendRowTests(unittest.TestCase):
         ):
             append_row(self.config, ["2026-01-01", "Jane", "Doe"])
 
-        append_call = service.spreadsheets.return_value.values.return_value.append
-        append_call.assert_called_once()
-        self.assertEqual(append_call.call_args.kwargs["range"], "'Yard Signs'!A:A")
+        update_call = service.spreadsheets.return_value.values.return_value.update
+        update_call.assert_called_once()
+        self.assertEqual(update_call.call_args.kwargs["range"], "'Yard Signs'!A2")
+        self.assertEqual(
+            update_call.call_args.kwargs["body"], {"values": [["2026-01-01", "Jane", "Doe"]]}
+        )
+
+    def test_writes_after_last_non_empty_row_in_column_a(self) -> None:
+        # Regression test: other columns (e.g. checkboxes defaulting every
+        # cell to FALSE) must not influence where the row lands -- only
+        # column A's actual values determine the next open row.
+        config = SheetsConfig(
+            spreadsheet_id="sheet-123",
+            worksheet="Sheet1",
+            service_account_file="",
+            service_account_json='{"type": "service_account"}',
+        )
+        service = _fake_service([])
+        service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
+            "values": [["2026-01-01"], ["2026-01-02"], ["2026-01-03"]]
+        }
+
+        with patch("google.oauth2.service_account.Credentials.from_service_account_info"), patch(
+            "googleapiclient.discovery.build", return_value=service
+        ):
+            append_row(config, ["2026-01-04", "Jane", "Doe"])
+
+        update_call = service.spreadsheets.return_value.values.return_value.update
+        self.assertEqual(update_call.call_args.kwargs["range"], "Sheet1!A5")
 
     def test_raises_when_gid_not_found(self) -> None:
         service = _fake_service([{"properties": {"sheetId": 999, "title": "Sheet1"}}])
@@ -77,8 +103,8 @@ class AppendRowTests(unittest.TestCase):
             append_row(config, ["row"])
 
         service.spreadsheets.return_value.get.assert_not_called()
-        append_call = service.spreadsheets.return_value.values.return_value.append
-        self.assertEqual(append_call.call_args.kwargs["range"], "Sheet1!A:A")
+        update_call = service.spreadsheets.return_value.values.return_value.update
+        self.assertEqual(update_call.call_args.kwargs["range"], "Sheet1!A2")
 
 
 if __name__ == "__main__":
