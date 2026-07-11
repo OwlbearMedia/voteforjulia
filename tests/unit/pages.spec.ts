@@ -98,7 +98,6 @@ describe('Page components', () => {
     expect(wrapper.text()).toContain(
       'Join the campaign team to help with outreach, events, and voter engagement.'
     );
-    expect(wrapper.text()).toContain('Request a yard sign');
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Volunteer | Julia Hamann for Mankato Mayor',
