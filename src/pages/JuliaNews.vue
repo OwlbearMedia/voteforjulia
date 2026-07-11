@@ -93,7 +93,7 @@ useHead({
             name: 'RACE TO WATCH: Julia Hamann',
             uploadDate: '2026-06-25',
             description:
-              "We sat down with candidate for Mankato mayor Julia Hamann to discuss her campaign and her stances on important issues to the city.",
+              'We sat down with candidate for Mankato mayor Julia Hamann to discuss her campaign and her stances on important issues to the city.',
             thumbnailUrl: 'https://i.ytimg.com/vi/UnVrel_BRfs/hqdefault.jpg',
             publisher: {
               '@type': 'Organization',
@@ -107,7 +107,8 @@ useHead({
           },
           {
             '@type': 'NewsArticle',
-            headline: 'Mankato candidates officially file for office, with passing of Tuesday deadline',
+            headline:
+              'Mankato candidates officially file for office, with passing of Tuesday deadline',
             datePublished: '2026-06-03',
             author: {
               '@type': 'Person',
@@ -237,8 +238,8 @@ useHead({
       <p>
         Julia's campaign launch party at The Makerspace drew more than 100 attendees for
         button-making, screen printing, and live music. Guests connected directly with Julia,
-        chipped in donations for Food Not Bombs, and picked up $10 yard signs to show their
-        support ahead of the August 11th primary.
+        chipped in donations for Food Not Bombs, and picked up $10 yard signs to show their support
+        ahead of the August 11th primary.
       </p>
       <p>
         <a
@@ -265,11 +266,14 @@ useHead({
       <hr />
 
       <p>
-        Julia sat down with the Mankato Free Press to discuss her campaign
-        and her stances on the issues that matter most to the city.
+        Julia sat down with the Mankato Free Press to discuss her campaign and her stances on the
+        issues that matter most to the city.
       </p>
       <p>
-        <a href="https://www.youtube.com/watch?v=UnVrel_BRfs" target="_blank" rel="noopener noreferrer"
+        <a
+          href="https://www.youtube.com/watch?v=UnVrel_BRfs"
+          target="_blank"
+          rel="noopener noreferrer"
           >Watch the video on YouTube</a
         >
       </p>
@@ -292,9 +296,9 @@ useHead({
       <p>
         In this "Race to Watch" profile, the Mankato Free Press explored Julia's approach heading
         into the primary against incumbent Najwa Massad and challenger Toby Leonard. Rather than
-        leading with a fixed policy platform, Julia emphasized bringing more community
-        conversation into City Council decisions &mdash; including participatory budgeting,
-        stronger tenant protections, and a careful look at data center development.
+        leading with a fixed policy platform, Julia emphasized bringing more community conversation
+        into City Council decisions &mdash; including participatory budgeting, stronger tenant
+        protections, and a careful look at data center development.
       </p>
       <p>
         <a
@@ -321,11 +325,11 @@ useHead({
       <hr />
 
       <p>
-        Tuesday marked the filing deadline for Minnesota candidates across local, state, and
-        federal races. In Mankato's mayoral contest, incumbent Mayor Najwa Massad is seeking her
-        third term, facing challengers Toby Leonard and Julia, who is making a push through a
-        grassroots campaign. An August primary will narrow the mayoral field to two candidates
-        before the November general election.
+        Tuesday marked the filing deadline for Minnesota candidates across local, state, and federal
+        races. In Mankato's mayoral contest, incumbent Mayor Najwa Massad is seeking her third term,
+        facing challengers Toby Leonard and Julia, who is making a push through a grassroots
+        campaign. An August primary will narrow the mayoral field to two candidates before the
+        November general election.
       </p>
       <p>
         <a
@@ -354,8 +358,8 @@ useHead({
       <p>
         This profile looks at Julia, 33, and Jacob Bases, 37, who is running for the Ward 3 City
         Council seat &mdash; both of whom would be among the youngest members of Mankato's
-        leadership if elected. Julia discussed how her age and background in social services
-        shape her perspective on rental equity, public safety reform, and environmental justice.
+        leadership if elected. Julia discussed how her age and background in social services shape
+        her perspective on rental equity, public safety reform, and environmental justice.
       </p>
       <p>
         <a
