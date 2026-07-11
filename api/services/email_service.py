@@ -172,13 +172,15 @@ def _build_yard_sign_request_message(config: EmailConfig, yard_sign_request: Yar
 
 
 def _build_yard_sign_confirmation_content(yard_sign_request: YardSignRequest) -> tuple[str, str]:
-    greeting_name = yard_sign_request.first_name or "there"
+    greeting_name = yard_sign_request.first_name or "friend"
     plain_text_body = "\n".join([
-        f"Hi {greeting_name}!",
+        f"Thanks so much for your support, {greeting_name}!",
         "",
-        "Thanks so much for requesting a yard sign to support my campaign for Mankato Mayor!",
+        "I'm so glad you're requesting a yard sign to help spread the word for my campaign for Mankato Mayor!",
         "",
-        "We'll be in touch soon with details on pickup or delivery.",
+        "Check your inbox to coordinate sign delivery. We'll be in touch soon!",
+        "",
+        "If you plan to pay online, you can make a donation at https://voteforjulia.com/donate and write \"yard sign\" in the comment section.",
         "",
         "It's also super helpful if you follow my campaign on Facebook and Instagram, invite others, and share posts as they come up to encourage folks to get engaged or donate if they can.",
         "Facebook: https://www.facebook.com/profile.php?id=61590411090366",

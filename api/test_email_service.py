@@ -304,14 +304,18 @@ class YardSignEmailServiceTests(unittest.TestCase):
         self.assertEqual(
             parsed["Subject"], "Thanks for requesting a yard sign for Julia Hamann for Mayor"
         )
-        self.assertIn("Hi Julia!", plain_text_payload)
+        self.assertIn("Thanks so much for your support, Julia!", plain_text_payload)
         self.assertIn("requesting a yard sign", plain_text_payload)
-        self.assertIn("Hi Julia!", html_payload)
+        self.assertIn("Check your inbox to coordinate sign delivery", plain_text_payload)
+        self.assertIn("make a donation", plain_text_payload)
+        self.assertIn("Thanks so much for your support, Julia!", html_payload)
         self.assertIn("requesting a yard sign", html_payload)
+        self.assertIn("Check your inbox to coordinate sign delivery", html_payload)
+        self.assertIn("make a donation", html_payload)
         self.assertIn("Paid for by Julia Hamann for Mankato Mayor", html_payload)
 
     @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
-    def test_send_yard_sign_confirmation_email_uses_there_when_name_missing(self) -> None:
+    def test_send_yard_sign_confirmation_email_uses_friend_when_name_missing(self) -> None:
         nameless_request = YardSignRequest(
             first_name="",
             last_name="",
@@ -329,7 +333,7 @@ class YardSignEmailServiceTests(unittest.TestCase):
         parsed = message_from_string(raw_message)
         plain_text_payload = _decode_payload(parsed.get_payload()[0])
 
-        self.assertIn("Hi there!", plain_text_payload)
+        self.assertIn("Thanks so much for your support, friend!", plain_text_payload)
 
 
 if __name__ == "__main__":
