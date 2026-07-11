@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from api.config import SheetsConfig
+
+logger = logging.getLogger(__name__)
 
 # Keyed by (service_account_file, service_account_json), which together
 # identify the credentials. Building a service client involves parsing the
@@ -104,10 +107,20 @@ def append_row(config: SheetsConfig, row: list[str]) -> None:
     worksheet_title = _resolve_worksheet_title(service, config.spreadsheet_id, config.worksheet)
     range_name = f"{_quote_sheet_title(worksheet_title)}!A:A"
 
-    service.spreadsheets().values().append(
-        spreadsheetId=config.spreadsheet_id,
-        range=range_name,
-        valueInputOption="RAW",
-        insertDataOption="INSERT_ROWS",
-        body={"values": [row]},
-    ).execute()
+    result = (
+        service.spreadsheets()
+        .values()
+        .append(
+            spreadsheetId=config.spreadsheet_id,
+            range=range_name,
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": [row]},
+        )
+        .execute()
+    )
+
+    # Google's own confirmation of where the row landed, since the configured
+    # worksheet value (a title or a gid) can silently resolve to the wrong tab.
+    updated_range = (result or {}).get("updates", {}).get("updatedRange", range_name)
+    logger.info("Appended row to %s in spreadsheet %s", updated_range, config.spreadsheet_id)
