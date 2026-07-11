@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useHead } from '@unhead/vue';
 import { Image } from '@imagekit/vue';
-import { RouterLink } from 'vue-router';
 import JuliaContactForm from '../components/JuliaContactForm.vue';
 
 defineOptions({
