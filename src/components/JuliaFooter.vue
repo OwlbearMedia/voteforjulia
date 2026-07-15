@@ -205,10 +205,10 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="footer-disclaimer">
-        Paid for by Julia Hamann for Mankato Mayor<br>
+        Paid for by Julia Hamann for Mankato Mayor<br />
         PO Box 4051, Mankato, MN 56002
       </div>
-      <div class="footer-disclaimer "> </div>
+      <div class="footer-disclaimer"></div>
     </div>
   </footer>
 
