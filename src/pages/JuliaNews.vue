@@ -224,7 +224,7 @@ useHead({
 
     <div class="event">
       <div class="event-heading">
-        <h3>Candidate for Mankato Mayor Hosts Campaign Launch Party</h3>
+        <h3>Julia Hosts Campaign Launch Party for Mankato Mayor</h3>
         <a
           class="event-date"
           href="https://www.keyc.com/2026/06/30/candidate-mankato-mayor-hosts-campaign-launch-party/"
@@ -232,20 +232,27 @@ useHead({
           rel="noopener noreferrer"
           ><IconCalendar /> June 29, 2026 &middot; KEYC</a
         >
-        <Image
-          url-endpoint="https://ik.imagekit.io/voteforjulia"
-          src="/launch-party.jpg"
-          class="hero-image"
-          sizes="(max-width: 700px) calc(100vw - 2.5rem), 960px"
-          :image-breakpoints="[320, 390, 430, 520, 640, 780, 960, 1440, 1920]"
-          :device-breakpoints="[]"
-          width="960"
-          height="672"
-          alt="Julia Hamann for Mankato Mayor Launch Party"
-          crossorigin="anonymous"
-          fetchpriority="high"
-          loading="eager"
-        />
+        <a
+          href="https://www.keyc.com/2026/06/30/candidate-mankato-mayor-hosts-campaign-launch-party/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Image
+            url-endpoint="https://ik.imagekit.io/voteforjulia"
+            src="/launch-party.jpg"
+            class="hero-image"
+            sizes="(max-width: 700px) calc(100vw - 2.5rem), 960px"
+            :image-breakpoints="[320, 390, 430, 520, 640, 780, 960, 1440, 1920]"
+            :device-breakpoints="[]"
+            width="960"
+            height="672"
+            alt="Julia Hamann for Mankato Mayor Launch Party"
+            crossorigin="anonymous"
+            fetchpriority="high"
+            loading="eager"
+          />
+          <span class="sr-only">Julia Hosts Campaign Launch Party for Mankato Mayor</span>
+        </a>
       </div>
       <p>
         Julia's campaign launch party at The Makerspace drew more than 100 attendees for
