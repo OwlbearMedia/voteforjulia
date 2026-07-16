@@ -101,10 +101,11 @@ header .container {
   gap: 1.5rem;
   flex-wrap: wrap;
   padding: 1rem 2rem;
+  position: relative;
 }
 
 .menu-toggle {
-  display: none;
+  display: block;
   background-color: #e5f5de;
   border-radius: 6px;
   border: none;
@@ -144,19 +145,38 @@ header .container {
 }
 
 .menu-list {
-  display: flex;
-  align-items: center;
+  display: none;
+  flex-direction: column;
+  position: absolute;
+  top: 47px;
+  right: 10px;
+  background: #468445;
+  width: 220px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  border-radius: 0 0 8px 8px;
+  z-index: 1001;
+  padding: 1rem 0;
+  margin: 0;
+  gap: 0;
   list-style: none;
-  gap: 1rem;
+}
+
+.menu-list.open {
+  display: flex;
 }
 
 @media (min-width: 701px) {
-  .menu-list {
-    display: flex;
+  #main-menu {
+    top: 35px;
+    right: 48px;
   }
 }
 
 .menu-list a {
+  display: flex;
+  padding: 0.5rem 1rem;
+  border-radius: 0;
+  background-color: transparent;
   color: #fff;
   font-family: 'TheBoldFont', sans-serif;
   font-weight: 600;
@@ -164,10 +184,15 @@ header .container {
 }
 
 .menu-list a.donate {
-  background-color: #468445;
-  padding: 0.7rem 1rem 0.5rem 1rem;
+  background-color: #fff;
+  color: #407628;
   border-radius: 999px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  margin: 0.25rem 0.75rem;
+  justify-content: center;
+}
+
+.menu-list a.donate:hover {
+  background-color: rgba(255, 255, 255, 0.85);
 }
 
 main {
@@ -252,8 +277,15 @@ footer {
   color: #fff;
 }
 
-.menu-list > .social-icons {
-  display: none;
+.menu-list .social-icons {
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  margin-top: 0.5rem;
+}
+
+.menu-list .social-icons a {
+  display: inline-flex;
+  padding: 0;
 }
 
 .social-icons a {
@@ -641,7 +673,7 @@ a.event-date {
   font-size: 1.25rem;
   font-style: normal;
   font-weight: 400;
-  margin-bottom: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 .event dl {
@@ -723,64 +755,8 @@ a.event-date {
   }
 
   header .container {
-    position: relative;
     align-items: flex-start;
     gap: 0.75rem;
-    padding: 0;
-  }
-
-  .menu-toggle {
-    display: block;
-  }
-
-  .menu-list {
-    display: none;
-    flex-direction: column;
-    position: absolute;
-    top: 47px;
-    right: 10px;
-    background: #468445;
-    width: 220px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-    border-radius: 0 0 8px 8px;
-    z-index: 1001;
-    padding: 1rem 0;
-    margin: 0;
-    gap: 0;
-  }
-
-  .menu-list.open {
-    display: flex;
-  }
-
-  .menu-list a {
-    display: flex;
-    padding: 0.5rem 1rem;
-    border-radius: 0;
-    background-color: transparent;
-  }
-
-  .menu-list a.donate {
-    background-color: #fff;
-    color: #407628;
-    border-radius: 999px;
-    margin: 0.25rem 0.75rem;
-    justify-content: center;
-  }
-
-  .menu-list a.donate:hover {
-    background-color: rgba(255, 255, 255, 0.85);
-  }
-
-  .menu-list .social-icons {
-    display: flex;
-    justify-content: center;
-    padding: 0.5rem 1rem;
-    margin-top: 0.5rem;
-  }
-
-  .menu-list .social-icons a {
-    display: inline-flex;
     padding: 0;
   }
 

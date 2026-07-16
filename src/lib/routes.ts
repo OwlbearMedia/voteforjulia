@@ -8,6 +8,7 @@ const pageImports: Record<(typeof appRoutePaths)[number], () => Promise<unknown>
   '/secret-recipe': () => import('../pages/JuliaSecretRecipe.vue'),
   '/donate': () => import('../pages/JuliaDonate.vue'),
   '/events': () => import('../pages/JuliaEvents.vue'),
+  '/news': () => import('../pages/JuliaNews.vue'),
   '/yard-signs': () => import('../pages/JuliaYardSign.vue')
 };
 
