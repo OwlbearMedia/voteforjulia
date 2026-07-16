@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useHead } from '@unhead/vue';
+import { Image } from '@imagekit/vue';
 import IconCalendar from '../components/icons/IconCalendar.vue';
 
 defineOptions({
@@ -231,10 +232,21 @@ useHead({
           rel="noopener noreferrer"
           ><IconCalendar /> June 29, 2026 &middot; KEYC</a
         >
+        <Image
+          url-endpoint="https://ik.imagekit.io/voteforjulia"
+          src="/launch-party.jpg"
+          class="hero-image"
+          sizes="(max-width: 700px) calc(100vw - 2.5rem), 960px"
+          :image-breakpoints="[320, 390, 430, 520, 640, 780, 960, 1440, 1920]"
+          :device-breakpoints="[]"
+          width="960"
+          height="672"
+          alt="Julia Hamann for Mankato Mayor Launch Party"
+          crossorigin="anonymous"
+          fetchpriority="high"
+          loading="eager"
+        />
       </div>
-
-      <hr />
-
       <p>
         Julia's campaign launch party at The Makerspace drew more than 100 attendees for
         button-making, screen printing, and live music. Guests connected directly with Julia,
@@ -261,10 +273,21 @@ useHead({
           rel="noopener noreferrer"
           ><IconCalendar /> June 25, 2026 &middot; Mankato Free Press</a
         >
+        <Image
+          url-endpoint="https://ik.imagekit.io/voteforjulia"
+          src="/race-to-watch.jpeg"
+          class="hero-image"
+          sizes="(max-width: 700px) calc(100vw - 2.5rem), 960px"
+          :image-breakpoints="[320, 390, 430, 520, 640, 780, 960, 1440, 1920]"
+          :device-breakpoints="[]"
+          width="960"
+          height="672"
+          alt="Julia Hamann for Mankato Mayor Interview"
+          crossorigin="anonymous"
+          fetchpriority="high"
+          loading="eager"
+        />
       </div>
-
-      <hr />
-
       <p>
         Julia sat down with the Mankato Free Press to discuss her campaign and her stances on the
         issues that matter most to the city.
