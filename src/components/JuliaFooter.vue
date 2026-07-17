@@ -180,9 +180,9 @@ onBeforeUnmount(() => {
             ><IconFacebook
           /></a>
           <a
-            href="mailto:info@juliahamann.com"
+            href="mailto:info@voteforjulia.com"
             aria-label="Email Julia"
-            @click="handleFooterIconClick('mailto:info@juliahamann.com', 'Email Julia')"
+            @click="handleFooterIconClick('mailto:info@voteforjulia.com', 'Email Julia')"
             ><IconEnvelope
           /></a>
         </div>
