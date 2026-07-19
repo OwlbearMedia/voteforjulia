@@ -550,7 +550,6 @@ section {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2rem;
-  margin-top: 2rem;
 }
 
 .stances-layout > * {
@@ -811,6 +810,18 @@ a.event-date {
 
   .donate-layout {
     grid-template-columns: 1fr;
+    row-gap: 1rem;
+  }
+
+  /* Flatten .donate-text so its children become grid items,
+     letting the paragraphs reorder above the widget on mobile */
+  .donate-text {
+    display: contents;
+  }
+
+  .donate-text p {
+    order: -1;
+    margin-bottom: 0;
   }
 
   .issues-layout {
