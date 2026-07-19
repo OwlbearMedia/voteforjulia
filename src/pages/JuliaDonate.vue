@@ -189,7 +189,7 @@ useHead({
         <p>
           Mankato donors can also get a yard sign. If you would like a yard sign write "yard sign"
           in the comment section when making your donation then
-          <RouterLink to="/donate">fill out this form</RouterLink>. We will be in touch soon!
+          <RouterLink to="/yard-signs">fill out this form</RouterLink>. We will be in touch soon!
         </p>
 
         <Image
