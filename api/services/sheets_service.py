@@ -99,13 +99,24 @@ def _resolve_worksheet_title(service, spreadsheet_id: str, worksheet: str) -> st
     )
 
 
-def _find_next_empty_row(service, spreadsheet_id: str, worksheet_title: str) -> int:
+def _column_letter(index: int) -> str:
+    letters = ""
+    while index > 0:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(ord("A") + remainder) + letters
+    return letters
+
+
+def _find_next_empty_row(service, spreadsheet_id: str, worksheet_title: str, width: int) -> int:
     # append()'s automatic "find the end of the table" can be thrown off by
     # unrelated columns that hold values in rows with no real submission (e.g.
     # a checkbox column defaults every cell to FALSE rather than truly empty),
-    # so determine the next open row from column A specifically -- that's
-    # always the submission timestamp, and reliably empty past the last real row.
-    range_name = f"{_quote_sheet_title(worksheet_title)}!A2:A"
+    # so only look at the columns this submission will actually write to.
+    # Within those, a row counts as occupied if *any* cell has content --
+    # manually entered rows may be missing the column A timestamp, and
+    # writing there would overwrite them.
+    end_column = _column_letter(max(width, 1))
+    range_name = f"{_quote_sheet_title(worksheet_title)}!A2:{end_column}"
     result = (
         service.spreadsheets()
         .values()
@@ -113,7 +124,11 @@ def _find_next_empty_row(service, spreadsheet_id: str, worksheet_title: str) -> 
         .execute()
     )
     values = result.get("values", [])
-    return 2 + len(values)
+    last_occupied = 0
+    for offset, cells in enumerate(values, start=1):
+        if any(str(cell).strip() for cell in cells):
+            last_occupied = offset
+    return 2 + last_occupied
 
 
 def append_row(config: SheetsConfig, row: list[str]) -> None:
@@ -122,7 +137,7 @@ def append_row(config: SheetsConfig, row: list[str]) -> None:
 
     service = _get_sheets_service(config)
     worksheet_title = _resolve_worksheet_title(service, config.spreadsheet_id, config.worksheet)
-    next_row = _find_next_empty_row(service, config.spreadsheet_id, worksheet_title)
+    next_row = _find_next_empty_row(service, config.spreadsheet_id, worksheet_title, len(row))
     range_name = f"{_quote_sheet_title(worksheet_title)}!A{next_row}"
 
     service.spreadsheets().values().update(

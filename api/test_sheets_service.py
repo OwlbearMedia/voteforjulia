@@ -56,10 +56,7 @@ class AppendRowTests(unittest.TestCase):
             update_call.call_args.kwargs["body"], {"values": [["2026-01-01", "Jane", "Doe"]]}
         )
 
-    def test_writes_after_last_non_empty_row_in_column_a(self) -> None:
-        # Regression test: other columns (e.g. checkboxes defaulting every
-        # cell to FALSE) must not influence where the row lands -- only
-        # column A's actual values determine the next open row.
+    def test_writes_after_last_non_empty_row(self) -> None:
         config = SheetsConfig(
             spreadsheet_id="sheet-123",
             worksheet="Sheet1",
@@ -75,6 +72,36 @@ class AppendRowTests(unittest.TestCase):
             "googleapiclient.discovery.build", return_value=service
         ):
             append_row(config, ["2026-01-04", "Jane", "Doe"])
+
+        get_call = service.spreadsheets.return_value.values.return_value.get
+        self.assertEqual(get_call.call_args.kwargs["range"], "Sheet1!A2:C")
+        update_call = service.spreadsheets.return_value.values.return_value.update
+        self.assertEqual(update_call.call_args.kwargs["range"], "Sheet1!A5")
+
+    def test_skips_manual_rows_missing_column_a(self) -> None:
+        # Regression test: a manually entered row may have no timestamp in
+        # column A but still hold data in other columns. It must not be
+        # overwritten -- any occupied cell in the written columns marks the
+        # row as taken.
+        config = SheetsConfig(
+            spreadsheet_id="sheet-123",
+            worksheet="Sheet1",
+            service_account_file="",
+            service_account_json='{"type": "service_account"}',
+        )
+        service = _fake_service([])
+        service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
+            "values": [
+                ["2026-01-01"],
+                [],
+                ["", "Jane", "Doe", "", "555-1234"],
+            ]
+        }
+
+        with patch("google.oauth2.service_account.Credentials.from_service_account_info"), patch(
+            "googleapiclient.discovery.build", return_value=service
+        ):
+            append_row(config, ["2026-01-04", "John", "Smith", "j@example.com", "555-5678"])
 
         update_call = service.spreadsheets.return_value.values.return_value.update
         self.assertEqual(update_call.call_args.kwargs["range"], "Sheet1!A5")
