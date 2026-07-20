@@ -185,6 +185,13 @@ useHead({
           makes a meaningful impact, whether it's $20, $100, or more. Your donation will help us
           print materials, host events, knock on doors, and reach voters.
         </p>
+
+        <p>
+          Mankato donors can also get a yard sign. If you would like a yard sign write "yard sign"
+          in the comment section when making your donation then
+          <RouterLink to="/yard-signs">fill out this form</RouterLink>. We will be in touch soon!
+        </p>
+
         <Image
           url-endpoint="https://ik.imagekit.io/voteforjulia"
           src="/julia-rect.webp"
