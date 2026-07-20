@@ -206,7 +206,7 @@ describe('trackVolunteerFormSubmit', () => {
 });
 
 describe('trackVolunteerRequestBody', () => {
-  it('calls newrelic.addPageAction with the serialised request body', () => {
+  it('calls newrelic.addPageAction with the redacted request body', () => {
     const addPageAction = vi.fn();
     window.newrelic = { addPageAction };
 
@@ -216,9 +216,23 @@ describe('trackVolunteerRequestBody', () => {
       'volunteer_form_request',
       expect.objectContaining({
         form_id: 'contact-form',
-        request_body: JSON.stringify({ firstName: 'Julia', email: 'julia@example.com' })
+        request_body: JSON.stringify({ firstName: '[redacted]', email: '[redacted]' })
       })
     );
+  });
+
+  it('keeps non-PII multiple-choice fields and empty values intact', () => {
+    const addPageAction = vi.fn();
+    window.newrelic = { addPageAction };
+
+    trackVolunteerRequestBody({ firstName: 'Julia', phone: '', helpWays: 'Door knocking' });
+
+    const [, attributes] = addPageAction.mock.calls[0] as [string, { request_body: string }];
+    expect(JSON.parse(attributes.request_body)).toEqual({
+      firstName: '[redacted]',
+      phone: '',
+      helpWays: 'Door knocking'
+    });
   });
 
   it('does nothing when window.newrelic is not available', () => {
@@ -266,7 +280,7 @@ describe('trackVolunteerSubmissionError', () => {
     );
   });
 
-  it('includes the serialised request body in the attributes', () => {
+  it('includes the redacted request body in the attributes', () => {
     const noticeError = vi.fn();
     window.newrelic = { noticeError };
 
@@ -275,7 +289,7 @@ describe('trackVolunteerSubmissionError', () => {
     expect(noticeError).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        request_body: JSON.stringify({ firstName: 'Julia', email: 'j@example.com' })
+        request_body: JSON.stringify({ firstName: '[redacted]', email: '[redacted]' })
       })
     );
   });
@@ -323,7 +337,7 @@ describe('trackYardSignFormSubmit', () => {
 });
 
 describe('trackYardSignRequestBody', () => {
-  it('calls newrelic.addPageAction with the serialised request body', () => {
+  it('calls newrelic.addPageAction with the redacted request body', () => {
     const addPageAction = vi.fn();
     window.newrelic = { addPageAction };
 
@@ -333,21 +347,26 @@ describe('trackYardSignRequestBody', () => {
       'yard_sign_form_request',
       expect.objectContaining({
         form_id: 'yard-sign-form',
-        request_body: JSON.stringify({ firstName: 'Julia' })
+        request_body: JSON.stringify({ firstName: '[redacted]' })
       })
     );
   });
 
-  it('redacts the home address before sending it to New Relic', () => {
+  it('redacts PII fields but keeps preferred payment before sending to New Relic', () => {
     const addPageAction = vi.fn();
     window.newrelic = { addPageAction };
 
-    trackYardSignRequestBody({ firstName: 'Julia', address: '123 Main St' });
+    trackYardSignRequestBody({
+      firstName: 'Julia',
+      address: '123 Main St',
+      preferredPayment: 'Venmo'
+    });
 
     const [, attributes] = addPageAction.mock.calls[0] as [string, { request_body: string }];
     expect(JSON.parse(attributes.request_body)).toEqual({
-      firstName: 'Julia',
-      address: '[redacted]'
+      firstName: '[redacted]',
+      address: '[redacted]',
+      preferredPayment: 'Venmo'
     });
   });
 
@@ -382,7 +401,7 @@ describe('trackYardSignSubmissionError', () => {
     );
   });
 
-  it('redacts the home address before sending it to New Relic', () => {
+  it('redacts PII fields before sending them to New Relic', () => {
     const noticeError = vi.fn();
     window.newrelic = { noticeError };
 
@@ -393,7 +412,7 @@ describe('trackYardSignSubmissionError', () => {
 
     const [, attributes] = noticeError.mock.calls[0] as [Error, { request_body: string }];
     expect(JSON.parse(attributes.request_body)).toEqual({
-      firstName: 'Julia',
+      firstName: '[redacted]',
       address: '[redacted]'
     });
   });

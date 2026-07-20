@@ -169,6 +169,40 @@ class AppRateLimitTests(unittest.TestCase):
         )
         self.assertEqual(len(self.sent_submissions), 0)
 
+    def test_send_email_logs_request_body_even_when_submission_fails(self) -> None:
+        payload = {
+            "firstName": "Julia",
+            "email": "not-an-email",
+        }
+
+        with self.assertLogs(app_module.logger, level="INFO") as captured:
+            response = self.client.post(
+                "/api/send-email",
+                json=payload,
+                headers={"X-Forwarded-For": "198.51.100.12"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        body_logs = [line for line in captured.output if "request body" in line]
+        self.assertEqual(len(body_logs), 1)
+        self.assertIn("/send-email", body_logs[0])
+        self.assertIn("not-an-email", body_logs[0])
+
+    def test_send_email_truncates_oversized_request_body_in_logs(self) -> None:
+        oversized = "x" * (app_module._MAX_LOGGED_BODY_CHARS + 100)
+
+        with self.assertLogs(app_module.logger, level="INFO") as captured:
+            self.client.post(
+                "/api/send-email",
+                json={"firstName": "Julia", "message": oversized},
+                headers={"X-Forwarded-For": "198.51.100.13"},
+            )
+
+        body_logs = [line for line in captured.output if "request body" in line]
+        self.assertEqual(len(body_logs), 1)
+        self.assertIn("…[truncated]", body_logs[0])
+        self.assertNotIn(oversized, body_logs[0])
+
 
 class AppYardSignTests(unittest.TestCase):
     def setUp(self) -> None:
