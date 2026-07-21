@@ -21,14 +21,21 @@ function getWindowObject(): Window | null {
   return null;
 }
 
-// Home addresses are more sensitive than the other fields tracked here, so
-// keep them out of the third-party analytics payload entirely.
-function redactField(requestBody: Record<string, string>, field: string): Record<string, string> {
-  if (!(field in requestBody)) {
-    return requestBody;
-  }
+// Form bodies contain PII (names, emails, phone numbers, addresses, free-text
+// messages) that must not reach third-party analytics. The API logs the full
+// submission server-side instead (see api/app.py), so New Relic only needs to
+// show which fields were filled in. Fields are redacted by default; only the
+// non-identifying multiple-choice fields below are sent verbatim. Empty values
+// stay empty so a missing field is distinguishable from a redacted one.
+const NON_PII_FIELDS = new Set(['helpWays', 'preferredPayment']);
 
-  return { ...requestBody, [field]: '[redacted]' };
+function redactPii(requestBody: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(requestBody).map(([field, value]) => [
+      field,
+      NON_PII_FIELDS.has(field) || value === '' ? value : '[redacted]'
+    ])
+  );
 }
 
 export function trackGaEvent(eventName: string, params: GaEventParams = {}): void {
@@ -92,7 +99,7 @@ export function trackVolunteerRequestBody(requestBody: Record<string, string>): 
   windowObject.newrelic.addPageAction('volunteer_form_request', {
     form_id: 'contact-form',
     form_location: windowObject.location.pathname,
-    request_body: JSON.stringify(requestBody)
+    request_body: JSON.stringify(redactPii(requestBody))
   });
 }
 
@@ -113,7 +120,7 @@ export function trackVolunteerSubmissionError(
   windowObject.newrelic.noticeError(normalizedError, {
     form_id: 'contact-form',
     form_location: windowObject.location.pathname,
-    request_body: JSON.stringify(requestBody)
+    request_body: JSON.stringify(redactPii(requestBody))
   });
 }
 
@@ -135,7 +142,7 @@ export function trackYardSignRequestBody(requestBody: Record<string, string>): v
   windowObject.newrelic.addPageAction('yard_sign_form_request', {
     form_id: 'yard-sign-form',
     form_location: windowObject.location.pathname,
-    request_body: JSON.stringify(redactField(requestBody, 'address'))
+    request_body: JSON.stringify(redactPii(requestBody))
   });
 }
 
@@ -156,7 +163,7 @@ export function trackYardSignSubmissionError(
   windowObject.newrelic.noticeError(normalizedError, {
     form_id: 'yard-sign-form',
     form_location: windowObject.location.pathname,
-    request_body: JSON.stringify(redactField(requestBody, 'address'))
+    request_body: JSON.stringify(redactPii(requestBody))
   });
 }
 

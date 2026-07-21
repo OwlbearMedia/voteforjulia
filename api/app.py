@@ -178,6 +178,20 @@ def _consume_rate_limit(scope: str) -> int | None:
 
 _SMTP_UNAVAILABLE_MESSAGE = 'Unable to send email right now.'
 
+# Generous relative to the forms' combined field limits, but keeps an
+# oversized/hostile payload from flooding the logs.
+_MAX_LOGGED_BODY_CHARS = 4096
+
+
+def _log_request_body(endpoint_name: str) -> None:
+    # The browser sends only redacted form data to New Relic (see
+    # src/lib/analytics.ts), so this server-side log is the one place the
+    # submitted values are recoverable if anything later in the handler fails.
+    raw_body = request.get_data(as_text=True)
+    if len(raw_body) > _MAX_LOGGED_BODY_CHARS:
+        raw_body = raw_body[:_MAX_LOGGED_BODY_CHARS] + '…[truncated]'
+    logger.info("%s request body: %s", endpoint_name, raw_body)
+
 
 def _rate_limited_response(retry_after: int):
     response = jsonify({'error': 'Too many requests. Please try again later.'})
@@ -198,6 +212,8 @@ def _handle_form_submission(
     to_sheet_row,
     endpoint_name,
 ):
+    _log_request_body(endpoint_name)
+
     email_config = load_email_config()
 
     config_error = _validate_email_config(email_config)
