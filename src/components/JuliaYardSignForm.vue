@@ -227,6 +227,16 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           />
           Check
         </label>
+        <label class="help-option" for="yard-sign-payment-done">
+          <input
+            id="yard-sign-payment-done"
+            v-model="preferredPayment"
+            name="preferredPayment[]"
+            type="checkbox"
+            value="Already Donated"
+          />
+          Already Donated
+        </label>
       </fieldset>
 
       <button type="submit" :disabled="hasValidationError || isSubmitting">
