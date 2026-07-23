@@ -1,7 +1,9 @@
 describe('Donate page', () => {
-  it('loads the Donorbox widget', () => {
+  it('loads the Donorbox donation iframe', () => {
     cy.visit('/donate');
 
-    cy.get('dbox-widget', { timeout: 15000 }).should('be.visible');
+    cy.get('iframe.donorbox-embed', { timeout: 15000 })
+      .should('be.visible')
+      .and('have.attr', 'src', 'https://donorbox.org/embed/julia-hamann-for-mankato-mayor');
   });
 });

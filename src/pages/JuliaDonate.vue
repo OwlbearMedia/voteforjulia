@@ -16,11 +16,6 @@ useHead({
   ],
   script: [
     {
-      type: 'module',
-      src: 'https://donorbox.org/widgets.js',
-      async: true
-    },
-    {
       type: 'application/ld+json',
       textContent: JSON.stringify({
         '@context': 'https://schema.org',
@@ -173,11 +168,18 @@ useHead({
     <p class="card">Donate now to help elect Julia as Mayor of Mankato!</p>
 
     <div class="donate-layout">
-      <dbox-widget
-        campaign="julia-hamann-for-mankato-mayor"
-        type="donation_form"
-        enable-auto-scroll="true"
-      ></dbox-widget>
+      <!-- Plain iframe embed (no widgets.js): keeps Donorbox's scripts — Stripe,
+           fingerprinting, error monitoring — inside their own origin so our CSP
+           doesn't have to allow them. Trade-off: no postMessage auto-resizing,
+           so the height is fixed and the form scrolls internally beyond it. -->
+      <iframe
+        class="donorbox-embed"
+        src="https://donorbox.org/embed/julia-hamann-for-mankato-mayor"
+        name="donorbox"
+        title="Donate to Julia Hamann for Mankato Mayor"
+        allow="payment"
+        height="900"
+      ></iframe>
 
       <div class="donate-text">
         <p>

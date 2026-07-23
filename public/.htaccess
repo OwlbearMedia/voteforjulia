@@ -67,25 +67,29 @@ FileETag MTime Size
 
 	# Content Security Policy.
 	#
-	# script-src: self (bundled app) + GA4 loader + Donorbox widget.
-	#   No 'unsafe-inline' needed — vue-gtag and New Relic are fully bundled; only
-	#   external <script src="..."> tags are injected at runtime.
+	# script-src: self (bundled app) + GA4 loader. No third-party payment scripts:
+	#   Donorbox is embedded as a plain iframe (see JuliaDonate.vue), so its
+	#   dependencies (Stripe, fingerprinting, error monitoring) load inside the
+	#   donorbox.org document under Donorbox's own CSP, not ours. No
+	#   'unsafe-inline' needed — vue-gtag and New Relic are fully bundled.
 	#
 	# style-src: 'unsafe-inline' is required because the Vite build inlines all CSS
 	#   into <style> blocks. CSS injection is far less dangerous than script injection,
 	#   so this trade-off is acceptable.
 	#
 	# frame-src: Donorbox renders its donation form inside an iframe on /donate.
+	#   (Stripe's frames are nested inside Donorbox's document, so they are
+	#   governed by Donorbox's CSP and need no entry here.)
 	#
 	# worker-src: New Relic browser agent spawns blob: workers for some features.
 	Header always set Content-Security-Policy "\
 default-src 'self'; \
-script-src 'self' https://www.googletagmanager.com https://donorbox.org https://js.stripe.com https://cdn.jsdelivr.net https://jspm.dev; \
-style-src 'self' 'unsafe-inline' https://donorbox.org https://rsms.me; \
-img-src 'self' data: https://ik.imagekit.io https://www.google-analytics.com https://donorbox.org; \
-font-src 'self' https://rsms.me; \
-connect-src 'self' https://api.voteforjulia.com https://test-api.voteforjulia.com https://bam.nr-data.net https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com https://donorbox.org https://api.stripe.com https://m.stripe.com https://m.stripe.network https://q.stripe.com https://jspm.dev; \
-frame-src https://donorbox.org https://js.stripe.com; \
+script-src 'self' https://www.googletagmanager.com; \
+style-src 'self' 'unsafe-inline'; \
+img-src 'self' data: https://ik.imagekit.io https://www.google-analytics.com; \
+font-src 'self'; \
+connect-src 'self' https://api.voteforjulia.com https://test-api.voteforjulia.com https://bam.nr-data.net https://www.google-analytics.com https://region1.google-analytics.com https://www.googletagmanager.com; \
+frame-src https://donorbox.org; \
 worker-src 'self' blob:; \
 frame-ancestors 'none'; \
 object-src 'none'; \

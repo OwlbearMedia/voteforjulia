@@ -552,6 +552,13 @@ section {
   gap: 2rem;
 }
 
+.donorbox-embed {
+  width: 100%;
+  max-width: 500px;
+  min-width: 250px;
+  border: 0;
+}
+
 .stances-layout > * {
   flex: 1 1 50%;
 }
