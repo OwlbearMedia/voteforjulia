@@ -70,6 +70,14 @@ FileETag MTime Size
 	# script-src: self (bundled app) + GA4 loader + Donorbox widget.
 	#   No 'unsafe-inline' needed — vue-gtag and New Relic are fully bundled; only
 	#   external <script src="..."> tags are injected at runtime.
+	#   Donorbox's widget (widgets.js, runs in our page context) loads three
+	#   third-party scripts: Stripe.js, FingerprintJS from cdn.jsdelivr.net
+	#   (fraud detection), and @appsignal from jspm.dev (their error monitoring).
+	#   jsdelivr is path-scoped to the FingerprintJS package so this entry can't
+	#   be used to load arbitrary npm packages. jspm.dev can't be usefully
+	#   path-scoped: its module graph imports version-pinned internal paths
+	#   (/npm:<pkg>@<version>) that change when Donorbox's dependencies
+	#   re-resolve, and pinning them would silently break the donation form.
 	#
 	# style-src: 'unsafe-inline' is required because the Vite build inlines all CSS
 	#   into <style> blocks. CSS injection is far less dangerous than script injection,
@@ -80,7 +88,7 @@ FileETag MTime Size
 	# worker-src: New Relic browser agent spawns blob: workers for some features.
 	Header always set Content-Security-Policy "\
 default-src 'self'; \
-script-src 'self' https://www.googletagmanager.com https://donorbox.org https://js.stripe.com https://cdn.jsdelivr.net https://jspm.dev; \
+script-src 'self' https://www.googletagmanager.com https://donorbox.org https://js.stripe.com https://cdn.jsdelivr.net/npm/@fingerprintjs/ https://jspm.dev; \
 style-src 'self' 'unsafe-inline' https://donorbox.org https://rsms.me; \
 img-src 'self' data: https://ik.imagekit.io https://www.google-analytics.com https://donorbox.org; \
 font-src 'self' https://rsms.me; \

@@ -146,27 +146,39 @@ def _missing_required_yard_sign_fields_message(yard_sign_request: YardSignReques
 
 
 def _rate_limit_key() -> str:
-    forwarded_for = request.headers.get('X-Forwarded-For', '')
-    if forwarded_for:
-        first_hop = forwarded_for.split(',', 1)[0].strip()
-        if first_hop:
-            return first_hop
-
+    # Prefer CF-Connecting-IP: Cloudflare overwrites it on proxied requests, so
+    # the client can't forge it. X-Forwarded-For is only a fallback, and only
+    # its *last* hop counts — proxies append the connecting address to whatever
+    # list the client sent, so the first hop is attacker-controlled and would
+    # let a caller mint a fresh rate-limit bucket per request.
     connecting_ip = request.headers.get('CF-Connecting-IP', '').strip()
     if connecting_ip:
         return connecting_ip
+
+    forwarded_for = request.headers.get('X-Forwarded-For', '')
+    if forwarded_for:
+        last_hop = forwarded_for.rsplit(',', 1)[-1].strip()
+        if last_hop:
+            return last_hop
 
     return request.remote_addr or 'unknown'
 
 
 def _consume_rate_limit(scope: str) -> int | None:
     now = monotonic()
-    key = f"{scope}:{_rate_limit_key()}"
-    bucket = _RATE_LIMIT_BUCKETS.setdefault(key, deque())
     cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
 
-    while bucket and bucket[0] <= cutoff:
-        bucket.popleft()
+    # Prune every bucket, not just the current key's: one-off client addresses
+    # would otherwise leave empty deques behind forever, growing the dict
+    # without bound over the life of the process.
+    for stale_key, stale_bucket in list(_RATE_LIMIT_BUCKETS.items()):
+        while stale_bucket and stale_bucket[0] <= cutoff:
+            stale_bucket.popleft()
+        if not stale_bucket:
+            del _RATE_LIMIT_BUCKETS[stale_key]
+
+    key = f"{scope}:{_rate_limit_key()}"
+    bucket = _RATE_LIMIT_BUCKETS.setdefault(key, deque())
 
     if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
         retry_after = max(1, int(bucket[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
@@ -214,14 +226,16 @@ def _handle_form_submission(
 ):
     _log_request_body(endpoint_name)
 
-    email_config = load_email_config()
-
-    config_error = _validate_email_config(email_config)
-    if config_error:
-        logger.error(config_error)
-        return jsonify({'error': 'Email service is not configured.'}), 500
-
     try:
+        # Inside the try so a malformed SMTP_SECURITY/SMTP_PORT env value
+        # (ValueError) produces the JSON 500 below, not Flask's HTML error page.
+        email_config = load_email_config()
+
+        config_error = _validate_email_config(email_config)
+        if config_error:
+            logger.error(config_error)
+            return jsonify({'error': 'Email service is not configured.'}), 500
+
         parsed = parse_request()
         if parsed is None:
             return jsonify({'error': 'Request body must be valid JSON or form data.'}), 400

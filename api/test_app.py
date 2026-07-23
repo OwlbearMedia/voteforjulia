@@ -1,4 +1,6 @@
 import unittest
+from collections import deque
+from time import monotonic
 
 import api.app as app_module
 from api.config import EmailConfig, SheetsConfig
@@ -129,6 +131,85 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertEqual(len(self.sent_submissions), 1)
         self.assertEqual(len(self.confirmation_submissions), 1)
         self.assertEqual(len(self.sheet_rows), 1)
+
+    def test_rate_limit_ignores_spoofed_first_x_forwarded_for_hop(self) -> None:
+        payload = {
+            "firstName": "Julia",
+            "email": "julia@example.com",
+        }
+
+        first_response = self.client.post(
+            "/api/send-email",
+            json=payload,
+            headers={"X-Forwarded-For": "spoofed-one, 203.0.113.5"},
+        )
+        second_response = self.client.post(
+            "/api/send-email",
+            json=payload,
+            headers={"X-Forwarded-For": "spoofed-two, 203.0.113.5"},
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 429)
+
+    def test_rate_limit_prefers_cf_connecting_ip_over_x_forwarded_for(self) -> None:
+        payload = {
+            "firstName": "Julia",
+            "email": "julia@example.com",
+        }
+
+        first_response = self.client.post(
+            "/api/send-email",
+            json=payload,
+            headers={
+                "CF-Connecting-IP": "203.0.113.7",
+                "X-Forwarded-For": "198.51.100.30",
+            },
+        )
+        second_response = self.client.post(
+            "/api/send-email",
+            json=payload,
+            headers={
+                "CF-Connecting-IP": "203.0.113.7",
+                "X-Forwarded-For": "198.51.100.31",
+            },
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 429)
+
+    def test_rate_limit_evicts_stale_buckets(self) -> None:
+        stale_key = "send-email:198.51.100.99"
+        app_module._RATE_LIMIT_BUCKETS[stale_key] = deque(
+            [monotonic() - app_module._RATE_LIMIT_WINDOW_SECONDS - 1]
+        )
+
+        response = self.client.post(
+            "/api/send-email",
+            json={"firstName": "Julia", "email": "julia@example.com"},
+            headers={"X-Forwarded-For": "198.51.100.40"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(stale_key, app_module._RATE_LIMIT_BUCKETS)
+
+    def test_send_email_returns_json_error_when_email_config_is_invalid(self) -> None:
+        def raise_config_error():
+            raise ValueError("SMTP_SECURITY must be one of: auto, ssl, starttls")
+
+        app_module.load_email_config = raise_config_error
+
+        response = self.client.post(
+            "/api/send-email",
+            json={"firstName": "Julia", "email": "julia@example.com"},
+            headers={"X-Forwarded-For": "198.51.100.41"},
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.get_json(),
+            {"error": "Server email configuration is invalid."},
+        )
 
     def test_send_email_rejects_control_characters_in_header_bound_fields(self) -> None:
         payload = {
