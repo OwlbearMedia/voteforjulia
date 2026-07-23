@@ -104,6 +104,31 @@ useHead({
                 addressCountry: 'US'
               }
             }
+          },
+          {
+            '@type': 'Event',
+            name: 'Primary Win Party!',
+            description:
+              'Celebrate the results of the primary election with candidate Julia Hamann for Mankato Mayor.',
+            startDate: '2026-08-14T19:30:00-05:00',
+            eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+            eventStatus: 'https://schema.org/EventScheduled',
+            url: 'https://www.facebook.com/events/2530643504031415/',
+            location: {
+              '@type': 'Place',
+              name: 'WineCafe Bar',
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: 'Mankato',
+                addressRegion: 'MN',
+                addressCountry: 'US'
+              }
+            },
+            organizer: {
+              '@type': 'Person',
+              name: 'Julia Hamann',
+              url: 'https://voteforjulia.com/'
+            }
           }
         ]
       })
@@ -212,6 +237,43 @@ useHead({
         <a href="https://www.sos.mn.gov/elections-voting/election-day-voting" target="_blank"
           >https://www.sos.mn.gov/elections-voting/election-day-voting</a
         >
+      </p>
+    </div>
+
+    <div class="event">
+      <div class="event-heading">
+        <h3>Primary Win Party!</h3>
+        <div>
+          <a
+            class="event-date"
+            href="https://www.facebook.com/events/2530643504031415/"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><IconCalendar /> Friday, August 14 at 7:30pm</a
+          >
+        </div>
+        <a
+          class="event-location"
+          href="https://www.facebook.com/events/2530643504031415/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <IconLocation /> WineCafe Bar</a
+        >
+      </div>
+
+      <hr />
+
+      <p>
+        I can't predict the outcome of the primary vote for Mankato Mayor, but I am feeling hopeful
+        that the results will be in my favor! When that time comes, I'd love to celebrate with my
+        supporters so we're throwing another party!
+      </p>
+      <p>I will give a brief speech around 8pm followed by a DJ set by MisterRodger!</p>
+      <p>Come mingle, dance, and celebrate all the hard work we've put into this campaign!</p>
+      <p>
+        There will be a table with campaign materials and information, but the main focus of this
+        event is simply to connect and have some fun!
       </p>
     </div>
   </section>
