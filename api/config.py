@@ -49,11 +49,15 @@ class SheetsConfig:
 
 
 
-def load_email_config() -> EmailConfig:
+def load_email_config(recipient_env: str = "RECIPIENT_EMAIL") -> EmailConfig:
     smtp_port_raw = env("SMTP_PORT", str(DEFAULT_SMTP_PORT))
     smtp_security = env("SMTP_SECURITY", DEFAULT_SMTP_SECURITY).lower()
     if smtp_security not in {"auto", "ssl", "starttls"}:
         raise ValueError("SMTP_SECURITY must be one of: auto, ssl, starttls")
+
+    # Form-specific recipient vars (e.g. RECIPIENT_EMAIL_SIGNS) fall back to
+    # RECIPIENT_EMAIL when unset.
+    recipients_raw = env(recipient_env) or env("RECIPIENT_EMAIL", DEFAULT_RECIPIENT_EMAIL)
 
     return EmailConfig(
         smtp_server=env("SMTP_SERVER", DEFAULT_SMTP_SERVER),
@@ -61,7 +65,7 @@ def load_email_config() -> EmailConfig:
         smtp_security=smtp_security,
         email_address=env("EMAIL_ADDRESS"),
         email_password=env("EMAIL_PASSWORD"),
-        recipients=parse_recipients(env("RECIPIENT_EMAIL", DEFAULT_RECIPIENT_EMAIL)),
+        recipients=parse_recipients(recipients_raw),
         plain_text_confirmation_only=env_bool("PLAIN_TEXT_CONFIRMATION_ONLY", False),
     )
 
