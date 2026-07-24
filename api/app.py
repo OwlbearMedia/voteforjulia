@@ -72,15 +72,15 @@ def add_cors_headers(response):
 
     return response
 
-def _validate_email_config(config: EmailConfig) -> str:
+def _validate_email_config(config: EmailConfig, recipient_env: str = 'RECIPIENT_EMAIL') -> str:
     if not config.email_address or not config.email_password:
         return "Email service not configured: missing EMAIL_ADDRESS or EMAIL_PASSWORD"
 
     if not config.recipients:
-        return "Email service not configured: missing RECIPIENT_EMAIL"
+        return f"Email service not configured: missing {recipient_env}"
 
     if not all(looks_like_email(item) for item in config.recipients):
-        return "Email service misconfigured: RECIPIENT_EMAIL contains invalid address"
+        return f"Email service misconfigured: {recipient_env} contains invalid address"
 
     return ""
 
@@ -223,15 +223,16 @@ def _handle_form_submission(
     send_confirmation_email_fn,
     to_sheet_row,
     endpoint_name,
+    recipient_env='RECIPIENT_EMAIL',
 ):
     _log_request_body(endpoint_name)
 
     try:
         # Inside the try so a malformed SMTP_SECURITY/SMTP_PORT env value
         # (ValueError) produces the JSON 500 below, not Flask's HTML error page.
-        email_config = load_email_config()
+        email_config = load_email_config(recipient_env)
 
-        config_error = _validate_email_config(email_config)
+        config_error = _validate_email_config(email_config, recipient_env)
         if config_error:
             logger.error(config_error)
             return jsonify({'error': 'Email service is not configured.'}), 500
@@ -352,6 +353,7 @@ def yard_sign():
         send_confirmation_email_fn=send_yard_sign_confirmation_email,
         to_sheet_row=lambda yard_sign_request: yard_sign_request.to_sheet_row(),
         endpoint_name='/yard-sign',
+        recipient_env='RECIPIENT_EMAIL_SIGNS',
     )
 
 if __name__ == '__main__':

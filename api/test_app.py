@@ -69,15 +69,21 @@ class AppRateLimitTests(unittest.TestCase):
         self.confirmation_submissions = []
         self.sheet_rows = []
 
-        app_module.load_email_config = lambda: EmailConfig(
-            smtp_server="mail.example.com",
-            smtp_port=465,
-            smtp_security="ssl",
-            email_address="info@example.com",
-            email_password="placeholder-value",
-            recipients=["team@example.com"],
-            plain_text_confirmation_only=False,
-        )
+        self.email_config_calls = []
+
+        def fake_load_email_config(recipient_env="RECIPIENT_EMAIL"):
+            self.email_config_calls.append(recipient_env)
+            return EmailConfig(
+                smtp_server="mail.example.com",
+                smtp_port=465,
+                smtp_security="ssl",
+                email_address="info@example.com",
+                email_password="placeholder-value",
+                recipients=["team@example.com"],
+                plain_text_confirmation_only=False,
+            )
+
+        app_module.load_email_config = fake_load_email_config
         app_module.load_sheets_config = lambda: SheetsConfig(
             spreadsheet_id="",
             worksheet="Sheet1",
@@ -194,7 +200,7 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertNotIn(stale_key, app_module._RATE_LIMIT_BUCKETS)
 
     def test_send_email_returns_json_error_when_email_config_is_invalid(self) -> None:
-        def raise_config_error():
+        def raise_config_error(recipient_env="RECIPIENT_EMAIL"):
             raise ValueError("SMTP_SECURITY must be one of: auto, ssl, starttls")
 
         app_module.load_email_config = raise_config_error
@@ -304,16 +310,21 @@ class AppYardSignTests(unittest.TestCase):
         self.confirmation_requests = []
         self.sheet_rows = []
         self.sheets_config_calls = []
+        self.email_config_calls = []
 
-        app_module.load_email_config = lambda: EmailConfig(
-            smtp_server="mail.example.com",
-            smtp_port=465,
-            smtp_security="ssl",
-            email_address="info@example.com",
-            email_password="placeholder-value",
-            recipients=["team@example.com"],
-            plain_text_confirmation_only=False,
-        )
+        def fake_load_email_config(recipient_env="RECIPIENT_EMAIL"):
+            self.email_config_calls.append(recipient_env)
+            return EmailConfig(
+                smtp_server="mail.example.com",
+                smtp_port=465,
+                smtp_security="ssl",
+                email_address="info@example.com",
+                email_password="placeholder-value",
+                recipients=["team@example.com"],
+                plain_text_confirmation_only=False,
+            )
+
+        app_module.load_email_config = fake_load_email_config
 
         def fake_load_sheets_config(worksheet_env, default_worksheet):
             self.sheets_config_calls.append((worksheet_env, default_worksheet))
@@ -376,6 +387,7 @@ class AppYardSignTests(unittest.TestCase):
             self.sheets_config_calls,
             [("GOOGLE_SHEETS_YARDSIGN_WORKSHEET", "Yard Signs")],
         )
+        self.assertEqual(self.email_config_calls, ["RECIPIENT_EMAIL_SIGNS"])
 
     def test_yard_sign_requires_address(self) -> None:
         payload = {
