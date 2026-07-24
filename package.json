@@ -39,6 +39,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@newrelic/publish-sourcemap": "^5.1.4",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.1.0",
     "@unhead/vue": "^2.1.15",
     "@vitejs/plugin-vue": "^6.0.6",
@@ -53,6 +54,7 @@
     "googleapis": "^173.0.0",
     "jsdom": "^29.1.1",
     "prettier": "3.9.4",
+    "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.62.1",
     "vite": "^8.1.3",

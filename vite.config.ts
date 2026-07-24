@@ -3,6 +3,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import tailwindcss from '@tailwindcss/vite';
 import { buildSitemapXml, resolveSitemapRoutes } from './sitemap.build';
 
 // Source map mode. Defaults to 'hidden': maps are generated without a
@@ -26,7 +27,7 @@ let builtRoutePaths: string[] = [];
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), tailwindcss()],
   build: {
     // Generate source maps but omit the sourceMappingURL comment so browsers
     // don't advertise/fetch them. Maps are uploaded to New Relic for
