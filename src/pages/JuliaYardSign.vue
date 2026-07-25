@@ -130,13 +130,15 @@ useHead({
   <section id="yard-sign">
     <h2>Get a Yard Sign Today!</h2>
 
-    <p class="card">
+    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-[1.25rem]">
       Yard signs are a great way to show your support and help spread the word about Julia’s
       campaign.
     </p>
 
-    <div class="stances-layout">
-      <div class="stances-text">
+    <div
+      class="flex max-desktop:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-desktop:*:basis-auto"
+    >
+      <div>
         <p>
           As a grassroots campaign, every dollar makes a significant impact. We’re asking for a $10
           minimum sign contribution to help cover costs, and a $20 suggested donation to help us
@@ -149,7 +151,7 @@ useHead({
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/yard-sign.webp"
         alt="Yard sign for Julia Hamann for Mankato Mayor"
-        class="coming-soon"
+        class="w-full h-auto rounded-lg"
         sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
         :image-breakpoints="[240, 320, 420, 560, 767]"
         :device-breakpoints="[]"

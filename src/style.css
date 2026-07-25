@@ -1,19 +1,19 @@
 /* ── Tailwind (CSS-first config) ──
-   Only the theme and utilities layers are imported. Preflight stays out until
-   the templates move to utility classes, so the site keeps its own reset.
-   source(none) disables template scanning for now: prose words ("table",
-   "hidden") generate stray utilities, and the scanned `container` class would
-   override .container below (utilities layer wins over components). Remove
-   source(none) when converting templates to utility classes. */
+   Templates use utility classes; this file holds the theme tokens, base
+   typography for prose-heavy pages, and the few rules utilities can't
+   express (multi-image hr backgrounds, Vue transition classes).
+   Scanning is limited to src/ so prose words in api/ or configs don't
+   generate stray utilities. */
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
 @import 'tailwindcss/utilities.css' layer(utilities) source(none);
-@source inline('sr-only');
+@source './';
 
 @theme {
   /* Drop Tailwind's default palette/fonts/shadows so only campaign tokens
      exist (no stray bg-red-500 later). Spacing, radius, and breakpoint
-     defaults are kept for the utility migration. */
+     defaults are kept for utilities. */
   --color-*: initial;
   --font-*: initial;
   --shadow-*: initial;
@@ -43,6 +43,14 @@
 
   /* The single design breakpoint: `desktop:` = ≥701px, `max-desktop:` = <701px */
   --breakpoint-desktop: 701px;
+
+  --animate-icon-spin: icon-spin 2s linear infinite;
+
+  @keyframes icon-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 }
 
 /* ── Fonts ── */
@@ -70,16 +78,8 @@
   font-style: normal;
 }
 
-/* ── Reset & base ── */
+/* ── Base ── */
 @layer base {
-  *,
-  *::before,
-  *::after {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
   html {
     --header-height: 7rem;
     --header-offset-extra: -15.25rem;
@@ -105,203 +105,16 @@
     display: flex;
     flex-direction: column;
   }
-}
 
-@layer components {
-  /* ── Layout ── */
-  .container {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 2rem;
+  /* Preflight makes images/svg display:block; the site's layout (inline
+     icons, hero baseline gaps) was built on inline replaced elements. */
+  img,
+  svg {
+    display: inline;
+    vertical-align: baseline;
   }
 
-  header {
-    position: sticky;
-    top: 0;
-    z-index: 1000;
-    padding: 0rem 2rem;
-    color: var(--color-white);
-    background-color: var(--color-forest);
-    backdrop-filter: blur(4px);
-    box-shadow: var(--shadow-strong);
-  }
-
-  header .container {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1.5rem;
-    flex-wrap: wrap;
-    padding: 1rem 2rem;
-  }
-
-  .menu-toggle {
-    display: none;
-    background-color: var(--color-mint);
-    border-radius: 6px;
-    border: none;
-    cursor: pointer;
-    padding: 1.35rem 1rem;
-    margin-left: auto;
-    z-index: 1100;
-  }
-
-  .hamburger {
-    display: block;
-    width: 28px;
-    height: 3px;
-    background: var(--color-forest);
-    position: relative;
-    border-radius: 2px;
-  }
-
-  .hamburger::before,
-  .hamburger::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    width: 28px;
-    height: 3px;
-    background: var(--color-forest);
-    border-radius: 2px;
-    transition: 0.3s;
-  }
-
-  .hamburger::before {
-    top: -9px;
-  }
-
-  .hamburger::after {
-    top: 9px;
-  }
-
-  .menu-list {
-    display: flex;
-    align-items: center;
-    list-style: none;
-    gap: 1rem;
-  }
-
-  @media (min-width: 701px) {
-    .menu-list {
-      display: flex;
-    }
-  }
-
-  .menu-list a {
-    color: var(--color-white);
-    font-family: var(--font-action);
-    font-weight: 600;
-    letter-spacing: 0.08em;
-  }
-
-  .menu-list a.donate {
-    background-color: var(--color-leaf);
-    padding: 0.7rem 1rem 0.5rem 1rem;
-    border-radius: var(--radius-pill);
-    box-shadow: var(--shadow-soft);
-  }
-
-  main {
-    flex: 1;
-    max-width: 960px;
-    width: 100%;
-    margin: 0 auto;
-    padding: 0 2rem;
-    color: var(--color-forest);
-  }
-
-  footer {
-    padding: 1.5rem 2rem;
-    background-color: var(--color-forest);
-    box-shadow: var(--shadow-strong-up);
-    backdrop-filter: blur(4px);
-    text-align: center;
-    font-size: 0.875rem;
-    color: var(--color-white);
-  }
-
-  .footer-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
-    max-width: 960px;
-    margin: 0 auto;
-  }
-
-  .footer-disclaimer {
-    grid-column: span 2;
-    margin-top: 1rem;
-  }
-
-  .footer-disclaimer-address {
-    grid-column: span 2;
-    margin-top: 0;
-    font-size: 10px;
-  }
-
-  .footer-support-actions-anchor {
-    display: flex;
-    justify-content: center;
-  }
-
-  .footer-support-actions {
-    display: inline-flex;
-    align-items: center;
-  }
-
-  .footer-support-actions-hidden {
-    visibility: hidden;
-    pointer-events: none;
-  }
-
-  .footer-support-actions-fixed {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: calc(1rem + var(--safe-area-inset-bottom));
-    z-index: 1100;
-  }
-
-  .footer-support-actions-fixed-backdrop {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: calc(5rem + var(--safe-area-inset-bottom));
-    background-color: var(--color-forest);
-    box-shadow: var(--shadow-strong-up);
-    z-index: 1090;
-    pointer-events: none;
-  }
-
-  .social-icons {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.6rem;
-    font-size: 1.5rem;
-    color: var(--color-white);
-  }
-
-  .menu-list > .social-icons {
-    display: none;
-  }
-
-  .social-icons a {
-    color: var(--color-white);
-  }
-
-  .contact-social .social-icons {
-    color: var(--color-forest);
-  }
-
-  .contact-social a {
-    color: var(--color-forest);
-  }
-
-  /* ── Typography ── */
-
+  /* ── Typography (element-level so prose pages stay unclassed) ── */
   h1,
   h2,
   h3,
@@ -318,6 +131,10 @@
   h2 {
     font-size: 2.5rem;
     margin-top: 3rem;
+
+    @media (width < 701px) {
+      margin-top: 1rem;
+    }
   }
 
   h3 {
@@ -335,39 +152,6 @@
 
   a:hover {
     text-decoration: underline;
-  }
-
-  .btn {
-    display: inline-block;
-    padding: 0.75rem 1.5rem 0.5rem 1.5rem;
-    font-family: var(--font-action);
-    background-color: var(--color-leaf);
-    color: var(--color-white);
-    border-radius: var(--radius-pill);
-    font-weight: 600;
-    box-shadow: var(--shadow-soft);
-  }
-
-  .btn:hover {
-    text-decoration: none;
-    background-color: --alpha(var(--color-sprout) / 70%);
-  }
-
-  .btn-invert {
-    background-color: var(--color-white);
-    color: var(--color-fern);
-    margin-right: 1rem;
-  }
-
-  .btn-invert:hover {
-    background-color: --alpha(var(--color-white) / 85%);
-  }
-
-  .bigger {
-    font-family: var(--font-accent);
-    font-weight: 400;
-    font-style: normal;
-    font-size: 1.25rem;
   }
 
   blockquote {
@@ -401,26 +185,34 @@
     scroll-margin-top: var(--header-offset);
     margin-bottom: 2rem;
   }
+}
 
-  .card {
-    font-family: var(--font-accent);
-    font-weight: 400;
-    font-style: normal;
-    background-color: --alpha(var(--color-sprout) / 50%);
-    padding: 1rem;
-    margin: 1rem 0;
-    text-align: center;
-    border-radius: 0.5rem;
-    font-size: 1.25rem;
+/* ── Components (only what utilities can't express) ── */
+@layer components {
+  /* hr variant used inside dark event cards */
+  .hr-event {
+    margin: 0.5rem 0;
+    background-image:
+      url('./assets/sprout.png'),
+      radial-gradient(circle, var(--color-forest) 0 20px, transparent 20px),
+      linear-gradient(var(--color-leaf), var(--color-leaf));
   }
 
-  .contact-form {
-    margin-top: 1rem;
-    max-width: 640px;
-    display: grid;
-    gap: 0.6rem;
+  /* sprout icon as a flex-list bullet */
+  .sprout-bullet::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 40px;
+    background-image: url('./assets/sprout.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    flex-shrink: 0;
+    margin-top: 0.2rem;
   }
 
+  /* Vue <Transition name="contact-state"> classes */
   .contact-state-enter-active,
   .contact-state-leave-active {
     transition:
@@ -434,482 +226,6 @@
     transform: translateY(8px);
   }
 
-  .contact-form-success {
-    background-color: --alpha(var(--color-sprout) / 50%);
-    border-radius: 0.5rem;
-    padding: 1rem 1.5rem;
-  }
-
-  .contact-form-success a {
-    color: --alpha(var(--color-white) / 90%);
-  }
-
-  .success-sprout {
-    width: 1.25em;
-    height: 1.25em;
-    vertical-align: text-bottom;
-  }
-
-  .contact-form label,
-  .help-options legend {
-    font-weight: 600;
-    color: var(--color-forest);
-  }
-
-  .name-fields {
-    display: flex;
-    gap: 1rem;
-  }
-
-  .name-field {
-    flex: 1 1 50%;
-    min-width: 0;
-    display: grid;
-    gap: 0.6rem;
-  }
-
-  .contact-form input,
-  .contact-form textarea {
-    width: 100%;
-    border: 1px solid var(--color-mist);
-    border-radius: 0.4rem;
-    padding: 0.65rem 0.75rem;
-    font: inherit;
-    color: var(--color-forest);
-    background-color: --alpha(var(--color-white) / 96%);
-  }
-
-  .contact-form input.input-error {
-    border-color: var(--color-error);
-  }
-
-  .form-error-message {
-    margin: -0.1rem 0 0.25rem;
-    color: var(--color-error);
-    font-size: 0.95rem;
-  }
-
-  .contact-form textarea {
-    resize: vertical;
-    min-height: 130px;
-  }
-
-  .help-options {
-    margin: 0;
-    padding-bottom: 0.25rem;
-    border: none;
-    border-radius: 0.4rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-  }
-
-  .help-options legend {
-    width: 100%;
-    padding: 0;
-    margin-bottom: 0.75rem;
-  }
-
-  .help-option {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-weight: 400;
-    margin-right: 0.5rem;
-  }
-
-  .help-option input {
-    width: auto;
-    margin: 0;
-  }
-
-  .help-option input[type='text'] {
-    flex: 1 1 20rem;
-    min-width: 24rem;
-  }
-
-  .contact-form button {
-    width: fit-content;
-    margin-top: 0.25rem;
-    border: 0;
-    border-radius: var(--radius-pill);
-    padding: 0.75rem 1.5rem 0.5rem 1.5rem;
-    background-color: var(--color-forest);
-    color: var(--color-white);
-    font-size: 0.875rem;
-    line-height: 1.6;
-    font-family: var(--font-action);
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-align: center;
-    justify-self: start;
-    cursor: pointer;
-  }
-
-  .contact-form button:hover {
-    background-color: --alpha(var(--color-forest) / 70%);
-  }
-
-  .contact-form button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .hero {
-    text-align: center;
-    margin: 1rem 0;
-  }
-
-  .hero-image {
-    width: 100%;
-    height: auto;
-    border-radius: 0.5rem;
-    box-shadow: var(--shadow-soft);
-  }
-
-  .logo {
-    width: 200px;
-    height: auto;
-  }
-
-  .stances-layout {
-    display: flex;
-    align-items: flex-start;
-    gap: 1.5rem;
-    margin-bottom: 1rem;
-  }
-
-  .donate-layout {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-  }
-
-  .stances-layout > * {
-    flex: 1 1 50%;
-  }
-
-  .coming-soon {
-    width: 100%;
-    height: auto;
-    border-radius: 0.5rem;
-  }
-
-  .stances-layout ul {
-    margin: 0;
-    padding-left: 1.25rem;
-  }
-
-  .stances-text-centered {
-    align-self: stretch;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
-
-  .issues-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 275px;
-    gap: 3rem;
-    align-items: center;
-  }
-
-  .issues-layout > :first-child {
-    align-self: stretch;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-  }
-
-  .issues-layout .coming-soon {
-    width: 250px;
-    max-width: 250px;
-  }
-
-  .issues-header {
-    margin-bottom: 1rem;
-    margin-top: 1rem;
-  }
-
-  .event {
-    background: var(--color-forest);
-    box-shadow: var(--shadow-strong);
-    color: var(--color-white);
-    padding: 1rem 2rem;
-    border-radius: 2rem;
-    margin-bottom: 2rem;
-  }
-
-  .event a {
-    color: var(--color-lime);
-  }
-
-  .event h3 {
-    font-size: 2rem;
-    color: var(--color-lime);
-  }
-
-  .event hr {
-    border: 0;
-    height: 45px;
-    margin: 0.5rem 0;
-    background-image:
-      url(/src/assets/sprout.png),
-      radial-gradient(circle, var(--color-forest) 0 20px, transparent 20px),
-      linear-gradient(var(--color-leaf), var(--color-leaf));
-    background-size:
-      40px 40px,
-      40px 40px,
-      100% 1px;
-    background-position: center, center, center;
-    background-repeat: no-repeat;
-  }
-
-  a.event-date {
-    color: var(--color-white);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-family: var(--font-accent);
-    font-size: 1.25rem;
-    font-style: normal;
-    font-weight: 400;
-    margin-bottom: 0.5rem;
-  }
-
-  .event dl {
-    display: grid;
-    grid-template-columns: 100px 1fr;
-    align-items: center;
-    margin: 2rem 0;
-  }
-
-  .event dt {
-    font-weight: 600;
-    font-size: 1.25rem;
-    color: var(--color-lime);
-    font-family: var(--font-display);
-  }
-
-  .event dd {
-    background-color: --alpha(var(--color-sprout) / 50%);
-    border-radius: 0.5rem;
-    margin: 0.5rem 0;
-    padding: 0.75rem 1rem;
-    font-family: var(--font-accent);
-    font-size: 1.25rem;
-    font-style: normal;
-    font-weight: 400;
-  }
-
-  .event ul {
-    list-style: none;
-    padding-left: 0;
-    margin: 2rem 0;
-  }
-
-  .event ul li {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    margin-bottom: 0.75rem;
-  }
-
-  .event ul li::before {
-    content: '';
-    display: block;
-    width: 40px;
-    height: 40px;
-    background-image: url('./assets/sprout.png');
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    flex-shrink: 0;
-    margin-top: 0.2rem;
-  }
-
-  .event-location {
-    display: inline-flex;
-    align-items: center;
-    color: var(--color-lime);
-    gap: 0.4rem;
-    font-family: var(--font-accent);
-    font-size: 1.25rem;
-    font-style: normal;
-    font-weight: 400;
-  }
-
-  .event-highlight {
-    text-decoration: underline;
-  }
-
-  .event-location svg {
-    width: 1rem;
-    height: 1rem;
-    flex-shrink: 0;
-  }
-
-  @media (max-width: 700px) {
-    header {
-      padding: 1rem;
-      backdrop-filter: none;
-    }
-
-    header .container {
-      position: relative;
-      align-items: flex-start;
-      gap: 0.75rem;
-      padding: 0;
-    }
-
-    .menu-toggle {
-      display: block;
-    }
-
-    .menu-list {
-      display: none;
-      flex-direction: column;
-      position: absolute;
-      top: 47px;
-      right: 10px;
-      background: var(--color-leaf);
-      width: 220px;
-      box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
-      border-radius: 0 0 8px 8px;
-      z-index: 1001;
-      padding: 1rem 0;
-      margin: 0;
-      gap: 0;
-    }
-
-    .menu-list.open {
-      display: flex;
-    }
-
-    .menu-list a {
-      display: flex;
-      padding: 0.5rem 1rem;
-      border-radius: 0;
-      background-color: transparent;
-    }
-
-    .menu-list a.donate {
-      background-color: var(--color-white);
-      color: var(--color-fern);
-      border-radius: var(--radius-pill);
-      margin: 0.25rem 0.75rem;
-      justify-content: center;
-    }
-
-    .menu-list a.donate:hover {
-      background-color: --alpha(var(--color-white) / 85%);
-    }
-
-    .menu-list .social-icons {
-      display: flex;
-      justify-content: center;
-      padding: 0.5rem 1rem;
-      margin-top: 0.5rem;
-    }
-
-    .menu-list .social-icons a {
-      display: inline-flex;
-      padding: 0;
-    }
-
-    main {
-      padding: 1.25rem;
-    }
-
-    h2 {
-      margin-top: 1rem;
-    }
-
-    section {
-      scroll-margin-top: var(--header-offset);
-    }
-
-    .contact-form button {
-      width: 100%;
-    }
-
-    .stances-layout {
-      flex-direction: column;
-      gap: 1.5rem;
-    }
-
-    .stances-layout > * {
-      flex-basis: auto;
-    }
-
-    .donate-layout {
-      grid-template-columns: 1fr;
-      row-gap: 1rem;
-    }
-
-    /* Flatten .donate-text so its children become grid items,
-     letting the paragraphs reorder above the widget on mobile */
-    .donate-text {
-      display: contents;
-    }
-
-    .donate-text p {
-      order: -1;
-      margin-bottom: 0;
-    }
-
-    .issues-layout {
-      grid-template-columns: 1fr;
-      gap: 1.5rem;
-    }
-
-    .issues-layout > :first-child {
-      align-self: auto;
-      display: block;
-    }
-
-    .issues-layout .coming-soon {
-      width: 100%;
-      max-width: 100%;
-      justify-self: center;
-    }
-
-    .footer-container {
-      color: var(--color-white);
-      grid-template-columns: 1fr;
-    }
-
-    .footer-support-actions-fixed {
-      bottom: calc(1rem + var(--safe-area-inset-bottom));
-    }
-
-    .footer-container > :nth-child(1) {
-      grid-row: 2;
-    }
-
-    .footer-container > :nth-child(2) {
-      grid-row: 1;
-    }
-
-    .footer-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
-
-  @keyframes icon-spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .icon-spin {
-    animation: icon-spin 2s linear infinite;
-    vertical-align: -0.125em;
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .contact-state-enter-active,
     .contact-state-leave-active {
@@ -920,15 +236,6 @@
     .contact-state-leave-to {
       opacity: 1;
       transform: none;
-    }
-
-    .icon-spin {
-      animation: none;
-    }
-
-    header,
-    footer {
-      backdrop-filter: none;
     }
   }
 }

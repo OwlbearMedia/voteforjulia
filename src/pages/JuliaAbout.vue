@@ -150,8 +150,10 @@ useHead({
 
     <h3>Early Life</h3>
 
-    <div class="stances-layout">
-      <div class="stances-text">
+    <div
+      class="flex max-desktop:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-desktop:*:basis-auto"
+    >
+      <div>
         <p>
           Julia’s sense of justice and passion for helping others was instilled in her from
           childhood. Her mom was a career public defender and her dad, a jack of all trades, always
@@ -176,7 +178,7 @@ useHead({
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia-maybe-idk.webp"
         alt="Julia Hamann"
-        class="coming-soon maybe-idk"
+        class="w-full h-auto rounded-lg"
         sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
         :image-breakpoints="[240, 320, 420, 560, 690]"
         :device-breakpoints="[]"
@@ -219,12 +221,14 @@ useHead({
       impact.
     </p>
 
-    <div class="stances-layout">
+    <div
+      class="flex max-desktop:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-desktop:*:basis-auto"
+    >
       <Image
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia.avif"
         alt="Julia Hamann"
-        class="coming-soon"
+        class="w-full h-auto rounded-lg"
         sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
         :image-breakpoints="[240, 320, 420, 560, 690]"
         :device-breakpoints="[]"
@@ -234,7 +238,7 @@ useHead({
         loading="lazy"
         decoding="async"
       />
-      <div class="stances-text stances-text-centered">
+      <div class="self-stretch flex flex-col justify-center">
         <blockquote>
           "I’ve heard a lot about what’s NOT possible and I’m ready to start a new conversation."<br />
           - Julia

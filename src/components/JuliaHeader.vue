@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, type RouteLocationRaw } from 'vue-router';
 import { Image } from '@imagekit/vue';
 import IconInstagram from './icons/IconInstagram.vue';
 import IconFacebook from './icons/IconFacebook.vue';
@@ -15,6 +15,15 @@ const { title } = defineProps<{
 }>();
 
 const showMenu = ref(false);
+
+const navLinks: { to: RouteLocationRaw; label: string }[] = [
+  { to: '/', label: 'Home' },
+  { to: '/meet-julia', label: 'Meet Julia' },
+  { to: { path: '/', hash: '#issues' }, label: 'Issues' },
+  { to: '/events', label: 'Events' },
+  { to: '/volunteer', label: 'Volunteer' },
+  { to: '/yard-signs', label: 'Yard Signs' }
+];
 
 function toggleMenu() {
   showMenu.value = !showMenu.value;
@@ -31,8 +40,12 @@ function handleDonateClick() {
 </script>
 
 <template>
-  <header class="bg-julia-dark-green">
-    <div class="container">
+  <header
+    class="sticky top-0 z-[1000] px-8 text-white bg-forest backdrop-blur-[4px] shadow-strong max-desktop:p-4 max-desktop:backdrop-blur-none motion-reduce:backdrop-blur-none"
+  >
+    <div
+      class="max-w-[960px] mx-auto flex flex-wrap items-center justify-between gap-6 px-8 py-4 max-desktop:relative max-desktop:items-start max-desktop:gap-3 max-desktop:p-0"
+    >
       <h1 class="sr-only">{{ title }}</h1>
       <div class="logo-container">
         <a href="/" aria-label="Vote for Julia Home">
@@ -40,7 +53,7 @@ function handleDonateClick() {
             url-endpoint="https://ik.imagekit.io/voteforjulia"
             src="/julia-hamann-for-mankato-mayor.avif"
             alt="Julia Hamann for Mankato Mayor"
-            class="logo"
+            class="w-50 h-auto"
             sizes="200px"
             :image-breakpoints="[200, 400]"
             :device-breakpoints="[]"
@@ -54,32 +67,46 @@ function handleDonateClick() {
         </a>
       </div>
       <button
-        class="menu-toggle"
+        class="menu-toggle hidden max-desktop:block bg-mint rounded-md border-none cursor-pointer py-[1.35rem] px-4 ml-auto z-[1100]"
         aria-label="Open menu"
         :aria-expanded="showMenu"
         aria-controls="main-menu"
         @click="toggleMenu"
       >
-        <span class="hamburger"></span>
+        <span
+          class="block relative w-7 h-[3px] bg-forest rounded-[2px] before:content-[''] before:absolute before:left-0 before:w-7 before:h-[3px] before:bg-forest before:rounded-[2px] before:transition-all before:duration-300 before:-top-[9px] after:content-[''] after:absolute after:left-0 after:w-7 after:h-[3px] after:bg-forest after:rounded-[2px] after:transition-all after:duration-300 after:top-[9px]"
+        ></span>
       </button>
 
       <nav aria-label="Main navigation">
-        <ul id="main-menu" class="menu-list" :class="{ open: showMenu }">
-          <li><RouterLink to="/" @click="closeMenu">Home</RouterLink></li>
-          <li><RouterLink to="/meet-julia" @click="closeMenu">Meet Julia</RouterLink></li>
-          <li>
-            <RouterLink :to="{ path: '/', hash: '#issues' }" @click="closeMenu">Issues</RouterLink>
+        <ul
+          id="main-menu"
+          class="items-center gap-4 list-none max-desktop:absolute max-desktop:top-[47px] max-desktop:right-[10px] max-desktop:w-[220px] max-desktop:flex-col max-desktop:gap-0 max-desktop:bg-leaf max-desktop:rounded-b-lg max-desktop:py-4 max-desktop:shadow-[0_8px_24px_rgb(0_0_0/0.15)] max-desktop:z-[1001]"
+          :class="showMenu ? 'open flex' : 'hidden desktop:flex'"
+        >
+          <li v-for="link in navLinks" :key="link.label">
+            <RouterLink
+              :to="link.to"
+              class="text-white font-action font-semibold tracking-[0.08em] max-desktop:flex max-desktop:px-4 max-desktop:py-2"
+              @click="closeMenu"
+              >{{ link.label }}</RouterLink
+            >
           </li>
-          <li><RouterLink to="/events" @click="closeMenu">Events</RouterLink></li>
-          <li><RouterLink to="/volunteer" @click="closeMenu">Volunteer</RouterLink></li>
-          <li><RouterLink to="/yard-signs" @click="closeMenu">Yard Signs</RouterLink></li>
           <li>
-            <RouterLink to="/donate" class="donate" @click="handleDonateClick">Donate</RouterLink>
+            <RouterLink
+              to="/donate"
+              class="text-white font-action font-semibold tracking-[0.08em] rounded-pill pt-[0.7rem] pb-2 px-4 shadow-soft desktop:bg-leaf max-desktop:flex max-desktop:bg-white max-desktop:text-fern max-desktop:hover:bg-white/85 max-desktop:mx-3 max-desktop:my-1 max-desktop:justify-center"
+              @click="handleDonateClick"
+              >Donate</RouterLink
+            >
           </li>
-          <li class="social-icons">
+          <li
+            class="desktop:hidden flex items-center justify-center gap-[0.6rem] text-[1.5rem] text-white max-desktop:px-4 max-desktop:py-2 max-desktop:mt-2"
+          >
             <a
               href="https://www.instagram.com/voteforjuliahamann"
               aria-label="Julia on Instagram"
+              class="text-white max-desktop:inline-flex"
               target="_blank"
               rel="noopener noreferrer"
               ><IconInstagram
@@ -87,6 +114,7 @@ function handleDonateClick() {
             <a
               href="https://www.facebook.com/profile.php?id=61590411090366"
               aria-label="Julia on Facebook"
+              class="text-white max-desktop:inline-flex"
               target="_blank"
               rel="noopener noreferrer"
               ><IconFacebook
