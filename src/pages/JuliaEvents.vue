@@ -232,6 +232,7 @@ useHead({
           class="text-lime"
           href="https://www.sos.mn.gov/elections-voting/register-to-vote/"
           target="_blank"
+          rel="noopener noreferrer"
           >https://www.sos.mn.gov/elections-voting/register-to-vote/</a
         >
       </p>
@@ -241,6 +242,7 @@ useHead({
           class="text-lime"
           href="https://www.sos.mn.gov/elections-voting/election-day-voting"
           target="_blank"
+          rel="noopener noreferrer"
           >https://www.sos.mn.gov/elections-voting/election-day-voting</a
         >
       </p>

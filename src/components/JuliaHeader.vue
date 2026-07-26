@@ -49,7 +49,7 @@ function handleDonateClick() {
             url-endpoint="https://ik.imagekit.io/voteforjulia"
             src="/julia-hamann-for-mankato-mayor.avif"
             alt="Julia Hamann for Mankato Mayor"
-            class="w-50 h-auto"
+            class="w-[200px] h-auto"
             sizes="200px"
             :image-breakpoints="[200, 400]"
             :device-breakpoints="[]"
@@ -64,7 +64,7 @@ function handleDonateClick() {
       </div>
       <button
         class="menu-toggle block bg-mint rounded-md border-none cursor-pointer py-[1.35rem] px-4 ml-auto z-[1100]"
-        aria-label="Open menu"
+        :aria-label="showMenu ? 'Close menu' : 'Open menu'"
         :aria-expanded="showMenu"
         aria-controls="main-menu"
         @click="toggleMenu"
