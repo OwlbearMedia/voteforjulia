@@ -40,12 +40,8 @@ function handleDonateClick() {
 </script>
 
 <template>
-  <header
-    class="sticky top-0 z-[1000] px-8 text-white bg-forest backdrop-blur-[4px] shadow-strong max-desktop:p-4 max-desktop:backdrop-blur-none motion-reduce:backdrop-blur-none"
-  >
-    <div
-      class="max-w-[960px] mx-auto flex flex-wrap items-center justify-between gap-6 px-8 py-4 max-desktop:relative max-desktop:items-start max-desktop:gap-3 max-desktop:p-0"
-    >
+  <header class="sticky top-0 z-[1000] p-4 text-white bg-forest shadow-strong">
+    <div class="max-w-[960px] mx-auto relative flex flex-wrap items-start justify-between gap-3">
       <h1 class="sr-only">{{ title }}</h1>
       <div class="logo-container">
         <a href="/" aria-label="Vote for Julia Home">
@@ -67,7 +63,7 @@ function handleDonateClick() {
         </a>
       </div>
       <button
-        class="menu-toggle hidden max-desktop:block bg-mint rounded-md border-none cursor-pointer py-[1.35rem] px-4 ml-auto z-[1100]"
+        class="menu-toggle block bg-mint rounded-md border-none cursor-pointer py-[1.35rem] px-4 ml-auto z-[1100]"
         aria-label="Open menu"
         :aria-expanded="showMenu"
         aria-controls="main-menu"
@@ -79,48 +75,51 @@ function handleDonateClick() {
       </button>
 
       <nav aria-label="Main navigation">
-        <ul
-          id="main-menu"
-          class="items-center gap-4 list-none max-desktop:absolute max-desktop:top-[47px] max-desktop:right-[10px] max-desktop:w-[220px] max-desktop:flex-col max-desktop:gap-0 max-desktop:bg-leaf max-desktop:rounded-b-lg max-desktop:py-4 max-desktop:shadow-[0_8px_24px_rgb(0_0_0/0.15)] max-desktop:z-[1001]"
-          :class="showMenu ? 'open flex' : 'hidden desktop:flex'"
-        >
-          <li v-for="link in navLinks" :key="link.label">
-            <RouterLink
-              :to="link.to"
-              class="text-white font-action font-semibold tracking-[0.08em] max-desktop:flex max-desktop:px-4 max-desktop:py-2"
-              @click="closeMenu"
-              >{{ link.label }}</RouterLink
-            >
-          </li>
-          <li>
-            <RouterLink
-              to="/donate"
-              class="text-white font-action font-semibold tracking-[0.08em] rounded-pill pt-[0.7rem] pb-2 px-4 shadow-soft desktop:bg-leaf max-desktop:flex max-desktop:bg-white max-desktop:text-fern max-desktop:hover:bg-white/85 max-desktop:mx-3 max-desktop:my-1 max-desktop:justify-center"
-              @click="handleDonateClick"
-              >Donate</RouterLink
-            >
-          </li>
-          <li
-            class="desktop:hidden flex items-center justify-center gap-[0.6rem] text-[1.5rem] text-white max-desktop:px-4 max-desktop:py-2 max-desktop:mt-2"
+        <Transition name="menu">
+          <ul
+            v-show="showMenu"
+            id="main-menu"
+            class="flex list-none absolute top-[-6px] right-[6px] w-[220px] flex-col bg-leaf rounded-lg py-4 shadow-[0_8px_24px_rgb(0_0_0/0.15)] z-[1001]"
+            :class="{ open: showMenu }"
           >
-            <a
-              href="https://www.instagram.com/voteforjuliahamann"
-              aria-label="Julia on Instagram"
-              class="text-white max-desktop:inline-flex"
-              target="_blank"
-              rel="noopener noreferrer"
-              ><IconInstagram
-            /></a>
-            <a
-              href="https://www.facebook.com/profile.php?id=61590411090366"
-              aria-label="Julia on Facebook"
-              class="text-white max-desktop:inline-flex"
-              target="_blank"
-              rel="noopener noreferrer"
-              ><IconFacebook
-            /></a>
-          </li>
-        </ul>
+            <li v-for="link in navLinks" :key="link.label">
+              <RouterLink
+                :to="link.to"
+                class="text-white font-action font-semibold tracking-[0.08em] flex px-4 py-2"
+                @click="closeMenu"
+                >{{ link.label }}</RouterLink
+              >
+            </li>
+            <li>
+              <RouterLink
+                to="/donate"
+                class="font-action font-semibold tracking-[0.08em] rounded-pill pt-[0.7rem] pb-2 px-4 shadow-soft flex bg-white text-fern hover:bg-white/85 mx-3 my-1 justify-center"
+                @click="handleDonateClick"
+                >Donate</RouterLink
+              >
+            </li>
+            <li
+              class="flex items-center justify-center gap-[0.6rem] text-[1.5rem] text-white px-4 py-2 mt-2"
+            >
+              <a
+                href="https://www.instagram.com/voteforjuliahamann"
+                aria-label="Julia on Instagram"
+                class="text-white inline-flex"
+                target="_blank"
+                rel="noopener noreferrer"
+                ><IconInstagram
+              /></a>
+              <a
+                href="https://www.facebook.com/profile.php?id=61590411090366"
+                aria-label="Julia on Facebook"
+                class="text-white inline-flex"
+                target="_blank"
+                rel="noopener noreferrer"
+                ><IconFacebook
+              /></a>
+            </li>
+          </ul>
+        </Transition>
       </nav>
     </div>
   </header>

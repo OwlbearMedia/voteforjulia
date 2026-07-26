@@ -41,9 +41,6 @@
 
   --radius-pill: 999px;
 
-  /* The single design breakpoint: `desktop:` = ≥701px, `max-desktop:` = <701px */
-  --breakpoint-desktop: 701px;
-
   --animate-icon-spin: icon-spin 2s linear infinite;
 
   @keyframes icon-spin {
@@ -132,7 +129,8 @@
     font-size: 2.5rem;
     margin-top: 3rem;
 
-    @media (width < 701px) {
+    /* below Tailwind's default `md` breakpoint, matching the templates */
+    @media (width < 48rem) {
       margin-top: 1rem;
     }
   }
@@ -212,6 +210,20 @@
     margin-top: 0.2rem;
   }
 
+  /* Vue <Transition name="menu"> classes — header dropdown slide */
+  .menu-enter-active,
+  .menu-leave-active {
+    transition:
+      opacity 200ms ease,
+      transform 200ms ease;
+  }
+
+  .menu-enter-from,
+  .menu-leave-to {
+    opacity: 0;
+    transform: translateY(-0.75rem);
+  }
+
   /* Vue <Transition name="contact-state"> classes */
   .contact-state-enter-active,
   .contact-state-leave-active {
@@ -227,11 +239,15 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .menu-enter-active,
+    .menu-leave-active,
     .contact-state-enter-active,
     .contact-state-leave-active {
       transition: none;
     }
 
+    .menu-enter-from,
+    .menu-leave-to,
     .contact-state-enter-from,
     .contact-state-leave-to {
       opacity: 1;

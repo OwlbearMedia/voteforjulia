@@ -81,7 +81,7 @@ function updateFooterSupportActionsState() {
 
   const isMobileViewport =
     typeof globalThis.matchMedia === 'function'
-      ? globalThis.matchMedia('(max-width: 700px)').matches
+      ? globalThis.matchMedia('(width < 48rem)').matches
       : false;
 
   if (!isMobileViewport) {
@@ -157,8 +157,8 @@ onBeforeUnmount(() => {
   <footer
     class="py-6 px-8 bg-forest shadow-strong-up backdrop-blur-[4px] motion-reduce:backdrop-blur-none text-center text-[0.875rem] text-white"
   >
-    <div class="grid grid-cols-2 max-desktop:grid-cols-1 gap-6 max-w-[960px] mx-auto">
-      <div class="max-desktop:row-start-2">
+    <div class="grid grid-cols-2 max-md:grid-cols-1 gap-6 max-w-[960px] mx-auto">
+      <div class="max-md:row-start-2">
         <p class="font-accent text-[1.25rem]">Follow Julia's Campaign</p>
         <div class="flex items-center justify-center gap-[0.6rem] text-[1.5rem] text-white">
           <a
@@ -198,7 +198,7 @@ onBeforeUnmount(() => {
           /></a>
         </div>
       </div>
-      <div class="footer-support max-desktop:row-start-1">
+      <div class="footer-support max-md:row-start-1">
         <p class="font-accent text-[1.25rem]">Support Julia's Campaign</p>
         <div
           ref="footerSupportActionsAnchorRef"

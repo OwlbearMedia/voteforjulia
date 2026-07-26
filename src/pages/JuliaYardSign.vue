@@ -135,9 +135,7 @@ useHead({
       campaign.
     </p>
 
-    <div
-      class="flex max-desktop:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-desktop:*:basis-auto"
-    >
+    <div class="flex max-md:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-md:*:basis-auto">
       <div>
         <p>
           As a grassroots campaign, every dollar makes a significant impact. We’re asking for a $10
@@ -152,7 +150,7 @@ useHead({
         src="/yard-sign.webp"
         alt="Yard sign for Julia Hamann for Mankato Mayor"
         class="w-full h-auto rounded-lg"
-        sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
+        sizes="(max-width: 767px) calc(100vw - 2.5rem), 420px"
         :image-breakpoints="[240, 320, 420, 560, 767]"
         :device-breakpoints="[]"
         width="767"

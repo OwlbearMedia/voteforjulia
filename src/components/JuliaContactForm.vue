@@ -259,7 +259,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
 
       <button
         type="submit"
-        class="w-fit max-desktop:w-full mt-1 border-0 rounded-pill pt-3 pb-2 px-6 bg-forest text-white text-[0.875rem] leading-[1.6] font-action font-semibold tracking-[0.05em] text-center justify-self-start cursor-pointer hover:bg-forest/70 disabled:opacity-60 disabled:cursor-not-allowed"
+        class="w-fit max-md:w-full mt-1 border-0 rounded-pill pt-3 pb-2 px-6 bg-forest text-white text-[0.875rem] leading-[1.6] font-action font-semibold tracking-[0.05em] text-center justify-self-start cursor-pointer hover:bg-forest/70 disabled:opacity-60 disabled:cursor-not-allowed"
         :disabled="hasValidationError || isSubmitting"
       >
         Send Message <IconSpinner v-if="isSubmitting" />

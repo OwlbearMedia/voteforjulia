@@ -133,9 +133,7 @@ useHead({
   <section id="contact">
     <h2>Volunteer</h2>
 
-    <div
-      class="flex max-desktop:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-desktop:*:basis-auto"
-    >
+    <div class="flex max-md:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-md:*:basis-auto">
       <div>
         <p>Join the campaign team to help with outreach, events, and voter engagement.</p>
 
@@ -146,7 +144,7 @@ useHead({
         src="/julia.avif"
         alt="Julia Hamann for Mankato Mayor"
         class="w-full h-auto rounded-lg"
-        sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
+        sizes="(max-width: 767px) calc(100vw - 2.5rem), 420px"
         :image-breakpoints="[240, 320, 420, 560, 767]"
         :device-breakpoints="[]"
         width="767"

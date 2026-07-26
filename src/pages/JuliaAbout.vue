@@ -150,9 +150,7 @@ useHead({
 
     <h3>Early Life</h3>
 
-    <div
-      class="flex max-desktop:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-desktop:*:basis-auto"
-    >
+    <div class="flex max-md:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-md:*:basis-auto">
       <div>
         <p>
           Julia’s sense of justice and passion for helping others was instilled in her from
@@ -179,7 +177,7 @@ useHead({
         src="/julia-maybe-idk.webp"
         alt="Julia Hamann"
         class="w-full h-auto rounded-lg"
-        sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
+        sizes="(max-width: 767px) calc(100vw - 2.5rem), 420px"
         :image-breakpoints="[240, 320, 420, 560, 690]"
         :device-breakpoints="[]"
         width="690"
@@ -221,15 +219,13 @@ useHead({
       impact.
     </p>
 
-    <div
-      class="flex max-desktop:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-desktop:*:basis-auto"
-    >
+    <div class="flex max-md:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-md:*:basis-auto">
       <Image
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia.avif"
         alt="Julia Hamann"
         class="w-full h-auto rounded-lg"
-        sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
+        sizes="(max-width: 767px) calc(100vw - 2.5rem), 420px"
         :image-breakpoints="[240, 320, 420, 560, 690]"
         :device-breakpoints="[]"
         width="690"

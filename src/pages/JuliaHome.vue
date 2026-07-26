@@ -137,7 +137,7 @@ useHead({
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia-hero.webp"
         class="w-full h-auto rounded-lg shadow-soft"
-        sizes="(max-width: 700px) calc(100vw - 2.5rem), 960px"
+        sizes="(max-width: 767px) calc(100vw - 2.5rem), 960px"
         :image-breakpoints="[320, 390, 430, 520, 640, 780, 960, 1440, 1920]"
         :device-breakpoints="[]"
         width="960"
@@ -191,9 +191,9 @@ useHead({
 
   <section id="issues">
     <div
-      class="grid grid-cols-1 desktop:grid-cols-[minmax(0,1fr)_275px] gap-12 max-desktop:gap-6 items-center"
+      class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_275px] gap-12 max-md:gap-6 items-center"
     >
-      <div class="desktop:self-stretch desktop:flex desktop:flex-col desktop:justify-between">
+      <div class="md:self-stretch md:flex md:flex-col md:justify-between">
         <h2 class="mt-4 mb-4">Issues</h2>
         <p>
           As mayor, Julia knows she can’t singlehandedly change city policy overnight, but she can
@@ -208,8 +208,8 @@ useHead({
         <Image
           url-endpoint="https://ik.imagekit.io/voteforjulia"
           src="/julia-blue-sky.webp"
-          class="h-auto rounded-lg desktop:w-[250px] desktop:max-w-[250px] max-desktop:w-full max-desktop:max-w-full max-desktop:justify-self-center"
-          sizes="(max-width: 700px) calc(100vw - 2.5rem), 250px"
+          class="h-auto rounded-lg md:w-[250px] md:max-w-[250px] max-md:w-full max-md:max-w-full max-md:justify-self-center"
+          sizes="(max-width: 767px) calc(100vw - 2.5rem), 250px"
           :image-breakpoints="[180, 250, 320, 390, 500, 700]"
           :device-breakpoints="[]"
           width="390"
@@ -288,9 +288,7 @@ useHead({
   <section id="volunteer">
     <h2>Volunteer</h2>
 
-    <div
-      class="flex max-desktop:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-desktop:*:basis-auto"
-    >
+    <div class="flex max-md:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-md:*:basis-auto">
       <div>
         <p>Join the campaign team to help with outreach, events, and voter engagement.</p>
         <JuliaContactForm />
@@ -301,7 +299,7 @@ useHead({
           src="/julia.avif"
           alt="Julia Hamann for Mankato Mayor"
           class="w-full h-auto rounded-lg"
-          sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
+          sizes="(max-width: 767px) calc(100vw - 2.5rem), 420px"
           :image-breakpoints="[240, 320, 390, 420, 560]"
           :device-breakpoints="[]"
           width="390"
