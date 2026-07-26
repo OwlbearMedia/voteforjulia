@@ -54,7 +54,7 @@ function handleDonateClick() {
             :image-breakpoints="[200, 400]"
             :device-breakpoints="[]"
             width="200"
-            height="97"
+            height="95"
             crossorigin="anonymous"
             fetchpriority="high"
             loading="eager"
