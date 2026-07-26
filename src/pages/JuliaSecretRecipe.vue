@@ -141,8 +141,8 @@ useHead({
       for the full recipe and how it connects to Julia's campaign!
     </p>
 
-    <div class="stances-layout">
-      <ul>
+    <div class="flex max-md:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-md:*:basis-auto">
+      <ul class="list-disc pl-5 m-0">
         <li>1 pkg. lemon Jello</li>
         <li>1 cup boiling water</li>
         <li>1/2 cup whipped cream</li>
@@ -159,12 +159,12 @@ useHead({
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/shrimp-salad-supreme.jpg"
         alt="Shrimp Salad Supreme - a secret recipe for Mankato's future"
-        class="coming-soon"
-        sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
-        :image-breakpoints="[240, 320, 420, 560, 690]"
+        class="w-full h-auto rounded-lg"
+        sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 5.5rem) / 2), 436px"
+        :image-breakpoints="[240, 320, 420, 540]"
         :device-breakpoints="[]"
-        width="690"
-        height="960"
+        width="540"
+        height="360"
         crossorigin="anonymous"
         loading="lazy"
         decoding="async"

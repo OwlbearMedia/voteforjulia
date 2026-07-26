@@ -212,11 +212,11 @@ useHead({
 
     <p>Check out upcoming events below:</p>
 
-    <div class="event">
+    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-[2rem] mb-8">
       <div class="event-heading">
-        <h3>Primary Election Day!</h3>
+        <h3 class="text-[2rem] text-lime">Primary Election Day!</h3>
         <a
-          class="event-date"
+          class="text-white inline-flex items-center gap-[0.4rem] font-accent text-[1.25rem] font-normal mb-2"
           href="https://www.sos.mn.gov/elections-voting/election-day-voting"
           target="_blank"
           rel="noopener noreferrer"
@@ -224,28 +224,36 @@ useHead({
         >
       </div>
 
-      <hr />
+      <hr class="hr-event" />
 
       <p>
         Check your voter registration:
-        <a href="https://www.sos.mn.gov/elections-voting/register-to-vote/" target="_blank"
+        <a
+          class="text-lime"
+          href="https://www.sos.mn.gov/elections-voting/register-to-vote/"
+          target="_blank"
+          rel="noopener noreferrer"
           >https://www.sos.mn.gov/elections-voting/register-to-vote/</a
         >
       </p>
       <p>
         Find your polling place:
-        <a href="https://www.sos.mn.gov/elections-voting/election-day-voting" target="_blank"
+        <a
+          class="text-lime"
+          href="https://www.sos.mn.gov/elections-voting/election-day-voting"
+          target="_blank"
+          rel="noopener noreferrer"
           >https://www.sos.mn.gov/elections-voting/election-day-voting</a
         >
       </p>
     </div>
 
-    <div class="event">
+    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-[2rem] mb-8">
       <div class="event-heading">
-        <h3>Primary Win Party!</h3>
+        <h3 class="text-[2rem] text-lime">Primary Win Party!</h3>
         <div>
           <a
-            class="event-date"
+            class="text-white inline-flex items-center gap-[0.4rem] font-accent text-[1.25rem] font-normal mb-2"
             href="https://www.facebook.com/events/2530643504031415/"
             target="_blank"
             rel="noopener noreferrer"
@@ -253,16 +261,16 @@ useHead({
           >
         </div>
         <a
-          class="event-location"
+          class="inline-flex items-center text-lime gap-[0.4rem] font-accent text-[1.25rem] font-normal"
           href="https://www.facebook.com/events/2530643504031415/"
           target="_blank"
           rel="noopener noreferrer"
         >
-          <IconLocation /> WineCafe Bar</a
+          <IconLocation class="w-4 h-4 shrink-0" /> WineCafe Bar</a
         >
       </div>
 
-      <hr />
+      <hr class="hr-event" />
 
       <p>
         I can't predict the outcome of the primary vote for Mankato Mayor, but I am feeling hopeful
@@ -281,12 +289,12 @@ useHead({
   <section id="past-events">
     <h2>Past Events</h2>
 
-    <div class="event">
+    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-[2rem] mb-8">
       <div class="event-heading">
-        <h3>Campaign Launch Party!</h3>
+        <h3 class="text-[2rem] text-lime">Campaign Launch Party!</h3>
         <div>
           <a
-            class="event-date"
+            class="text-white inline-flex items-center gap-[0.4rem] font-accent text-[1.25rem] font-normal mb-2"
             href="https://www.facebook.com/events/1000640362322768"
             target="_blank"
             rel="noopener noreferrer"
@@ -294,16 +302,16 @@ useHead({
           >
         </div>
         <a
-          class="event-location"
+          class="inline-flex items-center text-lime gap-[0.4rem] font-accent text-[1.25rem] font-normal"
           href="https://maps.app.goo.gl/bE9THdo92AbrKKeJ7"
           target="_blank"
           rel="noopener noreferrer"
         >
-          <IconLocation /> Mankato Makerspace, 1700 3rd Ave</a
+          <IconLocation class="w-4 h-4 shrink-0" /> Mankato Makerspace, 1700 3rd Ave</a
         >
       </div>
 
-      <hr />
+      <hr class="hr-event" />
 
       <div>
         <p>
@@ -318,6 +326,7 @@ useHead({
         <p>
           Light refreshments will be available, prepared by
           <a
+            class="text-lime"
             href="https://www.facebook.com/foodnotbombs.mankato"
             target="_blank"
             rel="noopener noreferrer"
@@ -325,40 +334,51 @@ useHead({
           >
         </p>
 
-        <dl>
-          <dt>5:30PM</dt>
-          <dd>Social hour - Mingle, snack, &amp; craft</dd>
+        <dl class="grid grid-cols-[100px_1fr] items-center my-8">
+          <dt class="font-semibold text-[1.25rem] text-lime font-display">5:30PM</dt>
+          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-[1.25rem] font-normal">
+            Social hour - Mingle, snack, &amp; craft
+          </dd>
 
-          <dt>6:45PM</dt>
-          <dd>Candidate speeches</dd>
+          <dt class="font-semibold text-[1.25rem] text-lime font-display">6:45PM</dt>
+          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-[1.25rem] font-normal">
+            Candidate speeches
+          </dd>
 
-          <dt>7:00PM</dt>
-          <dd>Music by Ark &amp; Grum</dd>
+          <dt class="font-semibold text-[1.25rem] text-lime font-display">7:00PM</dt>
+          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-[1.25rem] font-normal">
+            Music by Ark &amp; Grum
+          </dd>
 
-          <dt>8:00PM</dt>
-          <dd>Music by Laura Schultz &amp; Colin Scharf</dd>
+          <dt class="font-semibold text-[1.25rem] text-lime font-display">8:00PM</dt>
+          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-[1.25rem] font-normal">
+            Music by Laura Schultz &amp; Colin Scharf
+          </dd>
         </dl>
 
-        <ul>
-          <li>
+        <ul class="list-none p-0 my-8">
+          <li class="sprout-bullet flex items-start gap-4 mb-3">
             <div>
-              <span class="event-highlight">Make your own campaign swag</span><br />
+              <span class="underline">Make your own campaign swag</span><br />
               Screen printing, button making, &amp; block printing
             </div>
           </li>
-          <li>
+          <li class="sprout-bullet flex items-start gap-4 mb-3">
             <div>
-              <span class="event-highlight">Support the campaign</span><br />
+              <span class="underline">Support the campaign</span><br />
               Donate, volunteer, yard signs, &amp; campaign lit
             </div>
           </li>
         </ul>
 
         <p>
-          <a href="https://www.facebook.com/foodnotbombs.mankato" target="_blank">Food Not Bombs</a>
+          <a class="text-lime" href="https://www.facebook.com/foodnotbombs.mankato" target="_blank"
+            >Food Not Bombs</a
+          >
           will also be collecting in kind donations of tote bags, reusable water bottles, shelf
           stable snack items and travel hygiene items to support the group's mutual aide efforts.
           <a
+            class="text-lime"
             href="http://facebook.com/photo?fbid=122114030805347036&set=gm.1006781185042019&idorvanity=1000640362322768"
             target="_blank"
             rel="noopener noreferrer"

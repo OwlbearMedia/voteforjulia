@@ -22,7 +22,7 @@ const pageHeaderTitle = computed(() => {
 
 <template>
   <JuliaHeader :title="pageHeaderTitle" />
-  <main>
+  <main class="w-full max-w-[960px] flex-1 mx-auto px-8 text-forest max-md:p-5">
     <RouterView />
   </main>
   <JuliaFooter />

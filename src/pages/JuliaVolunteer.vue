@@ -133,8 +133,8 @@ useHead({
   <section id="contact">
     <h2>Volunteer</h2>
 
-    <div class="stances-layout">
-      <div class="stances-text">
+    <div class="flex max-md:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-md:*:basis-auto">
+      <div>
         <p>Join the campaign team to help with outreach, events, and voter engagement.</p>
 
         <JuliaContactForm />
@@ -143,12 +143,12 @@ useHead({
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia.avif"
         alt="Julia Hamann for Mankato Mayor"
-        class="coming-soon"
-        sizes="(max-width: 700px) calc(100vw - 2.5rem), 420px"
-        :image-breakpoints="[240, 320, 420, 560, 767]"
+        class="w-full h-auto rounded-lg"
+        sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 5.5rem) / 2), 436px"
+        :image-breakpoints="[240, 320, 420, 560, 727, 872, 1454]"
         :device-breakpoints="[]"
-        width="767"
-        height="960"
+        width="1500"
+        height="1500"
         crossorigin="anonymous"
         loading="lazy"
         decoding="async"
