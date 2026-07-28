@@ -19,7 +19,7 @@ const endorsements: Endorsement[] = [
   {
     name: 'Indivisible St. Peter/Greater Mankato',
     logo: '/indivisible.png',
-    url: 'https://www.facebook.com/IndivisibleSPGM/posts/pfbid0MhUtKwfwrue3x8xXdrAhQdUDztbyohZRDAADa9k29Pha92fGxwjPxFSQ3htHAhual',
+    url: 'https://sites.google.com/indivisiblespgm.org/indivisiblespgm/about',
     body: [
       'Indivisible St. Peter/Greater Mankato, is a non-partisan, community group dedicated to positive, progressive action to make people’s lives better. They seek to create a more sustainable, equitable, and inclusive world by inspiring and empowering members to get involved in democracy and their communities.'
     ],
