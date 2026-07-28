@@ -10,7 +10,7 @@ The official campaign website for Julia Hamann, candidate for Mayor of Mankato.
 ## Tech Stack
 
 - Frontend: Vue 3 + Vite + Vite SSG
-- Styling: custom CSS
+- Styling: Tailwind CSS v4 (CSS-first config, theme tokens in `src/style.css`; no `tailwind.config.js`)
 - Backend API: Flask (Python)
 - Monitoring: New Relic Browser Agent + Google Analytics (via `gtag`)
 - Frontend tests: Vitest + @vue/test-utils + jsdom
