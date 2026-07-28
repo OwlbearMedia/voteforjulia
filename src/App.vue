@@ -64,7 +64,9 @@ const pageHeaderTitle = computed(() => {
     </p>
 
     <p>
-      Make sure you’re registered to vote and know where to go on primary election day.  It really helps if you are spreading the word about the primary as well. Tell everyone you know (who is planning on voting for Julia)!
+      Make sure you’re registered to vote and know where to go on primary election day. It really
+      helps if you are spreading the word about the primary as well. Tell everyone you know (who is
+      planning on voting for Julia)!
     </p>
 
     <p class="mt-2">

@@ -20,7 +20,9 @@
             class="relative w-full max-w-lg overflow-hidden rounded-lg bg-white text-left text-ink shadow-strong sm:my-8"
             @keydown="onKeydown"
           >
-            <header class="flex bg-forest items-center gap-3 border-b border-mist/60 px-4 py-4 sm:px-6">
+            <header
+              class="flex bg-forest items-center gap-3 border-b border-mist/60 px-4 py-4 sm:px-6"
+            >
               <div
                 class="flex size-10 shrink-0 items-center justify-center rounded-full"
                 :class="iconClasses"
