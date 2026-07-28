@@ -1,131 +1,20 @@
 <script setup lang="ts">
 import { useHead } from '@unhead/vue';
 import { Image } from '@imagekit/vue';
+import { buildPageHead } from '../lib/pageHead';
 
 defineOptions({
   name: 'JuliaSecretRecipe'
 });
 
-useHead({
-  title: 'Secret Recipe | Julia Hamann for Mankato Mayor',
-  link: [
-    {
-      rel: 'canonical',
-      href: 'https://voteforjulia.com/secret-recipe'
-    }
-  ],
-  script: [
-    {
-      type: 'application/ld+json',
-      textContent: JSON.stringify({
-        '@context': 'https://schema.org',
-        '@graph': [
-          {
-            '@type': 'WebSite',
-            name: 'Vote for Julia Hamann',
-            url: 'https://voteforjulia.com/'
-          },
-          {
-            '@type': 'Person',
-            name: 'Julia Hamann',
-            url: 'https://voteforjulia.com/',
-            jobTitle: 'Candidate for Mayor of Mankato',
-            description: 'Campaign website for Julia Hamann running for Mayor of Mankato.',
-            address: {
-              '@type': 'PostalAddress',
-              addressLocality: 'Mankato',
-              addressRegion: 'MN',
-              addressCountry: 'US'
-            },
-            areaServed: {
-              '@type': 'City',
-              name: 'Mankato'
-            },
-            knowsAbout: [
-              'Environmental justice',
-              'Government transparency',
-              'Affordable housing',
-              'Community-led safety'
-            ],
-            sameAs: [
-              'https://www.facebook.com/profile.php?id=61590411090366',
-              'https://www.instagram.com/voteforjuliahamann/'
-            ]
-          }
-        ]
-      })
-    }
-  ],
-  meta: [
-    {
-      name: 'description',
-      content:
-        'Discover the secret recipe behind the Julia Hamann campaign for a more just, community-led Mankato.'
-    },
-    {
-      name: 'robots',
-      content: 'index,follow'
-    },
-    {
-      property: 'og:type',
-      content: 'website'
-    },
-    {
-      property: 'og:site_name',
-      content: 'Vote for Julia'
-    },
-    {
-      property: 'og:title',
-      content: 'Secret Recipe | Julia Hamann for Mankato Mayor'
-    },
-    {
-      property: 'og:description',
-      content:
-        'Discover the secret recipe behind the Julia Hamann campaign for a more just, community-led Mankato.'
-    },
-    {
-      property: 'og:url',
-      content: 'https://voteforjulia.com/secret-recipe'
-    },
-    {
-      property: 'og:image',
-      content: 'https://voteforjulia.com/julia-social-banner.avif'
-    },
-    {
-      property: 'og:image:width',
-      content: '1200'
-    },
-    {
-      property: 'og:image:height',
-      content: '583'
-    },
-    {
-      property: 'og:image:alt',
-      content: 'Julia Hamann for Mankato Mayor campaign logo'
-    },
-    {
-      name: 'twitter:card',
-      content: 'summary_large_image'
-    },
-    {
-      name: 'twitter:title',
-      content: 'Secret Recipe | Julia Hamann for Mankato Mayor'
-    },
-    {
-      name: 'twitter:description',
-      content:
-        'Discover the secret recipe behind the Julia Hamann campaign for a more just, community-led Mankato.'
-    },
-    {
-      name: 'twitter:image',
-      content: 'https://voteforjulia.com/julia-social-banner.avif'
-    },
-    {
-      name: 'twitter:image:alt',
-      content: 'Julia Hamann for Mankato Mayor campaign logo'
-    }
-  ]
-});
+useHead(
+  buildPageHead({
+    path: '/secret-recipe',
+    title: 'Secret Recipe | Julia Hamann for Mankato Mayor',
+    description:
+      'Discover the secret recipe behind the Julia Hamann campaign for a more just, community-led Mankato.'
+  })
+);
 </script>
 
 <template>

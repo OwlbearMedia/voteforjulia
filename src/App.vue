@@ -12,6 +12,7 @@ const pageHeaderTitle = computed(() => {
     '/volunteer': 'Join Julia’s Team — Volunteer in Mankato',
     '/donate': 'Support Julia Hamann’s Campaign for Mankato Mayor',
     '/events': 'Upcoming Campaign Events — Julia Hamann for Mankato Mayor',
+    '/endorsements': 'Endorsements for Julia Hamann — Mankato Mayor',
     '/secret-recipe': 'Julia’s Famous Shrimp Salad Supreme Recipe',
     '/yard-signs': 'Get a Yard Sign — Julia Hamann for Mankato Mayor'
   };
