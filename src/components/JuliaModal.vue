@@ -7,7 +7,11 @@
 
     <!-- Panel -->
     <Transition name="modal-panel">
-      <div v-if="open" class="fixed inset-0 z-floating overflow-y-auto" @click.self="close">
+      <div
+        v-if="open"
+        class="fixed inset-0 z-floating overflow-y-auto overscroll-contain"
+        @click.self="close"
+      >
         <div
           class="flex min-h-full items-center justify-center p-4 text-center sm:p-0"
           @click.self="close"
@@ -77,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, useId, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import IconWarning from './icons/IconWarning.vue';
 import IconXmark from './icons/IconXmark.vue';
 
@@ -122,6 +126,32 @@ const confirmButton = ref<HTMLButtonElement>();
 // Remember what was focused before opening so we can restore it on close.
 let previouslyFocused: HTMLElement | null = null;
 
+// Lock page scroll while open. `overflow: hidden` alone doesn't stop iOS touch
+// scrolling, so pin the body with `position: fixed` (offset by the current
+// scroll) and restore the scroll position on unlock.
+let lockedScrollY = 0;
+
+function lockBodyScroll() {
+  lockedScrollY = window.scrollY;
+  const { body } = document;
+  body.style.position = 'fixed';
+  body.style.top = `-${lockedScrollY}px`;
+  body.style.left = '0';
+  body.style.right = '0';
+  body.style.overflow = 'hidden';
+}
+
+function unlockBodyScroll() {
+  const { body } = document;
+  if (body.style.position !== 'fixed') return;
+  body.style.position = '';
+  body.style.top = '';
+  body.style.left = '';
+  body.style.right = '';
+  body.style.overflow = '';
+  window.scrollTo(0, lockedScrollY);
+}
+
 function close() {
   open.value = false;
   emit('cancel');
@@ -160,10 +190,15 @@ function onKeydown(event: KeyboardEvent) {
 watch(open, (isOpen) => {
   if (isOpen) {
     previouslyFocused = document.activeElement as HTMLElement | null;
+    lockBodyScroll();
     nextTick(() => confirmButton.value?.focus());
   } else {
+    unlockBodyScroll();
     previouslyFocused?.focus();
     previouslyFocused = null;
   }
 });
+
+// Never leave the page locked if the modal unmounts while still open.
+onBeforeUnmount(unlockBodyScroll);
 </script>
