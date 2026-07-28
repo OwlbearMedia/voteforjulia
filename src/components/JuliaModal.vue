@@ -46,7 +46,7 @@
                 <IconXmark />
               </button>
             </header>
-            <div class="bg-mint/60 px-4 py-4 text-sm text-ink/80 sm:px-6">
+            <div class="bg-mint/60 px-4 py-4 text-ink/80 sm:px-6">
               <slot />
             </div>
             <div class="bg-mint/60 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
