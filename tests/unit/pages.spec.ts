@@ -91,7 +91,7 @@ describe('Page components', () => {
 
     expect(wrapper.text()).toContain('Endorsements');
     expect(wrapper.text()).toContain(
-      'Julia is proud to have the support of these members of our community:'
+      'Endorsements Julia is grateful to be endorsed by: Indivisible St. Peter/Greater Mankato'
     );
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
