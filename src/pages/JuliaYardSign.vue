@@ -21,7 +21,7 @@ useHead(
   <section id="yard-sign">
     <h2>Get a Yard Sign Today!</h2>
 
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-[1.25rem]">
+    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
       Yard signs are a great way to show your support and help spread the word about Julia’s
       campaign.
     </p>

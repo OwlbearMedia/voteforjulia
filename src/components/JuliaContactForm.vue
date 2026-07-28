@@ -45,7 +45,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       v-if="isSubmitted"
       key="success"
       ref="successMessageRef"
-      class="contact-form mt-4 max-w-[640px] grid gap-[0.6rem]"
+      class="contact-form mt-4 max-w-[640px] grid gap-2.5"
       aria-live="polite"
       tabindex="-1"
     >
@@ -64,7 +64,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
     <form
       v-else
       key="form"
-      class="contact-form mt-4 max-w-[640px] grid gap-[0.6rem]"
+      class="contact-form mt-4 max-w-[640px] grid gap-2.5"
       action="/api/send-email"
       method="POST"
       @submit="handleSubmit"
@@ -73,7 +73,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p>* Fields marked with an asterisk are required.</p>
 
       <div class="flex gap-4">
-        <div class="flex-[1_1_50%] min-w-0 grid gap-[0.6rem]">
+        <div class="flex-[1_1_50%] min-w-0 grid gap-2.5">
           <label for="contact-first-name" class="sr-only">First Name *</label>
           <input
             id="contact-first-name"
@@ -81,7 +81,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
             name="firstName"
             type="text"
             placeholder="First Name *"
-            class="w-full border border-mist rounded-[0.4rem] py-[0.65rem] px-3 text-forest bg-white/96"
+            class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
             :class="{ 'input-error border-error': firstNameError }"
             :aria-invalid="!!firstNameError || undefined"
             :aria-describedby="firstNameError ? 'contact-first-name-error' : undefined"
@@ -92,7 +92,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           <p
             v-if="firstNameError"
             id="contact-first-name-error"
-            class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+            class="mt-[-0.1rem] mb-1 text-error text-sm"
             role="alert"
             aria-live="polite"
           >
@@ -100,7 +100,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           </p>
         </div>
 
-        <div class="flex-[1_1_50%] min-w-0 grid gap-[0.6rem]">
+        <div class="flex-[1_1_50%] min-w-0 grid gap-2.5">
           <label for="contact-last-name" class="sr-only">Last Name</label>
           <input
             id="contact-last-name"
@@ -108,7 +108,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
             name="lastName"
             type="text"
             placeholder="Last Name"
-            class="w-full border border-mist rounded-[0.4rem] py-[0.65rem] px-3 text-forest bg-white/96"
+            class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
             :aria-invalid="!!lastNameError || undefined"
             :aria-describedby="lastNameError ? 'contact-last-name-error' : undefined"
             autocomplete="family-name"
@@ -117,7 +117,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           <p
             v-if="lastNameError"
             id="contact-last-name-error"
-            class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+            class="mt-[-0.1rem] mb-1 text-error text-sm"
             role="alert"
             aria-live="polite"
           >
@@ -134,7 +134,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
         v-model="email"
         name="email"
         type="email"
-        class="w-full border border-mist rounded-[0.4rem] py-[0.65rem] px-3 text-forest bg-white/96"
+        class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
         :class="{ 'input-error border-error': emailError }"
         :aria-invalid="!!emailError || undefined"
         :aria-describedby="emailError ? 'contact-email-error' : undefined"
@@ -146,7 +146,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p
         v-if="emailError"
         id="contact-email-error"
-        class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+        class="mt-[-0.1rem] mb-1 text-error text-sm"
         role="alert"
         aria-live="polite"
       >
@@ -157,7 +157,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <input
         id="contact-phone"
         v-model="phone"
-        class="w-full border border-mist rounded-[0.4rem] py-[0.65rem] px-3 text-forest bg-white/96"
+        class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
         name="phone"
         type="tel"
         placeholder="Phone"
@@ -169,14 +169,14 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p
         v-if="phoneError"
         id="contact-phone-error"
-        class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+        class="mt-[-0.1rem] mb-1 text-error text-sm"
         role="alert"
         aria-live="polite"
       >
         {{ phoneError }}
       </p>
 
-      <fieldset class="m-0 pb-1 border-none rounded-[0.4rem] flex flex-wrap gap-[0.45rem]">
+      <fieldset class="m-0 pb-1 border-none rounded-md flex flex-wrap gap-2">
         <legend class="w-full p-0 mb-3 font-semibold text-forest">Ways you'd like to help</legend>
         <label class="inline-flex items-center gap-2 font-normal mr-2" for="help-canvassing">
           <input
@@ -239,7 +239,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <textarea
         id="contact-message"
         v-model="message"
-        class="w-full border border-mist rounded-[0.4rem] py-[0.65rem] px-3 text-forest bg-white/96 resize-y min-h-[130px]"
+        class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96 resize-y min-h-[130px]"
         name="message"
         placeholder="How would you like to help? Tell us about your other special skills or ideas!"
         :aria-invalid="!!messageError || undefined"
@@ -250,7 +250,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p
         v-if="messageError"
         id="contact-message-error"
-        class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+        class="mt-[-0.1rem] mb-1 text-error text-sm"
         role="alert"
         aria-live="polite"
       >
@@ -259,14 +259,14 @@ useScrollToSuccess(successMessageRef, isSubmitted);
 
       <button
         type="submit"
-        class="w-fit max-md:w-full mt-1 border-0 rounded-pill pt-3 pb-2 px-6 bg-forest text-white text-[0.875rem] leading-[1.6] font-action font-semibold tracking-[0.05em] text-center justify-self-start cursor-pointer hover:bg-forest/70 disabled:opacity-60 disabled:cursor-not-allowed"
+        class="w-fit max-md:w-full mt-1 border-0 rounded-pill pt-3 pb-2 px-6 bg-forest text-white text-sm leading-[1.6] font-action font-semibold tracking-[0.05em] text-center justify-self-start cursor-pointer hover:bg-forest/70 disabled:opacity-60 disabled:cursor-not-allowed"
         :disabled="hasValidationError || isSubmitting"
       >
         Send Message <IconSpinner v-if="isSubmitting" />
       </button>
       <p
         v-if="submitError"
-        class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+        class="mt-[-0.1rem] mb-1 text-error text-sm"
         role="alert"
         aria-live="assertive"
       >

@@ -41,7 +41,7 @@ function handleDonateClick() {
 </script>
 
 <template>
-  <header class="sticky top-0 z-[1000] p-4 text-white bg-forest shadow-strong">
+  <header class="sticky top-0 z-sticky p-4 text-white bg-forest shadow-strong">
     <div class="max-w-[960px] mx-auto relative flex flex-wrap items-start justify-between gap-3">
       <h1 class="sr-only">{{ title }}</h1>
       <div class="logo-container">
@@ -64,14 +64,14 @@ function handleDonateClick() {
         </a>
       </div>
       <button
-        class="menu-toggle block bg-mint rounded-md border-none cursor-pointer py-[1.35rem] px-4 ml-auto z-[1100]"
+        class="menu-toggle block bg-mint rounded-md border-none cursor-pointer py-[1.35rem] px-4 ml-auto z-floating"
         :aria-label="showMenu ? 'Close menu' : 'Open menu'"
         :aria-expanded="showMenu"
         aria-controls="main-menu"
         @click="toggleMenu"
       >
         <span
-          class="block relative w-7 h-[3px] bg-forest rounded-[2px] before:content-[''] before:absolute before:left-0 before:w-7 before:h-[3px] before:bg-forest before:rounded-[2px] before:transition-all before:duration-300 before:-top-[9px] after:content-[''] after:absolute after:left-0 after:w-7 after:h-[3px] after:bg-forest after:rounded-[2px] after:transition-all after:duration-300 after:top-[9px]"
+          class="block relative w-7 h-[3px] bg-forest rounded-xs before:content-[''] before:absolute before:left-0 before:w-7 before:h-[3px] before:bg-forest before:rounded-xs before:transition-all before:duration-300 before:-top-[9px] after:content-[''] after:absolute after:left-0 after:w-7 after:h-[3px] after:bg-forest after:rounded-xs after:transition-all after:duration-300 after:top-[9px]"
         ></span>
       </button>
 
@@ -80,7 +80,7 @@ function handleDonateClick() {
           <ul
             v-show="showMenu"
             id="main-menu"
-            class="flex list-none absolute top-[-6px] right-[6px] w-[220px] flex-col bg-leaf rounded-lg py-4 shadow-[0_8px_24px_rgb(0_0_0/0.15)] z-[1001]"
+            class="flex list-none absolute top-[-6px] right-[6px] w-[220px] flex-col bg-leaf rounded-lg py-4 shadow-[0_8px_24px_rgb(0_0_0/0.15)] z-dropdown"
             :class="{ open: showMenu }"
           >
             <li v-for="link in navLinks" :key="link.label">
@@ -99,9 +99,7 @@ function handleDonateClick() {
                 >Donate</RouterLink
               >
             </li>
-            <li
-              class="flex items-center justify-center gap-[0.6rem] text-[1.5rem] text-white px-4 py-2 mt-2"
-            >
+            <li class="flex items-center justify-center gap-2.5 text-2xl text-white px-4 py-2 mt-2">
               <a
                 href="https://www.instagram.com/voteforjuliahamann"
                 aria-label="Julia on Instagram"

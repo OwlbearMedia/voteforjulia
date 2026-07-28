@@ -63,7 +63,7 @@ useHead(
   <section id="donate">
     <h2>Donate</h2>
 
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-[1.25rem]">
+    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
       Donate now to help elect Julia as Mayor of Mankato!
     </p>
 

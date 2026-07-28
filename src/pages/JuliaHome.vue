@@ -42,11 +42,11 @@ useHead(
       />
     </div>
 
-    <p class="font-accent text-[1.25rem]">
+    <p class="font-accent text-xl">
       Julia is a progressive, passionate, and present leader. She cares deeply about building a
       community where everyone can live a life of dignity, respect, and freedom.
     </p>
-    <p class="font-accent text-[1.25rem]">
+    <p class="font-accent text-xl">
       Julia is running for Mayor of Mankato because she’s frustrated with the status quo. She
       understands the experience of everyday Mankatoans and thinks our local government could be
       doing better by our community members.
@@ -93,7 +93,7 @@ useHead(
           promise to show up, ask hard questions, bring new ideas to the table, and challenge the
           status quo.
         </p>
-        <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-[1.25rem]">
+        <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
           Julia wants to start new conversations about issues our town cares about.
         </p>
       </div>
@@ -118,7 +118,7 @@ useHead(
     <hr />
 
     <h3>Community Input and Transparency</h3>
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-[1.25rem]">
+    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
       Julia wants to ensure that citizens are listened to and that city government remains
       transparent and accountable to the community.
     </p>
@@ -133,7 +133,7 @@ useHead(
     <hr />
 
     <h3>Affordability and Tenants Rights</h3>
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-[1.25rem]">
+    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
       Julia understands that Mankato citizens are experiencing serious financial strain and the gap
       between the richest and most impoverished individuals is growing.
     </p>
@@ -146,7 +146,7 @@ useHead(
     <hr />
 
     <h3>Reimagining Public Safety</h3>
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-[1.25rem]">
+    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
       Julia believes that safety for citizens goes far beyond law enforcement and emergency
       services.
     </p>
@@ -161,7 +161,7 @@ useHead(
     <hr />
 
     <h3>Environmental Justice and Sustainability</h3>
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-[1.25rem]">
+    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
       Julia wants to bring new conversations to the city council about how we can sustain a healthy
       future for Mankato by examining how proposed developments, like data centers, might impact our
       environment.
