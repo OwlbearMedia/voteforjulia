@@ -29,7 +29,9 @@ useHead(
   <section id="endorsements">
     <h2>Endorsements</h2>
 
-    <p>Julia is proud to have the support of these members of our community:</p>
+    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
+      Julia is grateful to be endorsed by:
+    </p>
 
     <ul class="grid grid-cols-3 max-md:grid-cols-1 gap-6 list-none p-0 my-8">
       <li v-for="(endorsement, index) in endorsements" :key="index">
