@@ -12,7 +12,7 @@ const endorsements: { name: string; url: string }[] = [
   {
     name: 'Indivisible St. Peter/Greater Mankato',
     url: 'https://www.facebook.com/IndivisibleSPGM/posts/pfbid0MhUtKwfwrue3x8xXdrAhQdUDztbyohZRDAADa9k29Pha92fGxwjPxFSQ3htHAhual'
-  },
+  }
 ];
 
 useHead(
@@ -31,8 +31,6 @@ useHead(
 
     <p>Julia is proud to have the support of these members of our community:</p>
 
-    
-
     <ul class="grid grid-cols-3 max-md:grid-cols-1 gap-6 list-none p-0 my-8">
       <li v-for="(endorsement, index) in endorsements" :key="index">
         <figure class="flex flex-col">
@@ -41,9 +39,9 @@ useHead(
               url-endpoint="https://ik.imagekit.io/voteforjulia"
               src="/indivisible.png"
               alt="Julia Hamann for Mankato Mayor"
-              class="w-full h-auto rounded-lg"
-              sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 5.5rem) / 2), 436px"
-              :image-breakpoints="[240, 320, 420, 560, 727, 872, 1454]"
+              class="w-full h-auto"
+              sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 7rem) / 3), 283px"
+              :image-breakpoints="[240, 320, 440, 566, 728, 960, 1454]"
               :device-breakpoints="[]"
               width="960"
               height="960"
