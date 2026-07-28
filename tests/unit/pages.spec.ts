@@ -6,6 +6,7 @@ import JuliaDonate from '../../src/pages/JuliaDonate.vue';
 import JuliaHome from '../../src/pages/JuliaHome.vue';
 import JuliaSecretRecipe from '../../src/pages/JuliaSecretRecipe.vue';
 import JuliaEvents from '../../src/pages/JuliaEvents.vue';
+import JuliaEndorsements from '../../src/pages/JuliaEndorsements.vue';
 import JuliaVolunteer from '../../src/pages/JuliaVolunteer.vue';
 import JuliaYardSign from '../../src/pages/JuliaYardSign.vue';
 
@@ -79,6 +80,26 @@ describe('Page components', () => {
           expect.objectContaining({
             rel: 'canonical',
             href: 'https://voteforjulia.com/events'
+          })
+        ])
+      })
+    );
+  });
+
+  it('JuliaEndorsements renders endorsement content and configures page SEO metadata', () => {
+    const wrapper = mount(JuliaEndorsements);
+
+    expect(wrapper.text()).toContain('Endorsements');
+    expect(wrapper.text()).toContain(
+      'Endorsements Julia is grateful to be endorsed by: Indivisible St. Peter/Greater Mankato'
+    );
+    expect(useHeadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Endorsements | Julia Hamann for Mankato Mayor',
+        link: expect.arrayContaining([
+          expect.objectContaining({
+            rel: 'canonical',
+            href: 'https://voteforjulia.com/endorsements'
           })
         ])
       })

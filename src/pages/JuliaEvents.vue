@@ -2,208 +2,99 @@
 import { useHead } from '@unhead/vue';
 import IconLocation from '../components/icons/IconLocation.vue';
 import IconCalendar from '../components/icons/IconCalendar.vue';
+import { buildPageHead } from '../lib/pageHead';
 
 defineOptions({
   name: 'JuliaEvents'
 });
 
-useHead({
-  title: 'Events | Julia Hamann for Mankato Mayor',
-  link: [
-    {
-      rel: 'canonical',
-      href: 'https://voteforjulia.com/events'
-    }
-  ],
-  script: [
-    {
-      type: 'application/ld+json',
-      textContent: JSON.stringify({
-        '@context': 'https://schema.org',
-        '@graph': [
-          {
-            '@type': 'WebSite',
-            name: 'Vote for Julia Hamann',
-            url: 'https://voteforjulia.com/'
-          },
-          {
-            '@type': 'Person',
-            name: 'Julia Hamann',
-            url: 'https://voteforjulia.com/',
-            jobTitle: 'Candidate for Mayor of Mankato',
-            description: 'Campaign website for Julia Hamann running for Mayor of Mankato.',
-            address: {
-              '@type': 'PostalAddress',
-              addressLocality: 'Mankato',
-              addressRegion: 'MN',
-              addressCountry: 'US'
-            },
-            areaServed: {
-              '@type': 'City',
-              name: 'Mankato'
-            },
-            knowsAbout: [
-              'Environmental justice',
-              'Government transparency',
-              'Affordable housing',
-              'Community-led safety'
-            ],
-            sameAs: [
-              'https://www.facebook.com/profile.php?id=61590411090366',
-              'https://www.instagram.com/voteforjuliahamann/'
-            ]
-          },
-          {
-            '@type': 'Event',
-            name: 'Campaign Launch Party!',
-            description:
-              'A launch party to celebrate campaign season kick off and build momentum for the primary on August 11th. Connect with candidate Julia Hamann for Mankato Mayor, with candidate speeches, live music, campaign swag-making, and light refreshments by Food Not Bombs.',
-            startDate: '2026-06-29T17:30:00-05:00',
-            endDate: '2026-06-29T21:00:00-05:00',
-            eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
-            eventStatus: 'https://schema.org/EventScheduled',
-            url: 'https://www.facebook.com/events/1000640362322768',
-            location: {
-              '@type': 'Place',
-              name: 'Mankato Makerspace',
-              address: {
-                '@type': 'PostalAddress',
-                streetAddress: '1700 3rd Ave',
-                addressLocality: 'Mankato',
-                addressRegion: 'MN',
-                addressCountry: 'US'
-              }
-            },
-            organizer: {
-              '@type': 'Person',
-              name: 'Julia Hamann',
-              url: 'https://voteforjulia.com/'
-            },
-            performer: [
-              { '@type': 'MusicGroup', name: 'Ark & Grum' },
-              { '@type': 'Person', name: 'Laura Schultz' },
-              { '@type': 'Person', name: 'Colin Scharf' }
-            ]
-          },
-          {
-            '@type': 'Event',
-            name: 'Primary Election Day',
-            description:
-              'Minnesota primary election day. Check your voter registration and find your polling place to vote in the Mankato mayoral primary.',
-            startDate: '2026-08-11',
-            eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
-            eventStatus: 'https://schema.org/EventScheduled',
-            url: 'https://voteforjulia.com/events',
-            location: {
-              '@type': 'Place',
-              name: 'Mankato, Minnesota',
-              address: {
-                '@type': 'PostalAddress',
-                addressLocality: 'Mankato',
-                addressRegion: 'MN',
-                addressCountry: 'US'
-              }
-            }
-          },
-          {
-            '@type': 'Event',
-            name: 'Primary Win Party!',
-            description:
-              'Celebrate the results of the primary election with candidate Julia Hamann for Mankato Mayor.',
-            startDate: '2026-08-14T19:30:00-05:00',
-            eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
-            eventStatus: 'https://schema.org/EventScheduled',
-            url: 'https://www.facebook.com/events/2530643504031415/',
-            location: {
-              '@type': 'Place',
-              name: 'WineCafe Bar',
-              address: {
-                '@type': 'PostalAddress',
-                addressLocality: 'Mankato',
-                addressRegion: 'MN',
-                addressCountry: 'US'
-              }
-            },
-            organizer: {
-              '@type': 'Person',
-              name: 'Julia Hamann',
-              url: 'https://voteforjulia.com/'
-            }
+useHead(
+  buildPageHead({
+    path: '/events',
+    title: 'Events | Julia Hamann for Mankato Mayor',
+    description:
+      'Find upcoming events for the Julia Hamann campaign — town halls, canvasses, and community meetups in Mankato.',
+    schemaNodes: [
+      {
+        '@type': 'Event',
+        name: 'Campaign Launch Party!',
+        description:
+          'A launch party to celebrate campaign season kick off and build momentum for the primary on August 11th. Connect with candidate Julia Hamann for Mankato Mayor, with candidate speeches, live music, campaign swag-making, and light refreshments by Food Not Bombs.',
+        startDate: '2026-06-29T17:30:00-05:00',
+        endDate: '2026-06-29T21:00:00-05:00',
+        eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+        eventStatus: 'https://schema.org/EventScheduled',
+        url: 'https://www.facebook.com/events/1000640362322768',
+        location: {
+          '@type': 'Place',
+          name: 'Mankato Makerspace',
+          address: {
+            '@type': 'PostalAddress',
+            streetAddress: '1700 3rd Ave',
+            addressLocality: 'Mankato',
+            addressRegion: 'MN',
+            addressCountry: 'US'
           }
+        },
+        organizer: {
+          '@type': 'Person',
+          name: 'Julia Hamann',
+          url: 'https://voteforjulia.com/'
+        },
+        performer: [
+          { '@type': 'MusicGroup', name: 'Ark & Grum' },
+          { '@type': 'Person', name: 'Laura Schultz' },
+          { '@type': 'Person', name: 'Colin Scharf' }
         ]
-      })
-    }
-  ],
-  meta: [
-    {
-      name: 'description',
-      content:
-        'Find upcoming events for the Julia Hamann campaign — town halls, canvasses, and community meetups in Mankato.'
-    },
-    {
-      name: 'robots',
-      content: 'index,follow'
-    },
-    {
-      property: 'og:type',
-      content: 'website'
-    },
-    {
-      property: 'og:site_name',
-      content: 'Vote for Julia'
-    },
-    {
-      property: 'og:title',
-      content: 'Events | Julia Hamann for Mankato Mayor'
-    },
-    {
-      property: 'og:description',
-      content:
-        'Find upcoming events for the Julia Hamann campaign — town halls, canvasses, and community meetups in Mankato.'
-    },
-    {
-      property: 'og:url',
-      content: 'https://voteforjulia.com/events'
-    },
-    {
-      property: 'og:image',
-      content: 'https://voteforjulia.com/julia-social-banner.avif'
-    },
-    {
-      property: 'og:image:width',
-      content: '1200'
-    },
-    {
-      property: 'og:image:height',
-      content: '583'
-    },
-    {
-      property: 'og:image:alt',
-      content: 'Julia Hamann for Mankato Mayor campaign logo'
-    },
-    {
-      name: 'twitter:card',
-      content: 'summary_large_image'
-    },
-    {
-      name: 'twitter:title',
-      content: 'Events | Julia Hamann for Mankato Mayor'
-    },
-    {
-      name: 'twitter:description',
-      content:
-        'Find upcoming events for the Julia Hamann campaign — town halls, canvasses, and community meetups in Mankato.'
-    },
-    {
-      name: 'twitter:image',
-      content: 'https://voteforjulia.com/julia-social-banner.avif'
-    },
-    {
-      name: 'twitter:image:alt',
-      content: 'Julia Hamann for Mankato Mayor campaign logo'
-    }
-  ]
-});
+      },
+      {
+        '@type': 'Event',
+        name: 'Primary Election Day',
+        description:
+          'Minnesota primary election day. Check your voter registration and find your polling place to vote in the Mankato mayoral primary.',
+        startDate: '2026-08-11',
+        eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+        eventStatus: 'https://schema.org/EventScheduled',
+        url: 'https://voteforjulia.com/events',
+        location: {
+          '@type': 'Place',
+          name: 'Mankato, Minnesota',
+          address: {
+            '@type': 'PostalAddress',
+            addressLocality: 'Mankato',
+            addressRegion: 'MN',
+            addressCountry: 'US'
+          }
+        }
+      },
+      {
+        '@type': 'Event',
+        name: 'Primary Win Party!',
+        description:
+          'Celebrate the results of the primary election with candidate Julia Hamann for Mankato Mayor.',
+        startDate: '2026-08-14T19:30:00-05:00',
+        eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+        eventStatus: 'https://schema.org/EventScheduled',
+        url: 'https://www.facebook.com/events/2530643504031415/',
+        location: {
+          '@type': 'Place',
+          name: 'WineCafe Bar',
+          address: {
+            '@type': 'PostalAddress',
+            addressLocality: 'Mankato',
+            addressRegion: 'MN',
+            addressCountry: 'US'
+          }
+        },
+        organizer: {
+          '@type': 'Person',
+          name: 'Julia Hamann',
+          url: 'https://voteforjulia.com/'
+        }
+      }
+    ]
+  })
+);
 </script>
 
 <template>
