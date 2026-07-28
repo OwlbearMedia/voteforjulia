@@ -155,12 +155,12 @@ onBeforeUnmount(() => {
 
 <template>
   <footer
-    class="py-6 px-8 bg-forest shadow-strong-up backdrop-blur-[4px] motion-reduce:backdrop-blur-none text-center text-[0.875rem] text-white"
+    class="py-6 px-8 bg-forest shadow-strong-up backdrop-blur-[4px] motion-reduce:backdrop-blur-none text-center text-sm text-white"
   >
     <div class="grid grid-cols-2 max-md:grid-cols-1 gap-6 max-w-[960px] mx-auto">
       <div class="max-md:row-start-2">
-        <p class="font-accent text-[1.25rem]">Follow Julia's Campaign</p>
-        <div class="flex items-center justify-center gap-[0.6rem] text-[1.5rem] text-white">
+        <p class="font-accent text-xl">Follow Julia's Campaign</p>
+        <div class="flex items-center justify-center gap-2.5 text-2xl text-white">
           <a
             href="https://www.instagram.com/voteforjuliahamann"
             aria-label="Julia on Instagram"
@@ -199,7 +199,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="footer-support max-md:row-start-1">
-        <p class="font-accent text-[1.25rem]">Support Julia's Campaign</p>
+        <p class="font-accent text-xl">Support Julia's Campaign</p>
         <div
           ref="footerSupportActionsAnchorRef"
           class="footer-support-actions-anchor flex justify-center"
@@ -230,12 +230,12 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div
       v-if="isFooterSupportActionsFixed"
-      class="fixed left-0 right-0 bottom-0 h-[calc(5rem_+_var(--safe-area-inset-bottom))] bg-forest shadow-strong-up z-[1090] pointer-events-none"
+      class="fixed left-0 right-0 bottom-0 h-[calc(5rem_+_var(--safe-area-inset-bottom))] bg-forest shadow-strong-up z-overlay pointer-events-none"
       aria-hidden="true"
     ></div>
     <div
       v-if="isFooterSupportActionsFixed"
-      class="footer-support-actions footer-support-actions-fixed inline-flex items-center fixed left-1/2 -translate-x-1/2 bottom-[calc(1rem_+_var(--safe-area-inset-bottom))] z-[1100]"
+      class="footer-support-actions footer-support-actions-fixed inline-flex items-center fixed left-1/2 -translate-x-1/2 bottom-[calc(1rem_+_var(--safe-area-inset-bottom))] z-floating"
     >
       <RouterLink :class="BTN_INVERT" to="/volunteer">Volunteer</RouterLink>
       <RouterLink :class="BTN" to="/donate" @click="handleDonateClick">Donate</RouterLink>

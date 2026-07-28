@@ -103,11 +103,11 @@ useHead(
 
     <p>Check out upcoming events below:</p>
 
-    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-[2rem] mb-8">
+    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-4xl mb-8">
       <div class="event-heading">
-        <h3 class="text-[2rem] text-lime">Primary Election Day!</h3>
+        <h3 class="text-event text-lime">Primary Election Day!</h3>
         <a
-          class="text-white inline-flex items-center gap-[0.4rem] font-accent text-[1.25rem] font-normal mb-2"
+          class="text-white inline-flex items-center gap-1.5 font-accent text-xl font-normal mb-2"
           href="https://www.sos.mn.gov/elections-voting/election-day-voting"
           target="_blank"
           rel="noopener noreferrer"
@@ -139,12 +139,12 @@ useHead(
       </p>
     </div>
 
-    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-[2rem] mb-8">
+    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-4xl mb-8">
       <div class="event-heading">
-        <h3 class="text-[2rem] text-lime">Primary Win Party!</h3>
+        <h3 class="text-event text-lime">Primary Win Party!</h3>
         <div>
           <a
-            class="text-white inline-flex items-center gap-[0.4rem] font-accent text-[1.25rem] font-normal mb-2"
+            class="text-white inline-flex items-center gap-1.5 font-accent text-xl font-normal mb-2"
             href="https://www.facebook.com/events/2530643504031415/"
             target="_blank"
             rel="noopener noreferrer"
@@ -152,7 +152,7 @@ useHead(
           >
         </div>
         <a
-          class="inline-flex items-center text-lime gap-[0.4rem] font-accent text-[1.25rem] font-normal"
+          class="inline-flex items-center text-lime gap-1.5 font-accent text-xl font-normal"
           href="https://www.facebook.com/events/2530643504031415/"
           target="_blank"
           rel="noopener noreferrer"
@@ -180,12 +180,12 @@ useHead(
   <section id="past-events">
     <h2>Past Events</h2>
 
-    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-[2rem] mb-8">
+    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-4xl mb-8">
       <div class="event-heading">
-        <h3 class="text-[2rem] text-lime">Campaign Launch Party!</h3>
+        <h3 class="text-event text-lime">Campaign Launch Party!</h3>
         <div>
           <a
-            class="text-white inline-flex items-center gap-[0.4rem] font-accent text-[1.25rem] font-normal mb-2"
+            class="text-white inline-flex items-center gap-1.5 font-accent text-xl font-normal mb-2"
             href="https://www.facebook.com/events/1000640362322768"
             target="_blank"
             rel="noopener noreferrer"
@@ -193,7 +193,7 @@ useHead(
           >
         </div>
         <a
-          class="inline-flex items-center text-lime gap-[0.4rem] font-accent text-[1.25rem] font-normal"
+          class="inline-flex items-center text-lime gap-1.5 font-accent text-xl font-normal"
           href="https://maps.app.goo.gl/bE9THdo92AbrKKeJ7"
           target="_blank"
           rel="noopener noreferrer"
@@ -226,23 +226,23 @@ useHead(
         </p>
 
         <dl class="grid grid-cols-[100px_1fr] items-center my-8">
-          <dt class="font-semibold text-[1.25rem] text-lime font-display">5:30PM</dt>
-          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-[1.25rem] font-normal">
+          <dt class="font-semibold text-xl text-lime font-display">5:30PM</dt>
+          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-xl font-normal">
             Social hour - Mingle, snack, &amp; craft
           </dd>
 
-          <dt class="font-semibold text-[1.25rem] text-lime font-display">6:45PM</dt>
-          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-[1.25rem] font-normal">
+          <dt class="font-semibold text-xl text-lime font-display">6:45PM</dt>
+          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-xl font-normal">
             Candidate speeches
           </dd>
 
-          <dt class="font-semibold text-[1.25rem] text-lime font-display">7:00PM</dt>
-          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-[1.25rem] font-normal">
+          <dt class="font-semibold text-xl text-lime font-display">7:00PM</dt>
+          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-xl font-normal">
             Music by Ark &amp; Grum
           </dd>
 
-          <dt class="font-semibold text-[1.25rem] text-lime font-display">8:00PM</dt>
-          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-[1.25rem] font-normal">
+          <dt class="font-semibold text-xl text-lime font-display">8:00PM</dt>
+          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-xl font-normal">
             Music by Laura Schultz &amp; Colin Scharf
           </dd>
         </dl>

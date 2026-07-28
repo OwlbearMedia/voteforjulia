@@ -69,7 +69,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
     <form
       v-else
       key="form"
-      class="contact-form mt-4 max-w-[640px] grid gap-[0.6rem]"
+      class="contact-form mt-4 max-w-[640px] grid gap-2.5"
       action="/api/yard-sign"
       method="POST"
       @submit="handleSubmit"
@@ -78,7 +78,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p>* Fields marked with an asterisk are required.</p>
 
       <div class="flex gap-4">
-        <div class="flex-[1_1_50%] min-w-0 grid gap-[0.6rem]">
+        <div class="flex-[1_1_50%] min-w-0 grid gap-2.5">
           <label for="yard-sign-first-name" class="sr-only">First Name *</label>
           <input
             id="yard-sign-first-name"
@@ -86,7 +86,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
             name="firstName"
             type="text"
             placeholder="First Name *"
-            class="w-full border border-mist rounded-[0.4rem] py-[0.65rem] px-3 text-forest bg-white/96"
+            class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
             :class="{ 'input-error border-error': firstNameError }"
             :aria-invalid="!!firstNameError || undefined"
             :aria-describedby="firstNameError ? 'yard-sign-first-name-error' : undefined"
@@ -97,7 +97,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           <p
             v-if="firstNameError"
             id="yard-sign-first-name-error"
-            class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+            class="mt-[-0.1rem] mb-1 text-error text-sm"
             role="alert"
             aria-live="polite"
           >
@@ -105,7 +105,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           </p>
         </div>
 
-        <div class="flex-[1_1_50%] min-w-0 grid gap-[0.6rem]">
+        <div class="flex-[1_1_50%] min-w-0 grid gap-2.5">
           <label for="yard-sign-last-name" class="sr-only">Last Name</label>
           <input
             id="yard-sign-last-name"
@@ -113,7 +113,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
             name="lastName"
             type="text"
             placeholder="Last Name"
-            class="w-full border border-mist rounded-[0.4rem] py-[0.65rem] px-3 text-forest bg-white/96"
+            class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
             :aria-invalid="!!lastNameError || undefined"
             :aria-describedby="lastNameError ? 'yard-sign-last-name-error' : undefined"
             autocomplete="family-name"
@@ -122,7 +122,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           <p
             v-if="lastNameError"
             id="yard-sign-last-name-error"
-            class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+            class="mt-[-0.1rem] mb-1 text-error text-sm"
             role="alert"
             aria-live="polite"
           >
@@ -139,7 +139,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
         v-model="email"
         name="email"
         type="email"
-        class="w-full border border-mist rounded-[0.4rem] py-[0.65rem] px-3 text-forest bg-white/96"
+        class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
         :class="{ 'input-error border-error': emailError }"
         :aria-invalid="!!emailError || undefined"
         :aria-describedby="emailError ? 'yard-sign-email-error' : undefined"
@@ -151,7 +151,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p
         v-if="emailError"
         id="yard-sign-email-error"
-        class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+        class="mt-[-0.1rem] mb-1 text-error text-sm"
         role="alert"
         aria-live="polite"
       >
@@ -162,7 +162,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <input
         id="yard-sign-phone"
         v-model="phone"
-        class="w-full border border-mist rounded-[0.4rem] py-[0.65rem] px-3 text-forest bg-white/96"
+        class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
         name="phone"
         type="tel"
         placeholder="Phone"
@@ -174,7 +174,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p
         v-if="phoneError"
         id="yard-sign-phone-error"
-        class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+        class="mt-[-0.1rem] mb-1 text-error text-sm"
         role="alert"
         aria-live="polite"
       >
@@ -188,7 +188,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
         name="address"
         type="text"
         placeholder="Address *"
-        class="w-full border border-mist rounded-[0.4rem] py-[0.65rem] px-3 text-forest bg-white/96"
+        class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
         :class="{ 'input-error border-error': addressError }"
         :aria-invalid="!!addressError || undefined"
         :aria-describedby="addressError ? 'yard-sign-address-error' : undefined"
@@ -199,14 +199,14 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p
         v-if="addressError"
         id="yard-sign-address-error"
-        class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+        class="mt-[-0.1rem] mb-1 text-error text-sm"
         role="alert"
         aria-live="polite"
       >
         {{ addressError }}
       </p>
 
-      <fieldset class="m-0 pb-1 border-none rounded-[0.4rem] flex flex-wrap gap-[0.45rem]">
+      <fieldset class="m-0 pb-1 border-none rounded-md flex flex-wrap gap-2">
         <legend class="w-full p-0 mb-3 font-semibold text-forest">Preferred payment</legend>
         <label
           class="inline-flex items-center gap-2 font-normal mr-2"
@@ -262,14 +262,14 @@ useScrollToSuccess(successMessageRef, isSubmitted);
 
       <button
         type="submit"
-        class="w-fit max-md:w-full mt-1 border-0 rounded-pill pt-3 pb-2 px-6 bg-forest text-white text-[0.875rem] leading-[1.6] font-action font-semibold tracking-[0.05em] text-center justify-self-start cursor-pointer hover:bg-forest/70 disabled:opacity-60 disabled:cursor-not-allowed"
+        class="w-fit max-md:w-full mt-1 border-0 rounded-pill pt-3 pb-2 px-6 bg-forest text-white text-sm leading-[1.6] font-action font-semibold tracking-[0.05em] text-center justify-self-start cursor-pointer hover:bg-forest/70 disabled:opacity-60 disabled:cursor-not-allowed"
         :disabled="hasValidationError || isSubmitting"
       >
         Request a Yard Sign <IconSpinner v-if="isSubmitting" />
       </button>
       <p
         v-if="submitError"
-        class="mt-[-0.1rem] mb-1 text-error text-[0.95rem]"
+        class="mt-[-0.1rem] mb-1 text-error text-sm"
         role="alert"
         aria-live="assertive"
       >
