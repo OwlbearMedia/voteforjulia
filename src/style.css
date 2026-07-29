@@ -29,6 +29,7 @@
   --color-mist: #b7c4d1;
   --color-link: #0070f3;
   --color-error: #c62828;
+  --color-warning: #eab308;
 
   --font-sans: 'Helvetica', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-display: 'Mickle', serif;
@@ -257,18 +258,66 @@
     transform: translateY(8px);
   }
 
+  /* Vue <Transition name="modal-backdrop"> classes — dialog overlay fade */
+  .modal-backdrop-enter-active {
+    transition: opacity 300ms ease-out;
+  }
+
+  .modal-backdrop-leave-active {
+    transition: opacity 200ms ease-in;
+  }
+
+  .modal-backdrop-enter-from,
+  .modal-backdrop-leave-to {
+    opacity: 0;
+  }
+
+  /* Vue <Transition name="modal-panel"> classes — dialog panel scale/slide */
+  .modal-panel-enter-active {
+    transition:
+      opacity 300ms ease-out,
+      transform 300ms ease-out;
+  }
+
+  .modal-panel-leave-active {
+    transition:
+      opacity 200ms ease-in,
+      transform 200ms ease-in;
+  }
+
+  .modal-panel-enter-from,
+  .modal-panel-leave-to {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+
+  @media (min-width: 48rem) {
+    .modal-panel-enter-from,
+    .modal-panel-leave-to {
+      transform: scale(0.95);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .menu-enter-active,
     .menu-leave-active,
     .contact-state-enter-active,
-    .contact-state-leave-active {
+    .contact-state-leave-active,
+    .modal-backdrop-enter-active,
+    .modal-backdrop-leave-active,
+    .modal-panel-enter-active,
+    .modal-panel-leave-active {
       transition: none;
     }
 
     .menu-enter-from,
     .menu-leave-to,
     .contact-state-enter-from,
-    .contact-state-leave-to {
+    .contact-state-leave-to,
+    .modal-backdrop-enter-from,
+    .modal-backdrop-leave-to,
+    .modal-panel-enter-from,
+    .modal-panel-leave-to {
       opacity: 1;
       transform: none;
     }
