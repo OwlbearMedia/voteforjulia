@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { nextTick } from 'vue';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import App from '../../src/App.vue';
 
@@ -32,6 +33,79 @@ async function mountAtPath(path: string) {
     }
   });
 }
+
+const PRIMARY_MODAL_KEY = 'primaryModalDismissed';
+
+// Lightweight stand-in for JuliaModal (tested separately) that exposes the
+// `open` prop and re-creates its close()/confirm() emits — both set open false
+// and fire the matching event — so we can drive App.vue's handlers.
+const ModalStub = {
+  props: ['open'],
+  emits: ['update:open', 'confirm', 'cancel'],
+  template:
+    '<div class="modal-stub" :data-open="String(open)">' +
+    '<button class="modal-confirm" @click="$emit(\'update:open\', false); $emit(\'confirm\')"></button>' +
+    '<button class="modal-cancel" @click="$emit(\'update:open\', false); $emit(\'cancel\')"></button>' +
+    '</div>'
+};
+
+async function mountWithModalStub(path = '/') {
+  const router = createRouter({ history: createMemoryHistory(), routes: allRoutes });
+  await router.push(path);
+  await router.isReady();
+
+  const wrapper = mount(App, {
+    global: {
+      plugins: [router],
+      stubs: {
+        JuliaHeader: true,
+        JuliaFooter: true,
+        RouterView: true,
+        JuliaModal: ModalStub
+      }
+    }
+  });
+  // onMounted flips the ref; let the resulting re-render settle.
+  await nextTick();
+
+  return { wrapper, router };
+}
+
+describe('App — primary-election modal', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('opens the modal on mount when it has not been dismissed this session', async () => {
+    const { wrapper } = await mountWithModalStub();
+    expect(wrapper.find('.modal-stub').attributes('data-open')).toBe('true');
+  });
+
+  it('keeps the modal closed when already dismissed this session', async () => {
+    sessionStorage.setItem(PRIMARY_MODAL_KEY, 'true');
+    const { wrapper } = await mountWithModalStub();
+    expect(wrapper.find('.modal-stub').attributes('data-open')).toBe('false');
+  });
+
+  it('records the dismissed flag and closes the modal on cancel', async () => {
+    const { wrapper } = await mountWithModalStub();
+
+    await wrapper.find('.modal-cancel').trigger('click');
+
+    expect(sessionStorage.getItem(PRIMARY_MODAL_KEY)).toBe('true');
+    expect(wrapper.find('.modal-stub').attributes('data-open')).toBe('false');
+  });
+
+  it('navigates to /events and records the flag on confirm', async () => {
+    const { wrapper, router } = await mountWithModalStub();
+    const push = vi.spyOn(router, 'push');
+
+    await wrapper.find('.modal-confirm').trigger('click');
+
+    expect(push).toHaveBeenCalledWith('/events');
+    expect(sessionStorage.getItem(PRIMARY_MODAL_KEY)).toBe('true');
+  });
+});
 
 describe('App — pageHeaderTitle', () => {
   it.each([
