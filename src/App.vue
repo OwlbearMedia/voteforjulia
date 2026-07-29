@@ -53,8 +53,7 @@ const pageHeaderTitle = computed(() => {
 
   <JuliaModal
     v-model:open="showPrimaryModal"
-    variant="warning"
-    title="Action Needed!"
+    title="Important Reminder!"
     cancel-label="Close"
     @confirm="goToEvents"
     @cancel="dismissPrimaryModal"
@@ -64,9 +63,23 @@ const pageHeaderTitle = computed(() => {
     </p>
 
     <p>
-      Make sure you’re registered to vote and know where to go on primary election day. It really
-      helps if you are spreading the word about the primary as well. Tell everyone you know (who is
-      planning on voting for Julia)!
+      Julia needs your vote in the Primary to ensure her campaign continues on to the November
+      election!
+    </p>
+    <p>
+      You can
+      <a
+        href="https://www.sos.mn.gov/elections-voting/other-ways-to-vote/vote-early-in-person/"
+        target="_blank"
+        rel="noopener noreferrer"
+        >vote early</a
+      >
+      at the Blue Earth County Historic Courthouse or at your local polling place on primary
+      election day.
+    </p>
+
+    <p>
+      Please help us spread the word and encourage others to vote for Julia in the Primary election!
     </p>
 
     <p class="mt-2">
@@ -85,14 +98,6 @@ const pageHeaderTitle = computed(() => {
         target="_blank"
         rel="noopener noreferrer"
         >sos.mn.gov</a
-      >
-    </p>
-    <p class="mt-2">
-      <a
-        href="https://sites.google.com/indivisiblespgm.org/indivisiblespgm/elections/2026-mankato-mayor-primary"
-        target="_blank"
-        rel="noopener noreferrer"
-        >Indivisible SPGM Mayor Primary Voter Guide</a
       >
     </p>
   </JuliaModal>

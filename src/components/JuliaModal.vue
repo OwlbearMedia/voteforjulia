@@ -28,6 +28,7 @@
               class="flex bg-forest items-center gap-3 border-b border-mist/60 px-4 py-4 sm:px-6"
             >
               <div
+                v-if="props.variant !== 'default'"
                 class="flex size-10 shrink-0 items-center justify-center rounded-full"
                 :class="iconClasses"
               >
