@@ -155,6 +155,46 @@ describe('JuliaModal', () => {
     expect(document.activeElement).toBe(buttonByText('OK'));
   });
 
+  // The confirm button is optional. Without this fallback, focus stays on
+  // <body> and Escape/Tab never reach the panel's keydown handler, stranding
+  // keyboard users behind the backdrop.
+  it('moves focus to the panel when it opens without a confirm button', async () => {
+    const w = mountModal({ open: false });
+    await w.setProps({ open: true });
+    await nextTick();
+    await nextTick();
+
+    expect(document.activeElement).toBe(getDialog());
+  });
+
+  it('closes on Escape when there is no confirm button', async () => {
+    const w = mountModal({ open: false });
+    await w.setProps({ open: true });
+    await nextTick();
+    await nextTick();
+
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    );
+    await nextTick();
+
+    expect(w.emitted('cancel')).toHaveLength(1);
+    expect(lastUpdateOpen(w)).toBe(false);
+  });
+
+  it('wraps focus backwards from the panel to the last focusable element', async () => {
+    const w = mountModal({ open: false, cancelLabel: 'Close' });
+    await w.setProps({ open: true });
+    await nextTick();
+    await nextTick();
+
+    getDialog()?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })
+    );
+
+    expect(document.activeElement).toBe(buttonByText('Close'));
+  });
+
   it('locks and restores body scroll around open/close', async () => {
     Object.defineProperty(window, 'scrollY', { configurable: true, value: 150 });
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});

@@ -5,6 +5,7 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
 import { buildSitemapXml, resolveSitemapRoutes } from './sitemap.build';
+import { vueCompilerOptions } from './vue-compiler-options';
 
 // Source map mode. Defaults to 'hidden': maps are generated without a
 // sourceMappingURL comment (prod uploads them to New Relic, then strips them).
@@ -27,7 +28,12 @@ let builtRoutePaths: string[] = [];
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue(), tailwindcss()],
+  // Donorbox's <dbox-widget> must be declared a custom element, or the
+  // compiler emits a component lookup that fails during SSG: the tag renders
+  // as an empty comment in the prerendered HTML and only becomes a real
+  // element after hydration, hiding the donation form from the static page
+  // and producing a hydration mismatch.
+  plugins: [vue({ template: { compilerOptions: vueCompilerOptions } }), tailwindcss()],
   build: {
     // Generate source maps but omit the sourceMappingURL comment so browsers
     // don't advertise/fetch them. Maps are uploaded to New Relic for

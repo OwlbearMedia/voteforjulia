@@ -28,7 +28,9 @@ export function useScrollToSuccess(
     const scrollTop = Math.max(targetTop - headerHeight - 8, 0);
 
     window.scrollTo({ top: scrollTop, behavior: 'smooth' });
-    successElement.focus();
+    // `preventScroll` matters: focusing an off-screen element otherwise scrolls
+    // it into view instantly, which cancels the smooth scroll just started.
+    successElement.focus({ preventScroll: true });
     hasScrolledToSuccess.value = true;
   }
 

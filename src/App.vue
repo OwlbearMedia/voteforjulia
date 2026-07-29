@@ -1,20 +1,29 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { RouterView, useRoute, useRouter } from 'vue-router';
+import { RouterView, useRoute } from 'vue-router';
 import JuliaHeader from './components/JuliaHeader.vue';
 import JuliaFooter from './components/JuliaFooter.vue';
 import JuliaModal from './components/JuliaModal.vue';
 
 const route = useRoute();
-const router = useRouter();
 
 // Primary-election reminder shown once per browser session. App.vue outlives
 // router navigation, so this never re-fires when moving between pages; the
 // sessionStorage flag also keeps it dismissed across reloads within the session.
 const PRIMARY_MODAL_KEY = 'primaryModalDismissed';
+
+// The reminder self-retires once the primary is over — after that it would be
+// telling visitors to go vote in an election that already happened. Midnight
+// CDT (UTC-5) at the end of election day, August 11 2026.
+const PRIMARY_MODAL_EXPIRES_AT = Date.parse('2026-08-12T05:00:00Z');
+
 const showPrimaryModal = ref(false);
 
 onMounted(() => {
+  if (Date.now() >= PRIMARY_MODAL_EXPIRES_AT) {
+    return;
+  }
+
   if (sessionStorage.getItem(PRIMARY_MODAL_KEY) !== 'true') {
     showPrimaryModal.value = true;
   }
@@ -22,11 +31,6 @@ onMounted(() => {
 
 function dismissPrimaryModal() {
   sessionStorage.setItem(PRIMARY_MODAL_KEY, 'true');
-}
-
-function goToEvents() {
-  dismissPrimaryModal();
-  router.push('/events');
 }
 
 const pageHeaderTitle = computed(() => {
@@ -55,7 +59,6 @@ const pageHeaderTitle = computed(() => {
     v-model:open="showPrimaryModal"
     title="Important Reminder!"
     cancel-label="Close"
-    @confirm="goToEvents"
     @cancel="dismissPrimaryModal"
   >
     <p class="font-accent bg-sprout/50 p-4 mb-4 text-center rounded-lg text-xl">

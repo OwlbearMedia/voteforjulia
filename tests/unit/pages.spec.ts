@@ -158,15 +158,12 @@ describe('Page components', () => {
   });
 
   it('JuliaDonate renders donation content and configures page SEO metadata', () => {
-    const wrapper = mount(JuliaDonate, {
-      global: {
-        stubs: {
-          'dbox-widget': true
-        }
-      }
-    });
+    const wrapper = mount(JuliaDonate);
 
     expect(wrapper.text()).toContain('Donate now to help elect Julia as Mayor of Mankato!');
+    // Compiled as a native custom element (see vue-compiler-options.ts), not
+    // resolved as a Vue component — the latter renders it away to a comment.
+    expect(wrapper.find('dbox-widget').exists()).toBe(true);
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Donate | Julia Hamann for Mankato Mayor',

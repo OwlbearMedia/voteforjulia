@@ -1,3 +1,4 @@
+import smtplib
 import unittest
 from collections import deque
 from time import monotonic
@@ -48,6 +49,15 @@ class AppCorsTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 204)
         self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
+        # Vary is unconditional so a shared cache never serves the allowed and
+        # disallowed variants of this response interchangeably.
+        self.assertEqual(response.headers.get("Vary"), "Origin")
+
+    def test_vary_origin_is_set_when_no_origin_header_is_sent(self) -> None:
+        response = self.client.get("/api/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("Vary"), "Origin")
 
 
 class AppRateLimitTests(unittest.TestCase):
@@ -256,10 +266,12 @@ class AppRateLimitTests(unittest.TestCase):
         )
         self.assertEqual(len(self.sent_submissions), 0)
 
-    def test_send_email_logs_request_body_even_when_submission_fails(self) -> None:
+    def test_send_email_logs_field_names_without_values(self) -> None:
         payload = {
             "firstName": "Julia",
-            "email": "not-an-email",
+            "email": "julia@example.com",
+            "phone": "507-555-0100",
+            "message": "",
         }
 
         with self.assertLogs(app_module.logger, level="INFO") as captured:
@@ -269,23 +281,71 @@ class AppRateLimitTests(unittest.TestCase):
                 headers={"X-Forwarded-For": "198.51.100.12"},
             )
 
+        self.assertEqual(response.status_code, 200)
+        field_logs = [line for line in captured.output if "submission fields" in line]
+        self.assertEqual(len(field_logs), 1)
+        self.assertIn("/send-email", field_logs[0])
+        # Names of the filled-in fields only; the blank one is omitted.
+        self.assertIn("email, firstName, phone", field_logs[0])
+        self.assertNotIn("message", field_logs[0])
+        # None of the submitted values appear anywhere in the log output.
+        for value in ("Julia", "julia@example.com", "507-555-0100"):
+            self.assertNotIn(value, "\n".join(captured.output))
+
+    def test_send_email_does_not_log_values_for_validation_errors(self) -> None:
+        payload = {
+            "firstName": "Julia",
+            "email": "not-an-email",
+        }
+
+        with self.assertLogs(app_module.logger, level="INFO") as captured:
+            response = self.client.post(
+                "/api/send-email",
+                json=payload,
+                headers={"X-Forwarded-For": "198.51.100.13"},
+            )
+
         self.assertEqual(response.status_code, 400)
-        body_logs = [line for line in captured.output if "request body" in line]
+        # A 4xx means the submitter still has their data and can retry, so
+        # there is nothing to recover and nothing to log.
+        self.assertNotIn("not-an-email", "\n".join(captured.output))
+
+    def test_send_email_logs_request_body_when_the_submission_is_lost(self) -> None:
+        def raise_smtp_error(config, submission):
+            raise smtplib.SMTPException("boom")
+
+        app_module.send_submission_email = raise_smtp_error
+
+        with self.assertLogs(app_module.logger, level="INFO") as captured:
+            response = self.client.post(
+                "/api/send-email",
+                json={"firstName": "Julia", "email": "julia@example.com"},
+                headers={"X-Forwarded-For": "198.51.100.14"},
+            )
+
+        self.assertEqual(response.status_code, 502)
+        body_logs = [line for line in captured.output if "unrecoverable request body" in line]
         self.assertEqual(len(body_logs), 1)
-        self.assertIn("/send-email", body_logs[0])
-        self.assertIn("not-an-email", body_logs[0])
+        self.assertIn("julia@example.com", body_logs[0])
 
     def test_send_email_truncates_oversized_request_body_in_logs(self) -> None:
+        def raise_smtp_error(config, submission):
+            raise smtplib.SMTPException("boom")
+
+        app_module.send_submission_email = raise_smtp_error
+        # Padded with an unrecognised key so the body is oversized without
+        # tripping the per-field length limits, which would 400 before the
+        # send is ever attempted.
         oversized = "x" * (app_module._MAX_LOGGED_BODY_CHARS + 100)
 
         with self.assertLogs(app_module.logger, level="INFO") as captured:
             self.client.post(
                 "/api/send-email",
-                json={"firstName": "Julia", "message": oversized},
-                headers={"X-Forwarded-For": "198.51.100.13"},
+                json={"firstName": "Julia", "email": "julia@example.com", "padding": oversized},
+                headers={"X-Forwarded-For": "198.51.100.15"},
             )
 
-        body_logs = [line for line in captured.output if "request body" in line]
+        body_logs = [line for line in captured.output if "unrecoverable request body" in line]
         self.assertEqual(len(body_logs), 1)
         self.assertIn("…[truncated]", body_logs[0])
         self.assertNotIn(oversized, body_logs[0])
