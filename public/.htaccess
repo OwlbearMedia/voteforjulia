@@ -81,7 +81,15 @@ FileETag MTime Size
 	# If LiteSpeed ever rejects single-quoted arguments too, the space-free
 	# fallback needs no quoting of the argument at all — at the cost of `self`:
 	#   Header always set Permissions-Policy geolocation=(),microphone=(),camera=(),payment=("https://donorbox.org")
-	Header always set Permissions-Policy 'geolocation=(), microphone=(), camera=(), payment=(self "https://donorbox.org")'
+	#
+	# js.stripe.com is in the payment allowlist because Donorbox's donation form
+	# is a custom element rendered in THIS document (not an iframe), and it
+	# injects js.stripe.com/v3 as a top-level script. Stripe.js then creates its
+	# own iframes for the Payment Element and the Apple Pay / Google Pay
+	# availability probes; each needs `payment` delegated to its origin or it
+	# logs "payment is not allowed in this document" and silently drops express
+	# checkout. `self` covers Stripe.js's probes in our own document.
+	Header always set Permissions-Policy 'geolocation=(), microphone=(), camera=(), payment=(self "https://donorbox.org" "https://js.stripe.com")'
 
 	# Content Security Policy.
 	#

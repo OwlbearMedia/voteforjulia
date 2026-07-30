@@ -1,0 +1,59 @@
+# Codecov configuration.
+#
+# Coverage is a signal, not a gate: 80% or better passes. Without this file
+# Codecov defaults `project` to "never drop below the base commit" and `patch`
+# to "100% of changed lines", which red-Xes a PR for things like a defensive
+# branch that cannot be reached yet.
+#
+# Only the frontend reports coverage — CI uploads `coverage/lcov.info` under the
+# `frontend` flag (see .github/workflows/ci.yml). The Python API tests run under
+# unittest with no coverage collection, so nothing here applies to api/.
+#
+# Validate changes before pushing:
+#   curl -X POST --data-binary @codecov.yml https://codecov.io/validate
+
+coverage:
+  # Round displayed percentages down, so a reported 80% is genuinely >= 80%.
+  precision: 2
+  round: down
+  range: 80..100
+
+  status:
+    # Total coverage across the whole project.
+    project:
+      default:
+        # An explicit target replaces Codecov's `auto` default, so the bar is
+        # simply ">= 80%" — there is no additional "must not drop below the base
+        # commit" rule to satisfy. Deliberately no `threshold`: with a fixed
+        # target it only widens the bar downwards (80% - threshold).
+        target: 80%
+        if_ci_failed: error
+        # Don't report a red X before the coverage upload has landed.
+        if_not_found: success
+
+    # Coverage of only the lines this PR changed.
+    patch:
+      default:
+        target: 80%
+        if_ci_failed: error
+        # A PR that touches no measured source (docs, workflows, .htaccess) has
+        # no patch coverage to compute; that is a pass, not a failure.
+        if_not_found: success
+
+# Post a single summary comment per PR, updated in place rather than repeated.
+comment:
+  layout: 'reach, diff, flags, files'
+  behavior: default
+  require_changes: true
+
+# Files excluded from coverage entirely. Mirrors `coverage.exclude` in
+# vitest.config.ts — keep the two in sync.
+ignore:
+  - 'src/main.ts'
+  - 'src/env.d.ts'
+  - 'src/**/*.d.ts'
+  - 'tests/**'
+  - 'cypress/**'
+  - 'api/**'
+  - 'docs/**'
+  - 'scripts/**'

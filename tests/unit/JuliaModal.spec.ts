@@ -146,6 +146,62 @@ describe('JuliaModal', () => {
     expect(document.activeElement).toBe(closeButton);
   });
 
+  // The trap must only intervene at the two edges. Anywhere in between, Tab has
+  // to fall through to the browser's own focus order.
+  it('leaves Tab alone when focus is not on the last focusable element', () => {
+    mountModal({ confirmLabel: 'OK', cancelLabel: 'Cancel' });
+    const closeButton = document.body.querySelector('[aria-label="Close"]') as HTMLElement;
+
+    closeButton.focus();
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    getDialog()?.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(closeButton);
+  });
+
+  it('leaves Shift+Tab alone when focus is not on the first focusable element', () => {
+    mountModal({ confirmLabel: 'OK', cancelLabel: 'Cancel' });
+    const cancelButton = buttonByText('Cancel') as HTMLButtonElement;
+
+    cancelButton.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true
+    });
+    getDialog()?.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(cancelButton);
+  });
+
+  it('ignores keys other than Escape and Tab', () => {
+    const w = mountModal({ confirmLabel: 'OK' });
+    const event = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true });
+    getDialog()?.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(w.emitted('cancel')).toBeUndefined();
+    expect(lastUpdateOpen(w)).toBeUndefined();
+  });
+
+  // Defensive guard: the header's close button means the panel always has a
+  // focusable child today, but `last.focus()` would throw on an empty set, so
+  // Tab has to no-op rather than crash if that ever stops being true.
+  it('does not throw on Tab when the panel has no focusable children', () => {
+    mountModal({ confirmLabel: 'OK', cancelLabel: 'Cancel' });
+    const panel = getDialog() as HTMLElement;
+    panel.querySelectorAll('button').forEach((button) => button.remove());
+    panel.focus();
+
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    expect(() => panel.dispatchEvent(event)).not.toThrow();
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(panel);
+  });
+
   it('moves focus to the confirm button when it opens', async () => {
     const w = mountModal({ open: false, confirmLabel: 'OK' });
     await w.setProps({ open: true });
