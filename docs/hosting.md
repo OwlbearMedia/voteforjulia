@@ -24,6 +24,34 @@ The one that has already bitten us:
 **Never use backslash escapes in `.htaccess`.** When a header value needs
 embedded double quotes, delimit the argument with single quotes.
 
+### App env vars must not contain `$`
+
+The same parser handles the `SetEnv` lines cPanel generates for the Python apps'
+environment variables — and **cPanel writes those values unquoted**, so LiteSpeed
+interpolates `$name` as a variable and expands it to nothing.
+
+This cost real downtime on 2026-07-30. A rotated `EMAIL_PASSWORD` containing a
+`$` reached the app three characters shorter than it was stored, and every form
+submission failed with `SMTPAuthenticationError (535, 'Incorrect authentication
+data')` while the stored value authenticated fine when tested directly. It hits
+both apps at once, so production forms break silently — `/health` does not
+exercise SMTP, so nothing goes red.
+
+**Choose app env var values from `[A-Za-z0-9._~-]`.** Avoid `$`, `{`, `}`, `"`,
+`\`, backtick, and spaces. Hand-quoting the generated file is not a fix; cPanel
+rewrites it.
+
+To confirm what a running worker actually received, compare it against the stored
+config — hash the values, never print them:
+
+```
+python -c 'import os,hashlib; print(hashlib.sha256(os.environ["EMAIL_PASSWORD"].encode()).hexdigest()[:12], len(os.environ["EMAIL_PASSWORD"]))'
+```
+
+Run that inside the app's virtualenv, and read `/proc/<lswsgi-pid>/environ` for
+what the live process holds. A length mismatch against the value in the selector
+config is the signature.
+
 ### Changing a response header
 
 Because local Apache is not a faithful proxy for the host, never sign off on a
