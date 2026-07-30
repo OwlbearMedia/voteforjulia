@@ -91,18 +91,71 @@ Deploys scp `api/**` and then restart the app by touching a file:
 touch ./api/tmp/restart.txt
 ```
 
-### Gotcha: deploys never install Python dependencies
+### Dependencies: installed by the deploy, pinned in the repo
 
-Neither workflow runs `pip install`. [api/requirements.txt](../api/requirements.txt)
-declares ranges (`google-auth>=2.55.2,<3`) with no lockfile, and nothing on the
-deploy path reads it. Consequences:
+Each app has its own cPanel-managed virtualenv, created by the CloudLinux Python
+selector rather than by us:
 
-- A Dependabot bump to `requirements.txt` merges, goes green, deploys — and
-  changes nothing on the server.
-- The versions actually running in production are not recorded anywhere in this
-  repo.
+```
+/home/juliafor/virtualenv/api/3.11/       # production
+/home/juliafor/virtualenv/api_test/3.11/  # test
+```
 
-Upgrading an API dependency means installing it on the host by hand.
+Both deploy workflows install dependencies into the app's virtualenv between the
+scp and the Passenger restart, via the selector rather than a direct `pip`:
+
+```
+cloudlinux-selector install-modules --json --interpreter python \
+  --app-root api --requirements-file requirements.txt
+```
+
+Three things about that command are load-bearing:
+
+- **It exits 0 even when pip fails.** The only reliable signal is the JSON
+  `result` field, so both workflows match on `"result": "success"` and `exit 1`
+  otherwise. A bare `pip install ...` in an ssh script would silently "succeed"
+  on a broken install.
+- **It resolves the virtualenv from the app's own config**, so it keeps working
+  across interpreter changes. Do not hardcode
+  `~/virtualenv/api/3.11/bin/pip` — and note a `~/virtualenv/api/*/bin/pip` glob
+  is now ambiguous, because switching the Python version leaves the old
+  version's directory behind (the retired `3.9/` trees are still on disk).
+- **Ordering matters.** The install step runs before the restart, so a failed
+  install stops the job with the old worker still serving the old code, instead
+  of booting new code against dependencies that were never installed.
+
+[api/requirements.txt](../api/requirements.txt) pins exact versions (`==`), which
+is what makes CI meaningful: it installs the same versions production runs. Keep
+it that way — with ranges, CI and the host resolve independently and can differ.
+
+#### Mind the interpreter floor
+
+The host interpreter is the constraint that bites here. `google-auth` 2.51+
+requires Python >= 3.10, so while the venvs ran 3.9 the declared requirements
+were **unsatisfiable on the host** — a state that went unnoticed for as long as
+nothing on the deploy path read the file. Before pinning past a dependency's
+major jump, check its `Requires-Python` against the venv.
+
+To change the interpreter (this destroys and rebuilds the venv, so the app has no
+packages for the duration — do `api_test` first and verify):
+
+```
+cloudlinux-selector set --json --interpreter python --app-root api_test --new-version 3.11
+```
+
+The rebuild reinstalls from `requirements.txt` itself. Confirm which venv
+Passenger is actually using with:
+
+```
+cloudlinux-selector get --json --interpreter python | tr '{},' '\n\n\n' | grep activate_path
+```
+
+Filter that output — the unfiltered `get` prints every app's Passenger
+environment variables, **including `EMAIL_PASSWORD` and the Sheets IDs**. Never
+pipe it somewhere that gets logged, and never run it in CI.
+
+Keep CI's `python-version` in [ci.yml](../.github/workflows/ci.yml) equal to the
+host's; testing on a version the host doesn't run is how the 3.9/3.11 gap hid.
 
 ## Caching
 

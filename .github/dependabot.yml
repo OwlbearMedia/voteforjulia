@@ -12,12 +12,18 @@ updates:
       frontend-production-dependencies:
         dependency-type: production
 
-  # Python API dependencies
+  # Python API dependencies. requirements.txt pins exact versions, so every
+  # upstream release produces a PR — google-api-python-client alone ships about
+  # weekly. Group them into one PR to keep that reviewable.
   - package-ecosystem: pip
     directory: "/api"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      api-dependencies:
+        patterns:
+          - "*"
 
   # GitHub Actions workflow dependencies
   - package-ecosystem: github-actions

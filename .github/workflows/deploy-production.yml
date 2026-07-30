@@ -174,6 +174,31 @@ jobs:
           overwrite: true
           strip_components: 1
 
+      # Must run after the upload (it reads the requirements.txt just deployed)
+      # and before the restart: if the install fails the job stops here, leaving
+      # the old worker serving the old code rather than booting new code against
+      # dependencies that were never installed.
+      - name: Install Python dependencies in production virtualenv
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+            output=$(/usr/sbin/cloudlinux-selector install-modules --json \
+              --interpreter python --app-root api \
+              --requirements-file requirements.txt)
+            echo "$output"
+            # install-modules exits 0 even when pip fails, so the JSON "result"
+            # field is the only reliable signal.
+            case "$output" in
+              *'"result": "success"'*) echo "Dependencies installed." ;;
+              *) echo "Dependency install failed; aborting before restart." >&2; exit 1 ;;
+            esac
+
       - name: Restart Python app (Passenger)
         uses: appleboy/ssh-action@v1.2.5
         with:
