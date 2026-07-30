@@ -105,9 +105,15 @@ Both deploy workflows install dependencies into the app's virtualenv between the
 scp and the Passenger restart, via the selector rather than a direct `pip`:
 
 ```
-cloudlinux-selector install-modules --json --interpreter python \
+/usr/sbin/cloudlinux-selector install-modules --json --interpreter python \
   --app-root api --requirements-file requirements.txt
 ```
+
+Invoke it by absolute path, as every example here and both workflows do. A bare
+`cloudlinux-selector` does resolve today — `/usr/sbin` is currently on the `PATH`
+even for a non-interactive SSH shell — but that `PATH` is cPanel's to change, and
+the absolute path costs nothing and makes these snippets safe to paste straight
+into a deploy script.
 
 Three things about that command are load-bearing:
 
@@ -140,14 +146,14 @@ To change the interpreter (this destroys and rebuilds the venv, so the app has n
 packages for the duration — do `api_test` first and verify):
 
 ```
-cloudlinux-selector set --json --interpreter python --app-root api_test --new-version 3.11
+/usr/sbin/cloudlinux-selector set --json --interpreter python --app-root api_test --new-version 3.11
 ```
 
 The rebuild reinstalls from `requirements.txt` itself. Confirm which venv
 Passenger is actually using with:
 
 ```
-cloudlinux-selector get --json --interpreter python | tr '{},' '\n\n\n' | grep activate_path
+/usr/sbin/cloudlinux-selector get --json --interpreter python | tr '{},' '\n\n\n' | grep activate_path
 ```
 
 Filter that output — the unfiltered `get` prints every app's Passenger

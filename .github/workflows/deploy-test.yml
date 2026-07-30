@@ -198,11 +198,15 @@ jobs:
               --requirements-file requirements.txt)
             echo "$output"
             # install-modules exits 0 even when pip fails, so the JSON "result"
-            # field is the only reliable signal.
-            case "$output" in
-              *'"result": "success"'*) echo "Dependencies installed." ;;
-              *) echo "Dependency install failed; aborting before restart." >&2; exit 1 ;;
-            esac
+            # field is the only reliable signal. Strip whitespace before matching
+            # so the check survives minified JSON ("result":"success") as well as
+            # the spaced form the selector emits today.
+            if printf '%s' "$output" | tr -d '[:space:]' | grep -q '"result":"success"'; then
+              echo "Dependencies installed."
+            else
+              echo "Dependency install failed; aborting before restart." >&2
+              exit 1
+            fi
 
       - name: Restart Python app (Passenger) in test
         uses: appleboy/ssh-action@v1.2.5
