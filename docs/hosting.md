@@ -47,7 +47,8 @@ LiteSpeed will emit.
 
 Both environments serve prerendered static files; `.htaccess` is uploaded as a
 **separate scp step** in each workflow because the `dist/**` glob does not match
-dot-prefixed files.
+dot-prefixed files. Both also stage into a scratch directory and swap it in with
+two renames, rather than uploading over the live root — see the swap below.
 
 ### Test — [deploy-test.yml](../.github/workflows/deploy-test.yml)
 
@@ -59,8 +60,17 @@ been closed, the branch is Dependabot's, or the fork is external. Then:
   `SOURCEMAP_MODE=true` (linked maps, so devtools resolve them),
 - overwrites `robots.txt` and injects a `noindex` meta tag so the test site
   cannot be indexed,
-- uploads to `./public_html_test`,
+- stages into `./public_html_test_next` and swaps it into `./public_html_test`
+  (rollback copy in `./public_html_test_prev`), exactly as production does,
 - runs the Cypress e2e suite against the deployed site.
+
+Test used to scp straight into the live `./public_html_test`, which had two
+consequences worth remembering, since both are easy to reintroduce. The e2e suite
+could hit new HTML while `.htaccess` was still the previous copy or mid-write —
+a plausible cause of the intermittent "redirected more than 20 times" Cypress
+failures. And because nothing ever pruned the directory, every past deploy's
+hashed assets and sourcemaps piled up in it: it had reached 70M against
+production's 1.7M.
 
 ### Production — [deploy-production.yml](../.github/workflows/deploy-production.yml)
 
@@ -78,6 +88,8 @@ mv public_html_next public_html
 Two renames on one filesystem, so the live root is only briefly absent instead
 of serving a half-uploaded mix. **The previous build stays in
 `./public_html_prev`** — that is the rollback: swap the two directories back.
+
+Test does the same thing with `public_html_test{,_next,_prev}`.
 
 ## The Python API
 
