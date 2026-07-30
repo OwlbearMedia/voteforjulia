@@ -63,7 +63,33 @@ FileETag MTime Size
 	Header always set Referrer-Policy "strict-origin-when-cross-origin"
 
 	# Disable browser features this site does not use.
-	Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(self https://donorbox.org)"
+	#
+	# Permissions-Policy is a structured-field header, so origins in an allowlist
+	# must be QUOTED strings — only the keywords self/src/*/none are bare tokens.
+	# An unquoted origin makes Chrome drop that entry ("Invalid allowlist item…
+	# must be *, self or quoted url") and fall back to payment's default of
+	# `self`, which denies the cross-origin Donorbox iframe and surfaces on
+	# /donate as "Permissions policy violation: payment is not allowed in this
+	# document."
+	#
+	# The argument is delimited with SINGLE quotes so the origin's double quotes
+	# survive verbatim. Do not switch to "…\"…\"…": the host runs LiteSpeed, not
+	# Apache, and it does not honour backslash escapes — it emits the backslashes
+	# literally, which fails the structured-header parser outright. Verify any
+	# change to this line against the deployed response, not just locally:
+	#   curl -sI https://test.voteforjulia.com/donate | grep -i permissions-policy
+	# If LiteSpeed ever rejects single-quoted arguments too, the space-free
+	# fallback needs no quoting of the argument at all — at the cost of `self`:
+	#   Header always set Permissions-Policy geolocation=(),microphone=(),camera=(),payment=("https://donorbox.org")
+	#
+	# js.stripe.com is in the payment allowlist because Donorbox's donation form
+	# is a custom element rendered in THIS document (not an iframe), and it
+	# injects js.stripe.com/v3 as a top-level script. Stripe.js then creates its
+	# own iframes for the Payment Element and the Apple Pay / Google Pay
+	# availability probes; each needs `payment` delegated to its origin or it
+	# logs "payment is not allowed in this document" and silently drops express
+	# checkout. `self` covers Stripe.js's probes in our own document.
+	Header always set Permissions-Policy 'geolocation=(), microphone=(), camera=(), payment=(self "https://donorbox.org" "https://js.stripe.com")'
 
 	# Content Security Policy.
 	#

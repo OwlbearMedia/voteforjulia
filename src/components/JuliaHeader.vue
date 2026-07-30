@@ -45,7 +45,7 @@ function handleDonateClick() {
     <div class="max-w-[960px] mx-auto relative flex flex-wrap items-start justify-between gap-3">
       <h1 class="sr-only">{{ title }}</h1>
       <div class="logo-container">
-        <a href="/" aria-label="Vote for Julia Home">
+        <RouterLink to="/" aria-label="Vote for Julia Home" @click="closeMenu">
           <Image
             url-endpoint="https://ik.imagekit.io/voteforjulia"
             src="/julia-hamann-for-mankato-mayor.avif"
@@ -61,7 +61,7 @@ function handleDonateClick() {
             loading="eager"
             decoding="async"
           />
-        </a>
+        </RouterLink>
       </div>
       <button
         class="menu-toggle block bg-mint rounded-md border-none cursor-pointer py-[1.35rem] px-4 ml-auto z-floating"

@@ -63,9 +63,16 @@ _CORS_ALLOWED_ORIGINS = {
 @app.after_request
 def add_cors_headers(response):
     origin = request.headers.get('Origin', '').strip()
+
+    # Vary goes on every response, not just the allowed ones. The response
+    # body/headers depend on Origin either way, so a shared cache that only
+    # learns this on the allowed branch could serve a disallowed origin's
+    # cached response (no Allow-Origin header) to an allowed one, or vice
+    # versa. `.vary.add` merges into any existing Vary instead of clobbering.
+    response.vary.add('Origin')
+
     if origin and origin in _CORS_ALLOWED_ORIGINS:
         response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Vary'] = 'Origin'
         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         response.headers['Access-Control-Max-Age'] = '86400'
@@ -195,14 +202,54 @@ _SMTP_UNAVAILABLE_MESSAGE = 'Unable to send email right now.'
 _MAX_LOGGED_BODY_CHARS = 4096
 
 
+def _has_content(value) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list):
+        return any(_has_content(item) for item in value)
+
+    return value is not None and value is not False
+
+
+def _submitted_field_names() -> list[str]:
+    payload = request.get_json(silent=True)
+    if isinstance(payload, dict):
+        source = payload
+    elif request.form:
+        source = request.form.to_dict(flat=False)
+    else:
+        return []
+
+    return sorted(name for name, value in source.items() if _has_content(value))
+
+
+def _log_request_fields(endpoint_name: str) -> None:
+    # Submissions carry supporter PII (names, emails, phone numbers, home
+    # addresses, free-text messages), so the routine per-request log records
+    # only which fields were filled in — never their values. That is enough to
+    # answer "did the phone field come through?" without turning the
+    # application log into an uncontrolled store of voter data. The browser
+    # applies the same rule before reporting to New Relic (see
+    # src/lib/analytics.ts).
+    names = _submitted_field_names()
+    logger.info("%s submission fields: %s", endpoint_name, ", ".join(names) or "(none)")
+
+
 def _log_request_body(endpoint_name: str) -> None:
-    # The browser sends only redacted form data to New Relic (see
-    # src/lib/analytics.ts), so this server-side log is the one place the
-    # submitted values are recoverable if anything later in the handler fails.
+    # Values are only logged on the failure paths where the submission is lost
+    # for good and this log line is the sole way to recover it. Never called
+    # for successful requests or client-side validation errors (4xx), where
+    # the submitter still has their data and can retry.
     raw_body = request.get_data(as_text=True)
     if len(raw_body) > _MAX_LOGGED_BODY_CHARS:
         raw_body = raw_body[:_MAX_LOGGED_BODY_CHARS] + '…[truncated]'
-    logger.info("%s request body: %s", endpoint_name, raw_body)
+    logger.error("%s unrecoverable request body: %s", endpoint_name, raw_body)
+
+
+def _lost_submission_response(endpoint_name: str, message: str, status: int):
+    """JSON error for a failure that dropped the submission, plus a body dump."""
+    _log_request_body(endpoint_name)
+    return jsonify({'error': message}), status
 
 
 def _rate_limited_response(retry_after: int):
@@ -225,7 +272,7 @@ def _handle_form_submission(
     endpoint_name,
     recipient_env='RECIPIENT_EMAIL',
 ):
-    _log_request_body(endpoint_name)
+    _log_request_fields(endpoint_name)
 
     try:
         # Inside the try so a malformed SMTP_SECURITY/SMTP_PORT env value
@@ -235,7 +282,9 @@ def _handle_form_submission(
         config_error = _validate_email_config(email_config, recipient_env)
         if config_error:
             logger.error(config_error)
-            return jsonify({'error': 'Email service is not configured.'}), 500
+            return _lost_submission_response(
+                endpoint_name, 'Email service is not configured.', 500
+            )
 
         parsed = parse_request()
         if parsed is None:
@@ -256,7 +305,9 @@ def _handle_form_submission(
 
         if refused:
             logger.error("SMTP refused recipients: %s", ", ".join(refused.keys()))
-            return jsonify({'error': 'Unable to deliver email to recipient.'}), 502
+            return _lost_submission_response(
+                endpoint_name, 'Unable to deliver email to recipient.', 502
+            )
 
         try:
             confirmation_refused = send_confirmation_email_fn(email_config, parsed)
@@ -281,23 +332,27 @@ def _handle_form_submission(
                 logger.info("Submission appended to Google Sheet")
         except (ValueError, OSError, HttpError):
             logger.exception("Failed to append submission to Google Sheet")
-            return jsonify({'error': 'Email sent, but failed to save submission.'}), 502
+            return _lost_submission_response(
+                endpoint_name, 'Email sent, but failed to save submission.', 502
+            )
 
         return jsonify({'message': 'Email sent successfully!'}), 200
 
     except smtplib.SMTPAuthenticationError:
         logger.exception("SMTP authentication failed")
-        return jsonify({'error': _SMTP_UNAVAILABLE_MESSAGE}), 502
+        return _lost_submission_response(endpoint_name, _SMTP_UNAVAILABLE_MESSAGE, 502)
     except smtplib.SMTPException:
         logger.exception("SMTP error while sending email")
-        return jsonify({'error': _SMTP_UNAVAILABLE_MESSAGE}), 502
+        return _lost_submission_response(endpoint_name, _SMTP_UNAVAILABLE_MESSAGE, 502)
     except ValueError:
         logger.exception("Invalid SMTP configuration")
-        return jsonify({'error': 'Server email configuration is invalid.'}), 500
+        return _lost_submission_response(
+            endpoint_name, 'Server email configuration is invalid.', 500
+        )
 
     except Exception:
         logger.exception("Unexpected error while handling %s", endpoint_name)
-        return jsonify({'error': 'Internal server error.'}), 500
+        return _lost_submission_response(endpoint_name, 'Internal server error.', 500)
 
 
 @app.route('/health', methods=['GET'])

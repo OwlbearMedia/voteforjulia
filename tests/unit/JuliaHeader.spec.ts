@@ -25,6 +25,27 @@ describe('JuliaHeader', () => {
     expect(wrapper.find('h1.sr-only').text()).toBe('Julia Hamann for Mankato Mayor');
   });
 
+  // A plain <a href="/"> here would drop out of the SPA and force a full
+  // document reload on every logo click.
+  it('routes the logo through vue-router rather than a plain anchor', () => {
+    const wrapper = mount(JuliaHeader, {
+      props: { title: 'Test Title' },
+      global: {
+        stubs: {
+          RouterLink: RouterLinkStub
+        }
+      }
+    });
+
+    const logoLink = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find((link) => link.attributes('aria-label') === 'Vote for Julia Home');
+
+    expect(logoLink).toBeDefined();
+    expect(logoLink?.props('to')).toBe('/');
+    expect(wrapper.find('.logo-container a[href]').exists()).toBe(false);
+  });
+
   it('toggles mobile navigation visibility', async () => {
     const wrapper = mount(JuliaHeader, {
       props: { title: 'Test Title' },

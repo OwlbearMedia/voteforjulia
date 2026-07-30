@@ -21,7 +21,8 @@
             role="dialog"
             aria-modal="true"
             :aria-labelledby="titleId"
-            class="relative w-full max-w-lg overflow-hidden rounded-lg bg-white text-left text-ink shadow-strong sm:my-8"
+            tabindex="-1"
+            class="relative w-full max-w-lg overflow-hidden rounded-lg bg-white text-left text-ink shadow-strong outline-none sm:my-8"
             @keydown="onKeydown"
           >
             <header
@@ -178,11 +179,14 @@ function onKeydown(event: KeyboardEvent) {
   if (focusable.length === 0) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
 
-  if (event.shiftKey && document.activeElement === first) {
+  // The panel itself is the starting focus target when there is no confirm
+  // button, so shift-tabbing off it has to wrap to the end like `first` does.
+  if (event.shiftKey && (active === first || active === panel.value)) {
     event.preventDefault();
     last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
+  } else if (!event.shiftKey && active === last) {
     event.preventDefault();
     first.focus();
   }
@@ -192,7 +196,11 @@ watch(open, (isOpen) => {
   if (isOpen) {
     previouslyFocused = document.activeElement as HTMLElement | null;
     lockBodyScroll();
-    nextTick(() => confirmButton.value?.focus());
+    // The confirm button is optional. Without it, focus the panel instead so
+    // the dialog is announced, Escape reaches `onKeydown`, and the tab trap
+    // engages — leaving focus on <body> would strand keyboard users behind a
+    // backdrop they cannot dismiss.
+    nextTick(() => (confirmButton.value ?? panel.value)?.focus());
   } else {
     unlockBodyScroll();
     previouslyFocused?.focus();

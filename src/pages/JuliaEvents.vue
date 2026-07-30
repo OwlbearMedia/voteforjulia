@@ -263,7 +263,11 @@ useHead(
         </ul>
 
         <p>
-          <a class="text-lime" href="https://www.facebook.com/foodnotbombs.mankato" target="_blank"
+          <a
+            class="text-lime"
+            href="https://www.facebook.com/foodnotbombs.mankato"
+            target="_blank"
+            rel="noopener noreferrer"
             >Food Not Bombs</a
           >
           will also be collecting in kind donations of tote bags, reusable water bottles, shelf

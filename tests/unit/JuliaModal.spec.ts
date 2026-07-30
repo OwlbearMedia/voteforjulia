@@ -146,6 +146,62 @@ describe('JuliaModal', () => {
     expect(document.activeElement).toBe(closeButton);
   });
 
+  // The trap must only intervene at the two edges. Anywhere in between, Tab has
+  // to fall through to the browser's own focus order.
+  it('leaves Tab alone when focus is not on the last focusable element', () => {
+    mountModal({ confirmLabel: 'OK', cancelLabel: 'Cancel' });
+    const closeButton = document.body.querySelector('[aria-label="Close"]') as HTMLElement;
+
+    closeButton.focus();
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    getDialog()?.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(closeButton);
+  });
+
+  it('leaves Shift+Tab alone when focus is not on the first focusable element', () => {
+    mountModal({ confirmLabel: 'OK', cancelLabel: 'Cancel' });
+    const cancelButton = buttonByText('Cancel') as HTMLButtonElement;
+
+    cancelButton.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true
+    });
+    getDialog()?.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(cancelButton);
+  });
+
+  it('ignores keys other than Escape and Tab', () => {
+    const w = mountModal({ confirmLabel: 'OK' });
+    const event = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true });
+    getDialog()?.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(w.emitted('cancel')).toBeUndefined();
+    expect(lastUpdateOpen(w)).toBeUndefined();
+  });
+
+  // Defensive guard: the header's close button means the panel always has a
+  // focusable child today, but `last.focus()` would throw on an empty set, so
+  // Tab has to no-op rather than crash if that ever stops being true.
+  it('does not throw on Tab when the panel has no focusable children', () => {
+    mountModal({ confirmLabel: 'OK', cancelLabel: 'Cancel' });
+    const panel = getDialog() as HTMLElement;
+    panel.querySelectorAll('button').forEach((button) => button.remove());
+    panel.focus();
+
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    expect(() => panel.dispatchEvent(event)).not.toThrow();
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(panel);
+  });
+
   it('moves focus to the confirm button when it opens', async () => {
     const w = mountModal({ open: false, confirmLabel: 'OK' });
     await w.setProps({ open: true });
@@ -153,6 +209,46 @@ describe('JuliaModal', () => {
     await nextTick();
 
     expect(document.activeElement).toBe(buttonByText('OK'));
+  });
+
+  // The confirm button is optional. Without this fallback, focus stays on
+  // <body> and Escape/Tab never reach the panel's keydown handler, stranding
+  // keyboard users behind the backdrop.
+  it('moves focus to the panel when it opens without a confirm button', async () => {
+    const w = mountModal({ open: false });
+    await w.setProps({ open: true });
+    await nextTick();
+    await nextTick();
+
+    expect(document.activeElement).toBe(getDialog());
+  });
+
+  it('closes on Escape when there is no confirm button', async () => {
+    const w = mountModal({ open: false });
+    await w.setProps({ open: true });
+    await nextTick();
+    await nextTick();
+
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    );
+    await nextTick();
+
+    expect(w.emitted('cancel')).toHaveLength(1);
+    expect(lastUpdateOpen(w)).toBe(false);
+  });
+
+  it('wraps focus backwards from the panel to the last focusable element', async () => {
+    const w = mountModal({ open: false, cancelLabel: 'Close' });
+    await w.setProps({ open: true });
+    await nextTick();
+    await nextTick();
+
+    getDialog()?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })
+    );
+
+    expect(document.activeElement).toBe(buttonByText('Close'));
   });
 
   it('locks and restores body scroll around open/close', async () => {
