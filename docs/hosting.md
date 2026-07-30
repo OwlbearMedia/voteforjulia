@@ -71,6 +71,31 @@ A local Apache run is still useful for catching outright syntax errors before
 you push, and it will confirm the _intended_ value, but it cannot tell you what
 LiteSpeed will emit.
 
+## Deploy workflow changes cannot be tested from a PR
+
+Both deploy workflows trigger on `workflow_run`, and GitHub always executes the
+**default branch's** copy of a `workflow_run`-triggered workflow. A change to
+[deploy-test.yml](../.github/workflows/deploy-test.yml) or
+[deploy-production.yml](../.github/workflows/deploy-production.yml) therefore has
+no effect until it is merged to `main` — the PR's test deploy keeps running the
+old steps.
+
+The failure mode is that it looks like it worked. The deploy still succeeds, still
+uploads, still restarts, so the green check says nothing about your edit. Confirm
+which steps actually ran rather than inferring it from side effects on the host:
+
+```
+gh run view <run-id> --json jobs \
+  --jq '.jobs[] | select(.name|test("Deploy")) | {name, steps: [.steps[].name]}'
+```
+
+If your new step name is absent, it did not run. Consequences worth planning for:
+
+- A merge is the **first** execution of any deploy-workflow change, and for
+  `deploy-production.yml` that first execution is against production.
+- Verify such changes by running the underlying commands over SSH by hand first,
+  then watch the first post-merge run closely.
+
 ## Frontend deploys
 
 Both environments serve prerendered static files; `.htaccess` is uploaded as a
