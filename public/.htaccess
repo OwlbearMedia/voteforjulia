@@ -63,7 +63,16 @@ FileETag MTime Size
 	Header always set Referrer-Policy "strict-origin-when-cross-origin"
 
 	# Disable browser features this site does not use.
-	Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(self https://donorbox.org)"
+	#
+	# Permissions-Policy is a structured-field header, so origins in an allowlist
+	# must be QUOTED strings — only the keywords self/src/*/none are bare tokens.
+	# An unquoted origin parses as a token, fails origin validation, and Chrome
+	# drops that entry ("Unrecognized origin"), silently falling back to the
+	# payment default of `self`. That denies the cross-origin Donorbox iframe the
+	# payment feature and surfaces on /donate as "[Violation] Permissions policy
+	# violation: payment is not allowed in this document." The inner quotes are
+	# backslash-escaped because the whole value is an Apache quoted argument.
+	Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(self \"https://donorbox.org\")"
 
 	# Content Security Policy.
 	#
