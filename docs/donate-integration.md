@@ -33,10 +33,19 @@ leads to allowlisting the wrong origins.
 
 ## What that costs us in the compiler
 
-`dbox-widget` must be declared in
-[vue-compiler-options.ts](../vue-compiler-options.ts), or Vue compiles it as a
-component lookup that fails and SSG emits `<!---->` in its place. See the
-"Custom elements" section of [CLAUDE.md](../CLAUDE.md).
+`dbox-widget` must be declared in `isCustomElement` in
+[vue-compiler-options.ts](../vue-compiler-options.ts) — the single source shared
+by `vite.config.ts` and `vitest.config.ts`, so add the tag there once, never to a
+config directly. Otherwise Vue compiles it as a component lookup, which fails.
+
+The failure mode is quiet. Vitest and the dev server still render the tag (the
+client falls back to the raw element), but SSG emits `<!---->` in its place, so
+the element is missing from the prerendered HTML and only appears after
+hydration — a mismatch that no test catches. Verify after a build with:
+
+```
+grep dbox-widget dist/donate.html
+```
 
 ## What that costs us in headers
 
