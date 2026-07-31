@@ -162,11 +162,17 @@ conventions and the traps.
   every route automatically, so that check silently always passes. Make the
   request and assert the status instead (an explicit preflight handler returns
   204, Flask's default returns 200).
-- **The coverage gate is Codecov, not Vitest.** `vitest.config.ts` sets no
-  thresholds, so `pnpm test:coverage` never fails locally; the pass/fail bar is
-  `project` and `patch` >= 80% in [codecov.yml](../codecov.yml). Two things that
-  file can't tell you: Codecov reads its config **from the default branch**, so
-  editing `codecov.yml` in a PR does nothing for that PR (it takes effect once
-  merged), and a repo-level YAML in Codecov's web UI merges on top of it. Its
-  `ignore` list mirrors `coverage.exclude` in `vitest.config.ts` — change both
-  together.
+- **The coverage gate is Codecov, not the test runners.** Neither
+  `vitest.config.ts` nor `.coveragerc` sets a threshold, so coverage never fails
+  locally; the pass/fail bar is 80% in [codecov.yml](../codecov.yml). Frontend
+  and backend upload separately as the `frontend` and `backend` flags, giving
+  four statuses: `project`, `project/frontend`, `project/backend`, and `patch`.
+  Two things that file can't tell you: Codecov reads its config **from the
+  default branch**, so editing `codecov.yml` in a PR does nothing for that PR (it
+  takes effect once merged), and a repo-level YAML in Codecov's web UI merges on
+  top of it.
+- **Coverage exclusions live in three files and must agree**: `coverage.exclude`
+  in `vitest.config.ts`, `omit` in [.coveragerc](../.coveragerc), and `ignore` in
+  `codecov.yml`. Two entries are deliberate rather than incidental —
+  `src/main.ts` and `api/passenger_wsgi.py` are the two entry points, executed
+  only by Vite and by Passenger respectively, so no test can reach either.

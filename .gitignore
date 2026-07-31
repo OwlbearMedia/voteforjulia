@@ -13,7 +13,11 @@ dist-ssr
 *.local
 .venv
 .vite
+# Vitest's coverage/ directory, plus coverage.py's data file and the Cobertura
+# report the Python job uploads to Codecov.
 coverage
+.coverage
+coverage-api.xml
 
 cypress.env.json
 cypress/screenshots

@@ -121,9 +121,52 @@ jobs:
       - name: Check formatting
         run: ruff format --check .
 
-      - name: Run Python API tests
+      - name: Run Python API tests with coverage
         # pytest collects every api/test_*.py, so new test files can't be
         # silently left out of CI. testpaths and import behaviour come from
-        # pytest.ini; imports resolve as the top-level "api" package.
-        run: python -m pytest
+        # pytest.ini; imports resolve as the top-level "api" package. Coverage
+        # source/omit rules and the XML path come from .coveragerc — coverage is
+        # requested here rather than in pytest.ini so a plain local `pytest`
+        # stays fast, mirroring `pnpm test` vs `pnpm test:coverage`.
+        run: python -m pytest --cov --cov-report=xml --cov-report=term
+
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ ! -f coverage-api.xml ]; then
+            echo "No coverage report found at coverage-api.xml" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("coverage-api.xml").getroot()
+
+
+          def row(label, covered, valid):
+              covered, valid = int(covered), int(valid)
+              pct = round(100 * covered / valid, 2) if valid else 0
+              return f"| {label} | {pct}% | {covered}/{valid} |"
+
+
+          print("### Python API test coverage")
+          print("")
+          print("| Metric | % | Covered / Total |")
+          print("| --- | --- | --- |")
+          print(row("Lines", root.get("lines-covered"), root.get("lines-valid")))
+          print(row("Branches", root.get("branches-covered"), root.get("branches-valid")))
+          PY
+
+      - name: Upload coverage to Codecov
+        # Secrets are unavailable to Dependabot runs, and a Codecov hiccup should
+        # never fail CI, so guard the actor and never block the pipeline.
+        if: github.actor != 'dependabot[bot]'
+        continue-on-error: true
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage-api.xml
+          flags: backend
+          fail_ci_if_error: false
 

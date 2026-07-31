@@ -237,6 +237,16 @@ Run backend API tests, lint, and format checks (the same three steps CI runs):
 (without `--check`) to apply formatting; see [`ruff.toml`](ruff.toml) for the
 enabled rules.
 
+To see coverage locally (CI does this and uploads the result to Codecov):
+
+```bash
+.venv/bin/python -m pytest --cov --cov-report=term-missing
+```
+
+Coverage is opt-in rather than part of the default `pytest` run, so the everyday
+suite stays fast — the same split as `pnpm test` versus `pnpm test:coverage`.
+What gets measured is set by [`.coveragerc`](.coveragerc).
+
 Older test files are `unittest.TestCase` classes and newer ones are plain pytest
 functions; pytest collects both.
 
@@ -254,8 +264,8 @@ feature branches that are merged directly to `main`. There are three workflow fi
 - Triggers: pull request events (`opened`, `synchronize`, `reopened`) and pushes to `main`. Runs tests only in both cases — deploys are handled by separate workflows triggered via `workflow_run`.
 - File: `.github/workflows/ci.yml`
 - Jobs — **Typecheck and frontend tests** and **Python API lint and tests** run in parallel:
-  - **Typecheck and frontend tests** — type-check, Prettier format check (`pnpm format:check`), ESLint, Vitest with coverage. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) (baseline visibility only — no enforced threshold yet). The Codecov upload is skipped for Dependabot PRs, which do not have access to repository secrets.
-  - **Python API lint and tests** — `ruff check`, `ruff format --check`, then `pytest` across every `api/test_*.py`. The interpreter comes from [`.python-version`](.python-version) so it can't drift from the host's.
+  - **Typecheck and frontend tests** — type-check, Prettier format check (`pnpm format:check`), ESLint, Vitest with coverage. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) under the `frontend` flag. Codecov uploads are skipped for Dependabot PRs, which do not have access to repository secrets, and never fail the build.
+  - **Python API lint and tests** — `ruff check`, `ruff format --check`, then `pytest` across every `api/test_*.py` with coverage. Totals are posted to the job summary and the report is uploaded to Codecov under the `backend` flag. The interpreter comes from [`.python-version`](.python-version) so it can't drift from the host's.
 
 The CI badge and Codecov coverage reflect the latest run on `main`.
 
@@ -299,9 +309,30 @@ retry only that job and its dependents, rather than "Re-run all jobs".
 
 ### Test coverage (Codecov)
 
-The CI workflow runs Vitest with V8 coverage and uploads the `lcov` report to
-Codecov. The status and coverage badges at the top of this README reflect the
-latest run on `main`.
+Both halves of the repo report coverage, uploaded from their own CI job under a
+separate Codecov **flag**:
+
+| Flag       | Job                       | Tool        | Report               | Covers |
+| ---------- | ------------------------- | ----------- | -------------------- | ------ |
+| `frontend` | Typecheck and frontend    | Vitest (V8) | `coverage/lcov.info` | `src/` |
+| `backend`  | Python API lint and tests | pytest-cov  | `coverage-api.xml`   | `api/` |
+
+The status and coverage badges at the top of this README reflect the latest run
+on `main`.
+
+Codecov posts four statuses: `project` (whole repo), `project/frontend`,
+`project/backend`, and `patch` (only the lines a PR changed). All four use the
+same 80% target, configured in [codecov.yml](codecov.yml). Whether a failing
+status blocks a merge is a GitHub branch-protection setting, not something that
+file controls.
+
+Coverage exclusions are defined in three places that must be kept in step:
+`coverage.exclude` in `vitest.config.ts`, `omit` in [.coveragerc](.coveragerc),
+and the `ignore` list in `codecov.yml`.
+
+**Editing `codecov.yml` does not affect the PR that edits it.** Codecov reads its
+configuration from the default branch, so changes take effect only once merged to
+`main`. A repo-level YAML in Codecov's web UI merges on top of the file.
 
 One-time setup:
 
@@ -310,8 +341,7 @@ One-time setup:
 2. Add the repository upload token as a `CODECOV_TOKEN` GitHub Actions secret
    (Settings → Secrets and variables → Actions).
 
-Until the first upload completes, the coverage badge reads `unknown`. There is no
-enforced coverage threshold yet — coverage is tracked for visibility only.
+Until the first upload completes, the coverage badge reads `unknown`.
 
 ## Project Structure (Relevant)
 

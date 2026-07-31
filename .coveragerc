@@ -1,0 +1,28 @@
+# coverage.py config for the Flask API. The frontend equivalent lives in
+# `coverage` in vitest.config.ts; keep the two exclusion lists conceptually in
+# step, and mirror any change here into codecov.yml's `ignore` list.
+
+[run]
+source = api
+branch = True
+
+omit =
+    # Tests measure the source, not themselves. Mirrors the frontend excluding
+    # `tests/**`.
+    api/test_*.py
+    # Passenger's WSGI entry point. It only ever executes on the host — it
+    # rewrites sys.path and loads app.py by file path — so it is unreachable
+    # from the test suite by design. Mirrors the frontend excluding
+    # `src/main.ts`.
+    api/passenger_wsgi.py
+
+[report]
+# `pass` bodies on the HttpError fallback shim and similar are noise.
+exclude_also =
+    ^\s*pass$
+    if TYPE_CHECKING:
+    raise NotImplementedError
+    if __name__ == .__main__.:
+
+[xml]
+output = coverage-api.xml
