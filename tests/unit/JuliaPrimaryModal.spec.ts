@@ -67,16 +67,18 @@ describe('JuliaPrimaryModal', () => {
 
   // The countdown is generated on mount rather than baked into the prerendered
   // HTML, so each of these is what a visitor loading the page then would see.
+  // The day count is inclusive of both today and election day, so a visitor 11
+  // nights out (July 31) is told 12 days.
   const countdownCases: [string, number, string][] = [
     [
       'days out',
       PRIMARY_DAY_STARTS_AT - 11 * DAY_MS,
-      'Primary Election Day is in 11 days on August 11!'
+      'Only 12 days until Primary Election Day, August 11!'
     ],
     [
-      'two days out',
+      'partway through the day two nights out',
       PRIMARY_DAY_STARTS_AT - 1.5 * DAY_MS,
-      'Primary Election Day is in 2 days on August 11!'
+      'Only 3 days until Primary Election Day, August 11!'
     ],
     ['the day before', PRIMARY_DAY_STARTS_AT - 1, 'Primary Election Day is tomorrow, August 11!'],
     ['election day itself', PRIMARY_DAY_STARTS_AT, 'Primary Election Day is today, August 11!'],
