@@ -17,11 +17,37 @@ The official campaign website for Julia Hamann, candidate for Mayor of Mankato.
 - E2E tests: Cypress
 - CI/CD: GitHub Actions + SCP deploy
 
+## Documentation
+
+This README covers getting the site running. The `docs/` directory covers the
+things the source can't tell you — read the relevant one before working in that
+area:
+
+- **[docs/conventions.md](docs/conventions.md)** — how this codebase does things:
+  the multi-file checklist for adding a page, `buildPageHead` for `<head>`/SEO,
+  the Tailwind theme (the default palette is switched off, so `bg-red-500` does
+  nothing), hand-rolled icons, declaring third-party custom elements, and the
+  testing conventions.
+- **[docs/hosting.md](docs/hosting.md)** — the runtime environment and both deploy
+  pipelines: LiteSpeed rather than Apache (its `.htaccess` parser differs from
+  Apache's in silent ways), the atomic production swap and rollback, and how
+  deploys install Python dependencies into the host's cPanel virtualenv.
+- **[docs/donate-integration.md](docs/donate-integration.md)** — how the Donorbox
+  widget and Stripe actually load on `/donate`, and which Content-Security-Policy
+  and `Permissions-Policy` entries exist solely because of it.
+
+The Flask API also has an OpenAPI 3.1 spec at
+[api/openapi.yaml](api/openapi.yaml), kept in sync with the code by
+[api/test_openapi_spec.py](api/test_openapi_spec.py).
+
 ## Prerequisites
 
 - Node.js 22+
 - pnpm 11+
-- Python 3.11+ (for API tests)
+- Python **3.11** for the API — not "3.11 or newer". It must match the interpreter
+  in the host's cPanel virtualenv, which is what deploys install into. The version
+  is declared once in [`.python-version`](.python-version); CI reads that same file.
+  See [docs/hosting.md](docs/hosting.md#mind-the-interpreter-floor).
 
 ## Install Dependencies
 
@@ -31,11 +57,22 @@ Install frontend dependencies:
 pnpm install
 ```
 
-Install Python API dependencies:
+Install Python API dependencies into a project-local virtualenv:
 
 ```bash
-python -m pip install -r api/requirements.txt
+python3.11 -m venv .venv
+.venv/bin/pip install -r api/requirements-dev.txt
 ```
+
+`api/requirements-dev.txt` includes `requirements.txt`, so this installs the
+runtime pins production uses plus the dev-only tooling (pytest, ruff). Keep the
+two files separate: deploys install with `--requirements-file requirements.txt`,
+so only that file's pins reach the host — never add tooling to it.
+
+VS Code picks up `.venv` at the repo root automatically. If the status bar
+doesn't show `3.11.x ('.venv')`, run **Python: Select Interpreter** and choose
+`./.venv/bin/python`. Workspace settings (interpreter, pytest, ruff-on-save) are
+in `.vscode/settings.json`; install the recommended extensions when prompted.
 
 Optional environment variable for local frontend API target:
 
@@ -187,11 +224,31 @@ CYPRESS_BASE_URL=http://localhost:5173 pnpm test:e2e
 
 ### Python API Tests
 
-Run backend API tests:
+Run backend API tests, lint, and format checks (the same three steps CI runs):
 
 ```bash
-python -m unittest api/test_app.py api/test_models.py api/test_email_service.py
+.venv/bin/python -m pytest
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
 ```
+
+`pytest` discovers every `api/test_*.py` — configuration lives in
+[`pytest.ini`](pytest.ini), so run it from the repo root. Use `ruff format .`
+(without `--check`) to apply formatting; see [`ruff.toml`](ruff.toml) for the
+enabled rules.
+
+To see coverage locally (CI does this and uploads the result to Codecov):
+
+```bash
+.venv/bin/python -m pytest --cov --cov-report=term-missing
+```
+
+Coverage is opt-in rather than part of the default `pytest` run, so the everyday
+suite stays fast — the same split as `pnpm test` versus `pnpm test:coverage`.
+What gets measured is set by [`.coveragerc`](.coveragerc).
+
+Older test files are `unittest.TestCase` classes and newer ones are plain pytest
+functions; pytest collects both.
 
 ## CI and Deployment (GitHub Actions)
 
@@ -206,9 +263,9 @@ feature branches that are merged directly to `main`. There are three workflow fi
 
 - Triggers: pull request events (`opened`, `synchronize`, `reopened`) and pushes to `main`. Runs tests only in both cases — deploys are handled by separate workflows triggered via `workflow_run`.
 - File: `.github/workflows/ci.yml`
-- Jobs — **Typecheck and frontend tests** and **Python API tests** run in parallel:
-  - **Typecheck and frontend tests** — type-check, Prettier format check (`pnpm format:check`), ESLint, Vitest with coverage. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) (baseline visibility only — no enforced threshold yet). The Codecov upload is skipped for Dependabot PRs, which do not have access to repository secrets.
-  - **Python API tests** — runs all three test files (`test_app.py`, `test_models.py`, `test_email_service.py`)
+- Jobs — **Typecheck and frontend tests** and **Python API lint and tests** run in parallel:
+  - **Typecheck and frontend tests** — type-check, Prettier format check (`pnpm format:check`), ESLint, Vitest with coverage. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) under the `frontend` flag. Codecov uploads are skipped for Dependabot PRs, which do not have access to repository secrets, and never fail the build.
+  - **Python API lint and tests** — `ruff check`, `ruff format --check`, then `pytest` across every `api/test_*.py` with coverage. Totals are posted to the job summary and the report is uploaded to Codecov under the `backend` flag. The interpreter comes from [`.python-version`](.python-version) so it can't drift from the host's.
 
 The CI badge and Codecov coverage reflect the latest run on `main`.
 
@@ -252,9 +309,30 @@ retry only that job and its dependents, rather than "Re-run all jobs".
 
 ### Test coverage (Codecov)
 
-The CI workflow runs Vitest with V8 coverage and uploads the `lcov` report to
-Codecov. The status and coverage badges at the top of this README reflect the
-latest run on `main`.
+Both halves of the repo report coverage, uploaded from their own CI job under a
+separate Codecov **flag**:
+
+| Flag       | Job                       | Tool        | Report               | Covers |
+| ---------- | ------------------------- | ----------- | -------------------- | ------ |
+| `frontend` | Typecheck and frontend    | Vitest (V8) | `coverage/lcov.info` | `src/` |
+| `backend`  | Python API lint and tests | pytest-cov  | `coverage-api.xml`   | `api/` |
+
+The status and coverage badges at the top of this README reflect the latest run
+on `main`.
+
+Codecov posts four statuses: `project` (whole repo), `project/frontend`,
+`project/backend`, and `patch` (only the lines a PR changed). All four use the
+same 80% target, configured in [codecov.yml](codecov.yml). Whether a failing
+status blocks a merge is a GitHub branch-protection setting, not something that
+file controls.
+
+Coverage exclusions are defined in three places that must be kept in step:
+`coverage.exclude` in `vitest.config.ts`, `omit` in [.coveragerc](.coveragerc),
+and the `ignore` list in `codecov.yml`.
+
+**Editing `codecov.yml` does not affect the PR that edits it.** Codecov reads its
+configuration from the default branch, so changes take effect only once merged to
+`main`. A repo-level YAML in Codecov's web UI merges on top of the file.
 
 One-time setup:
 
@@ -263,8 +341,7 @@ One-time setup:
 2. Add the repository upload token as a `CODECOV_TOKEN` GitHub Actions secret
    (Settings → Secrets and variables → Actions).
 
-Until the first upload completes, the coverage badge reads `unknown`. There is no
-enforced coverage threshold yet — coverage is tracked for visibility only.
+Until the first upload completes, the coverage badge reads `unknown`.
 
 ## Project Structure (Relevant)
 
@@ -276,6 +353,7 @@ enforced coverage threshold yet — coverage is tracked for visibility only.
 - src/lib/: Framework-agnostic utilities (routing, analytics, API client, route paths)
 - tests/unit/: Frontend Vitest specs
 - api/: Flask API and Python tests
+- docs/: Conventions, hosting/deploys, and the donate integration
 - dist/: Build output generated by pnpm run build
 - .github/workflows/ci.yml: typecheck, lint, and tests — runs on PRs and pushes to `main`
 - .github/workflows/deploy-test.yml: test environment deploy, triggered when CI passes on a PR

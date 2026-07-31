@@ -5,9 +5,15 @@
 # to "100% of changed lines", which red-Xes a PR for things like a defensive
 # branch that cannot be reached yet.
 #
-# Only the frontend reports coverage — CI uploads `coverage/lcov.info` under the
-# `frontend` flag (see .github/workflows/ci.yml). The Python API tests run under
-# unittest with no coverage collection, so nothing here applies to api/.
+# Both halves of the repo report coverage, uploaded as separate flags from the
+# two CI jobs (see .github/workflows/ci.yml):
+#
+#   frontend — Vitest, `coverage/lcov.info`, covers src/
+#   backend  — pytest-cov, `coverage-api.xml`, covers api/
+#
+# NOTE: Codecov reads this file from the **default branch**, so edits here have
+# no effect on the PR that makes them — they take effect once merged to `main`.
+# A repo-level YAML in Codecov's web UI merges on top of this.
 #
 # Validate changes before pushing:
 #   curl -X POST --data-binary @codecov.yml https://codecov.io/validate
@@ -31,7 +37,26 @@ coverage:
         # Don't report a red X before the coverage upload has landed.
         if_not_found: success
 
-    # Coverage of only the lines this PR changed.
+      # Per-flag totals as well as the combined one above, so a healthy frontend
+      # can't mask a backend regression (or the reverse). Same 80% bar. Drop
+      # these two entries if the extra PR checks become noise — the `default`
+      # status above still covers the repo as a whole.
+      frontend:
+        target: 80%
+        flags:
+          - frontend
+        if_ci_failed: error
+        if_not_found: success
+      backend:
+        target: 80%
+        flags:
+          - backend
+        if_ci_failed: error
+        if_not_found: success
+
+    # Coverage of only the lines this PR changed. Left combined deliberately:
+    # per-flag patch statuses are the noisiest kind, and a PR touching one side
+    # of the repo would permanently show "no data" for the other.
     patch:
       default:
         target: 80%
@@ -40,6 +65,21 @@ coverage:
         # no patch coverage to compute; that is a pass, not a failure.
         if_not_found: success
 
+# Which files each flag owns. Without this Codecov infers attribution from the
+# uploaded reports alone, and the flag view gets muddled when both land on the
+# same commit.
+flags:
+  frontend:
+    paths:
+      - src/
+    # Both jobs run on every CI run, so there is never a stale flag to carry
+    # forward from an earlier commit.
+    carryforward: false
+  backend:
+    paths:
+      - api/
+    carryforward: false
+
 # Post a single summary comment per PR, updated in place rather than repeated.
 comment:
   layout: 'reach, diff, flags, files'
@@ -47,13 +87,21 @@ comment:
   require_changes: true
 
 # Files excluded from coverage entirely. Mirrors `coverage.exclude` in
-# vitest.config.ts — keep the two in sync.
+# vitest.config.ts (frontend) and `omit` in .coveragerc (backend) — keep all
+# three in sync.
 ignore:
+  # Frontend
   - 'src/main.ts'
   - 'src/env.d.ts'
   - 'src/**/*.d.ts'
   - 'tests/**'
   - 'cypress/**'
-  - 'api/**'
+  # Backend. `api/**` as a whole used to be ignored here; only the tests and the
+  # Passenger entry point are now. passenger_wsgi.py is the backend counterpart
+  # to src/main.ts — it only ever executes on the host, so the suite cannot
+  # reach it.
+  - 'api/test_*.py'
+  - 'api/passenger_wsgi.py'
+  # Neither half
   - 'docs/**'
   - 'scripts/**'

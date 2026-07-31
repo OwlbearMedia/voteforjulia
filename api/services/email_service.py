@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 import secrets
 import smtplib
+from contextlib import contextmanager
 from email.message import Message
-from email.utils import formatdate
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formatdate
 from html import escape
 from pathlib import Path
 
 from api.config import EmailConfig
 from api.models import Submission, YardSignRequest
-
 
 _CONFIRMATION_TEMPLATE = Path(__file__).resolve().parents[1] / "email" / "email-template.html"
 _YARD_SIGN_CONFIRMATION_TEMPLATE = (
@@ -62,29 +61,31 @@ def _build_submission_message(config: EmailConfig, submission: Submission) -> MI
 
 def _build_confirmation_content(submission: Submission) -> tuple[str, str]:
     greeting_name = submission.first_name or "there"
-    plain_text_body = "\n".join([
-        f"Hi {greeting_name}!",
-        "",
-        "Thank you so much for reaching out to help promote my campaign. I am incredibly grateful for your support!",
-        "",
-        "Right now, I am in the stage of gathering information and figuring out where volunteers are needed most. I will get you added to our volunteer list and be in touch as more direct needs arise.",
-        "",
-        "If you're looking for a yard sign, they will be coming soon as well. I'm gathering some donations to get those printing costs covered, and will get those shared out as soon as possible!",
-        "",
-        "For now, please keep planting my name in every ear you can and be sure they know about the primary vote coming up on August 11th! The primary narrows the mayoral candidates down to two for November.",
-        "",
-        "It's also super helpful if you follow my campaign on Facebook and Instagram, invite others, and share posts as they come up to encourage folks to get engaged or donate if they can.",
-        "Facebook: https://www.facebook.com/profile.php?id=61590411090366",
-        "Instagram: https://www.instagram.com/voteforjuliahamann",
-        "",
-        "We've got an exciting season ahead of us and I can't wait to connect with you in person!",
-        "",
-        "All my best,",
-        "Julia",
-        "",
-        "Paid for by Julia Hamann for Mankato Mayor",
-        "https://voteforjulia.com",
-    ])
+    plain_text_body = "\n".join(
+        [
+            f"Hi {greeting_name}!",
+            "",
+            "Thank you so much for reaching out to help promote my campaign. I am incredibly grateful for your support!",
+            "",
+            "Right now, I am in the stage of gathering information and figuring out where volunteers are needed most. I will get you added to our volunteer list and be in touch as more direct needs arise.",
+            "",
+            "If you're looking for a yard sign, they will be coming soon as well. I'm gathering some donations to get those printing costs covered, and will get those shared out as soon as possible!",
+            "",
+            "For now, please keep planting my name in every ear you can and be sure they know about the primary vote coming up on August 11th! The primary narrows the mayoral candidates down to two for November.",
+            "",
+            "It's also super helpful if you follow my campaign on Facebook and Instagram, invite others, and share posts as they come up to encourage folks to get engaged or donate if they can.",
+            "Facebook: https://www.facebook.com/profile.php?id=61590411090366",
+            "Instagram: https://www.instagram.com/voteforjuliahamann",
+            "",
+            "We've got an exciting season ahead of us and I can't wait to connect with you in person!",
+            "",
+            "All my best,",
+            "Julia",
+            "",
+            "Paid for by Julia Hamann for Mankato Mayor",
+            "https://voteforjulia.com",
+        ]
+    )
 
     template_html = _CONFIRMATION_TEMPLATE.read_text(encoding="utf-8")
     html_body = template_html.replace("{submission.name}", escape(greeting_name))
@@ -111,7 +112,9 @@ def _build_confirmation_message(config: EmailConfig, submission: Submission) -> 
     return msg
 
 
-def _send_message(server: smtplib.SMTP, from_address: str, recipients: list[str], message: Message) -> dict:
+def _send_message(
+    server: smtplib.SMTP, from_address: str, recipients: list[str], message: Message
+) -> dict:
     return server.sendmail(from_address, recipients, message.as_string())
 
 
@@ -158,7 +161,9 @@ def send_confirmation_email(config: EmailConfig, submission: Submission) -> dict
         return _send_message(server, config.email_address, [submission.email], msg)
 
 
-def _build_yard_sign_request_message(config: EmailConfig, yard_sign_request: YardSignRequest) -> MIMEMultipart:
+def _build_yard_sign_request_message(
+    config: EmailConfig, yard_sign_request: YardSignRequest
+) -> MIMEMultipart:
     msg = MIMEMultipart()
     _set_common_headers(
         msg,
@@ -173,27 +178,29 @@ def _build_yard_sign_request_message(config: EmailConfig, yard_sign_request: Yar
 
 def _build_yard_sign_confirmation_content(yard_sign_request: YardSignRequest) -> tuple[str, str]:
     greeting_name = yard_sign_request.first_name or "friend"
-    plain_text_body = "\n".join([
-        f"Thanks so much for your support, {greeting_name}!",
-        "",
-        "I'm so glad you're requesting a yard sign to help spread the word for my campaign for Mankato Mayor!",
-        "",
-        "Check your inbox to coordinate sign delivery. We'll be in touch soon!",
-        "",
-        "If you plan to pay online, you can make a donation at https://voteforjulia.com/donate and write \"yard sign\" in the comment section.",
-        "",
-        "It's also super helpful if you follow my campaign on Facebook and Instagram, invite others, and share posts as they come up to encourage folks to get engaged or donate if they can.",
-        "Facebook: https://www.facebook.com/profile.php?id=61590411090366",
-        "Instagram: https://www.instagram.com/voteforjuliahamann",
-        "",
-        "Thank you again for your support!",
-        "",
-        "All my best,",
-        "Julia",
-        "",
-        "Paid for by Julia Hamann for Mankato Mayor",
-        "https://voteforjulia.com",
-    ])
+    plain_text_body = "\n".join(
+        [
+            f"Thanks so much for your support, {greeting_name}!",
+            "",
+            "I'm so glad you're requesting a yard sign to help spread the word for my campaign for Mankato Mayor!",
+            "",
+            "Check your inbox to coordinate sign delivery. We'll be in touch soon!",
+            "",
+            'If you plan to pay online, you can make a donation at https://voteforjulia.com/donate and write "yard sign" in the comment section.',
+            "",
+            "It's also super helpful if you follow my campaign on Facebook and Instagram, invite others, and share posts as they come up to encourage folks to get engaged or donate if they can.",
+            "Facebook: https://www.facebook.com/profile.php?id=61590411090366",
+            "Instagram: https://www.instagram.com/voteforjuliahamann",
+            "",
+            "Thank you again for your support!",
+            "",
+            "All my best,",
+            "Julia",
+            "",
+            "Paid for by Julia Hamann for Mankato Mayor",
+            "https://voteforjulia.com",
+        ]
+    )
 
     template_html = _YARD_SIGN_CONFIRMATION_TEMPLATE.read_text(encoding="utf-8")
     html_body = template_html.replace("{submission.name}", escape(greeting_name))
@@ -201,7 +208,9 @@ def _build_yard_sign_confirmation_content(yard_sign_request: YardSignRequest) ->
     return plain_text_body, html_body
 
 
-def _build_yard_sign_confirmation_message(config: EmailConfig, yard_sign_request: YardSignRequest) -> Message:
+def _build_yard_sign_confirmation_message(
+    config: EmailConfig, yard_sign_request: YardSignRequest
+) -> Message:
     plain_text_body, html_body = _build_yard_sign_confirmation_content(yard_sign_request)
 
     if config.plain_text_confirmation_only:
@@ -227,7 +236,9 @@ def send_yard_sign_request_email(config: EmailConfig, yard_sign_request: YardSig
         return _send_message(server, config.email_address, config.recipients, msg)
 
 
-def send_yard_sign_confirmation_email(config: EmailConfig, yard_sign_request: YardSignRequest) -> dict:
+def send_yard_sign_confirmation_email(
+    config: EmailConfig, yard_sign_request: YardSignRequest
+) -> dict:
     msg = _build_yard_sign_confirmation_message(config, yard_sign_request)
 
     with _smtp_connection(config) as server:

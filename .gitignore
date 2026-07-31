@@ -13,9 +13,11 @@ dist-ssr
 *.local
 .venv
 .vite
+# Vitest's coverage/ directory, plus coverage.py's data file and the Cobertura
+# report the Python job uploads to Codecov.
 coverage
-CLAUDE.md
-.claude
+.coverage
+coverage-api.xml
 
 cypress.env.json
 cypress/screenshots
@@ -26,8 +28,16 @@ __pycache__
 *.pyc
 
 # Editor directories and files
-.vscode
+# `.vscode/*` not `.vscode`: git does not descend into an excluded directory,
+# so the negation below only works if the contents are excluded rather than
+# the directory itself.
+.vscode/*
 !.vscode/extensions.json
+# settings.json is tracked on purpose: it carries project configuration (which
+# interpreter, pytest over unittest, the pinned ruff rather than the
+# extension's bundled copy), not personal taste. Keep editor preferences that
+# are genuinely yours in VS Code's User settings, not here.
+!.vscode/settings.json
 .idea
 .DS_Store
 *.suo

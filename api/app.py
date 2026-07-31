@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections import deque
 import logging
 import smtplib
+from collections import deque
 from time import monotonic
 
 from flask import Flask, jsonify, request
@@ -10,8 +10,10 @@ from flask import Flask, jsonify, request
 try:
     from googleapiclient.errors import HttpError
 except Exception:  # pragma: no cover - fallback for environments without google libs
+
     class HttpError(Exception):
         pass
+
 
 from api.config import (
     DEFAULT_YARDSIGN_SHEETS_WORKSHEET,
@@ -40,46 +42,47 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-_RATE_LIMIT_WINDOW_SECONDS = max(int(env('RATE_LIMIT_WINDOW_SECONDS', '60')), 1)
-_RATE_LIMIT_MAX_REQUESTS = max(int(env('RATE_LIMIT_MAX_REQUESTS', '5')), 1)
+_RATE_LIMIT_WINDOW_SECONDS = max(int(env("RATE_LIMIT_WINDOW_SECONDS", "60")), 1)
+_RATE_LIMIT_MAX_REQUESTS = max(int(env("RATE_LIMIT_MAX_REQUESTS", "5")), 1)
 _RATE_LIMIT_BUCKETS: dict[str, deque[float]] = {}
 
 _CORS_ALLOWED_ORIGINS = {
     item.strip()
     for item in env(
-        'CORS_ALLOWED_ORIGINS',
+        "CORS_ALLOWED_ORIGINS",
         (
-            'https://voteforjulia.com,'
-            'https://www.voteforjulia.com,'
-            'https://test.voteforjulia.com,'
-            'https://test-api.voteforjulia.com,'
-            'http://localhost:5173'
+            "https://voteforjulia.com,"
+            "https://www.voteforjulia.com,"
+            "https://test.voteforjulia.com,"
+            "https://test-api.voteforjulia.com,"
+            "http://localhost:5173"
         ),
-    ).split(',')
+    ).split(",")
     if item.strip()
 }
 
 
 @app.after_request
 def add_cors_headers(response):
-    origin = request.headers.get('Origin', '').strip()
+    origin = request.headers.get("Origin", "").strip()
 
     # Vary goes on every response, not just the allowed ones. The response
     # body/headers depend on Origin either way, so a shared cache that only
     # learns this on the allowed branch could serve a disallowed origin's
     # cached response (no Allow-Origin header) to an allowed one, or vice
     # versa. `.vary.add` merges into any existing Vary instead of clobbering.
-    response.vary.add('Origin')
+    response.vary.add("Origin")
 
     if origin and origin in _CORS_ALLOWED_ORIGINS:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-        response.headers['Access-Control-Max-Age'] = '86400'
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Max-Age"] = "86400"
 
     return response
 
-def _validate_email_config(config: EmailConfig, recipient_env: str = 'RECIPIENT_EMAIL') -> str:
+
+def _validate_email_config(config: EmailConfig, recipient_env: str = "RECIPIENT_EMAIL") -> str:
     if not config.email_address or not config.email_password:
         return "Email service not configured: missing EMAIL_ADDRESS or EMAIL_PASSWORD"
 
@@ -115,13 +118,13 @@ def _missing_required_fields_message(submission: Submission) -> str:
     missing_email = _is_blank(submission.email)
 
     if missing_first_name and missing_email:
-        return 'First name and email are required.'
+        return "First name and email are required."
     if missing_first_name:
-        return 'First name is required.'
+        return "First name is required."
     if missing_email:
-        return 'Email is required.'
+        return "Email is required."
 
-    return ''
+    return ""
 
 
 def _yard_sign_request_from_request() -> YardSignRequest | None:
@@ -138,16 +141,16 @@ def _yard_sign_request_from_request() -> YardSignRequest | None:
 def _missing_required_yard_sign_fields_message(yard_sign_request: YardSignRequest) -> str:
     missing_labels = []
     if _is_blank(yard_sign_request.first_name):
-        missing_labels.append('First name')
+        missing_labels.append("First name")
     if _is_blank(yard_sign_request.email):
-        missing_labels.append('Email')
+        missing_labels.append("Email")
     if _is_blank(yard_sign_request.address):
-        missing_labels.append('Address')
+        missing_labels.append("Address")
 
     if not missing_labels:
-        return ''
+        return ""
     if len(missing_labels) == 1:
-        return f'{missing_labels[0]} is required.'
+        return f"{missing_labels[0]} is required."
 
     return f"{', '.join(missing_labels[:-1])} and {missing_labels[-1]} are required."
 
@@ -158,17 +161,17 @@ def _rate_limit_key() -> str:
     # its *last* hop counts — proxies append the connecting address to whatever
     # list the client sent, so the first hop is attacker-controlled and would
     # let a caller mint a fresh rate-limit bucket per request.
-    connecting_ip = request.headers.get('CF-Connecting-IP', '').strip()
+    connecting_ip = request.headers.get("CF-Connecting-IP", "").strip()
     if connecting_ip:
         return connecting_ip
 
-    forwarded_for = request.headers.get('X-Forwarded-For', '')
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
     if forwarded_for:
-        last_hop = forwarded_for.rsplit(',', 1)[-1].strip()
+        last_hop = forwarded_for.rsplit(",", 1)[-1].strip()
         if last_hop:
             return last_hop
 
-    return request.remote_addr or 'unknown'
+    return request.remote_addr or "unknown"
 
 
 def _consume_rate_limit(scope: str) -> int | None:
@@ -195,7 +198,7 @@ def _consume_rate_limit(scope: str) -> int | None:
     return None
 
 
-_SMTP_UNAVAILABLE_MESSAGE = 'Unable to send email right now.'
+_SMTP_UNAVAILABLE_MESSAGE = "Unable to send email right now."
 
 # Generous relative to the forms' combined field limits, but keeps an
 # oversized/hostile payload from flooding the logs.
@@ -242,20 +245,20 @@ def _log_request_body(endpoint_name: str) -> None:
     # the submitter still has their data and can retry.
     raw_body = request.get_data(as_text=True)
     if len(raw_body) > _MAX_LOGGED_BODY_CHARS:
-        raw_body = raw_body[:_MAX_LOGGED_BODY_CHARS] + '…[truncated]'
+        raw_body = raw_body[:_MAX_LOGGED_BODY_CHARS] + "…[truncated]"
     logger.error("%s unrecoverable request body: %s", endpoint_name, raw_body)
 
 
 def _lost_submission_response(endpoint_name: str, message: str, status: int):
     """JSON error for a failure that dropped the submission, plus a body dump."""
     _log_request_body(endpoint_name)
-    return jsonify({'error': message}), status
+    return jsonify({"error": message}), status
 
 
 def _rate_limited_response(retry_after: int):
-    response = jsonify({'error': 'Too many requests. Please try again later.'})
+    response = jsonify({"error": "Too many requests. Please try again later."})
     response.status_code = 429
-    response.headers['Retry-After'] = str(retry_after)
+    response.headers["Retry-After"] = str(retry_after)
     return response
 
 
@@ -270,7 +273,7 @@ def _handle_form_submission(
     send_confirmation_email_fn,
     to_sheet_row,
     endpoint_name,
-    recipient_env='RECIPIENT_EMAIL',
+    recipient_env="RECIPIENT_EMAIL",
 ):
     _log_request_fields(endpoint_name)
 
@@ -282,31 +285,29 @@ def _handle_form_submission(
         config_error = _validate_email_config(email_config, recipient_env)
         if config_error:
             logger.error(config_error)
-            return _lost_submission_response(
-                endpoint_name, 'Email service is not configured.', 500
-            )
+            return _lost_submission_response(endpoint_name, "Email service is not configured.", 500)
 
         parsed = parse_request()
         if parsed is None:
-            return jsonify({'error': 'Request body must be valid JSON or form data.'}), 400
+            return jsonify({"error": "Request body must be valid JSON or form data."}), 400
 
         missing_message = missing_fields_message(parsed)
         if missing_message:
-            return jsonify({'error': missing_message}), 400
+            return jsonify({"error": missing_message}), 400
 
         validation_error = validate(parsed)
         if validation_error:
-            return jsonify({'error': validation_error}), 400
+            return jsonify({"error": validation_error}), 400
 
         if not looks_like_email(get_email(parsed)):
-            return jsonify({'error': 'Please provide a valid email address.'}), 400
+            return jsonify({"error": "Please provide a valid email address."}), 400
 
         refused = send_notification_email(email_config, parsed)
 
         if refused:
             logger.error("SMTP refused recipients: %s", ", ".join(refused.keys()))
             return _lost_submission_response(
-                endpoint_name, 'Unable to deliver email to recipient.', 502
+                endpoint_name, "Unable to deliver email to recipient.", 502
             )
 
         try:
@@ -333,10 +334,10 @@ def _handle_form_submission(
         except (ValueError, OSError, HttpError):
             logger.exception("Failed to append submission to Google Sheet")
             return _lost_submission_response(
-                endpoint_name, 'Email sent, but failed to save submission.', 502
+                endpoint_name, "Email sent, but failed to save submission.", 502
             )
 
-        return jsonify({'message': 'Email sent successfully!'}), 200
+        return jsonify({"message": "Email sent successfully!"}), 200
 
     except smtplib.SMTPAuthenticationError:
         logger.exception("SMTP authentication failed")
@@ -347,30 +348,33 @@ def _handle_form_submission(
     except ValueError:
         logger.exception("Invalid SMTP configuration")
         return _lost_submission_response(
-            endpoint_name, 'Server email configuration is invalid.', 500
+            endpoint_name, "Server email configuration is invalid.", 500
         )
 
     except Exception:
         logger.exception("Unexpected error while handling %s", endpoint_name)
-        return _lost_submission_response(endpoint_name, 'Internal server error.', 500)
+        return _lost_submission_response(endpoint_name, "Internal server error.", 500)
 
 
-@app.route('/health', methods=['GET'])
-@app.route('/api/health', methods=['GET'])
+@app.route("/health", methods=["GET"])
+@app.route("/api/health", methods=["GET"])
 def health_check():
-    return jsonify({
-        'status': 'ok',
-        'path': request.path,
-        'script_root': request.script_root,
-    }), 200
+    return jsonify(
+        {
+            "status": "ok",
+            "path": request.path,
+            "script_root": request.script_root,
+        }
+    ), 200
 
-@app.route('/send-email', methods=['POST', 'OPTIONS'])
-@app.route('/api/send-email', methods=['POST', 'OPTIONS'])
+
+@app.route("/send-email", methods=["POST", "OPTIONS"])
+@app.route("/api/send-email", methods=["POST", "OPTIONS"])
 def send_email():
-    if request.method == 'OPTIONS':
-        return ('', 204)
+    if request.method == "OPTIONS":
+        return ("", 204)
 
-    retry_after = _consume_rate_limit('send-email')
+    retry_after = _consume_rate_limit("send-email")
     if retry_after is not None:
         return _rate_limited_response(retry_after)
 
@@ -383,22 +387,23 @@ def send_email():
         send_notification_email=send_submission_email,
         send_confirmation_email_fn=send_confirmation_email,
         to_sheet_row=lambda submission: submission.to_sheet_row(),
-        endpoint_name='/send-email',
+        endpoint_name="/send-email",
     )
 
-@app.route('/yard-sign', methods=['POST', 'OPTIONS'])
-@app.route('/api/yard-sign', methods=['POST', 'OPTIONS'])
-def yard_sign():
-    if request.method == 'OPTIONS':
-        return ('', 204)
 
-    retry_after = _consume_rate_limit('yard-sign')
+@app.route("/yard-sign", methods=["POST", "OPTIONS"])
+@app.route("/api/yard-sign", methods=["POST", "OPTIONS"])
+def yard_sign():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    retry_after = _consume_rate_limit("yard-sign")
     if retry_after is not None:
         return _rate_limited_response(retry_after)
 
     return _handle_form_submission(
         sheets_config=load_sheets_config(
-            'GOOGLE_SHEETS_YARDSIGN_WORKSHEET', DEFAULT_YARDSIGN_SHEETS_WORKSHEET
+            "GOOGLE_SHEETS_YARDSIGN_WORKSHEET", DEFAULT_YARDSIGN_SHEETS_WORKSHEET
         ),
         parse_request=_yard_sign_request_from_request,
         missing_fields_message=_missing_required_yard_sign_fields_message,
@@ -407,9 +412,10 @@ def yard_sign():
         send_notification_email=send_yard_sign_request_email,
         send_confirmation_email_fn=send_yard_sign_confirmation_email,
         to_sheet_row=lambda yard_sign_request: yard_sign_request.to_sheet_row(),
-        endpoint_name='/yard-sign',
-        recipient_env='RECIPIENT_EMAIL_SIGNS',
+        endpoint_name="/yard-sign",
+        recipient_env="RECIPIENT_EMAIL_SIGNS",
     )
 
-if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=int(env('PORT', '5000')), debug=False)
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=int(env("PORT", "5000")), debug=False)

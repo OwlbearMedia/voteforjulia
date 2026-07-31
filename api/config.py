@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 
 DEFAULT_SMTP_SERVER = "mail.voteforjulia.com"
 DEFAULT_SMTP_PORT = 465
@@ -48,7 +48,6 @@ class SheetsConfig:
     service_account_json: str
 
 
-
 def load_email_config(recipient_env: str = "RECIPIENT_EMAIL") -> EmailConfig:
     smtp_port_raw = env("SMTP_PORT", str(DEFAULT_SMTP_PORT))
     smtp_security = env("SMTP_SECURITY", DEFAULT_SMTP_SECURITY).lower()
@@ -68,7 +67,6 @@ def load_email_config(recipient_env: str = "RECIPIENT_EMAIL") -> EmailConfig:
         recipients=parse_recipients(recipients_raw),
         plain_text_confirmation_only=env_bool("PLAIN_TEXT_CONFIRMATION_ONLY", False),
     )
-
 
 
 def load_sheets_config(

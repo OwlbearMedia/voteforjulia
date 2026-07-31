@@ -1,0 +1,521 @@
+openapi: 3.1.0
+
+info:
+  title: Vote for Julia API
+  version: '1.0.0'
+  description: |
+    Form-submission backend for the Julia Hamann for Mankato Mayor campaign site.
+
+    The API accepts two supporter-facing submissions — the contact/volunteer form
+    and the yard-sign request form. Each accepted submission is emailed to the
+    campaign, acknowledged with a confirmation email to the submitter, and
+    appended as a row to a Google Sheet.
+
+    ### Requests
+
+    Every submission endpoint accepts **either** a JSON body
+    (`application/json`) **or** an HTML form post
+    (`application/x-www-form-urlencoded` / `multipart/form-data`). Field names
+    are identical in both encodings; the form encoding exists so the site's
+    `<form action="/api/…">` still works with JavaScript disabled. If the body
+    is neither valid JSON nor form data, the request fails with `400`.
+
+    ### Text normalization
+
+    Every string field is trimmed of leading/trailing spaces and tabs (newlines
+    are *not* trimmed) before validation, and all length limits below apply to
+    the normalized value. Control characters are rejected everywhere; only
+    `message` may contain newlines.
+
+    ### Authentication
+
+    None. The endpoints are public and protected by CORS plus per-IP rate
+    limiting.
+  contact:
+    name: Vote for Julia
+    email: info@voteforjulia.com
+
+servers:
+  - url: https://api.voteforjulia.com
+    description: Production
+  - url: https://test-api.voteforjulia.com
+    description: Test/staging
+  - url: https://voteforjulia.com/api
+    description: |
+      Production, same-origin path prefix. Every route is registered twice —
+      bare (`/send-email`) and `/api`-prefixed (`/api/send-email`) — so the
+      no-JavaScript form fallback can post to the site's own origin.
+  - url: http://localhost:5000
+    description: Local development (`python -m api.app`; override with `PORT`)
+
+tags:
+  - name: Forms
+    description: Supporter form submissions.
+  - name: Ops
+    description: Health and diagnostics.
+
+paths:
+  /health:
+    get:
+      tags: [Ops]
+      summary: Health check
+      description: |
+        Liveness probe. Also echoes the request path and WSGI `SCRIPT_ROOT`,
+        which is how the deployed mount point is verified — under Passenger the
+        app may be served from a subdirectory, and `script_root` reveals which.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: The service is up.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /send-email:
+    post:
+      tags: [Forms]
+      summary: Submit the contact / volunteer form
+      description: |
+        Validates the submission, emails it to `RECIPIENT_EMAIL`, sends the
+        submitter a confirmation, and appends a row to the configured Google
+        Sheet.
+
+        `firstName` and `email` are required. A confirmation email that fails to
+        send is logged but does **not** fail the request; a Google Sheets append
+        that fails does (`502`), because the submission is then only in email.
+      operationId: sendEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactSubmission'
+            examples:
+              volunteer:
+                summary: Volunteer signing up to help
+                value:
+                  firstName: Alex
+                  lastName: Rivera
+                  email: alex@example.com
+                  phone: '507-555-0142'
+                  helpWays: [Canvassing, Events]
+                  message: Happy to help on weekends.
+              minimal:
+                summary: Minimum accepted payload
+                value:
+                  firstName: Alex
+                  email: alex@example.com
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ContactSubmission'
+            encoding:
+              helpWays:
+                style: form
+                explode: true
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ContactSubmission'
+      responses:
+        '200':
+          $ref: '#/components/responses/Sent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerMisconfigured'
+        '502':
+          $ref: '#/components/responses/UpstreamFailed'
+    options:
+      tags: [Forms]
+      summary: CORS preflight
+      operationId: sendEmailPreflight
+      responses:
+        '204':
+          $ref: '#/components/responses/Preflight'
+
+  /yard-sign:
+    post:
+      tags: [Forms]
+      summary: Submit a yard-sign request
+      description: |
+        Same pipeline as `/send-email`, but notifications go to
+        `RECIPIENT_EMAIL_SIGNS` (falling back to `RECIPIENT_EMAIL` when unset)
+        and rows are appended to the `Yard Signs` worksheet.
+
+        `firstName`, `email`, and `address` are required.
+      operationId: yardSign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/YardSignRequest'
+            examples:
+              request:
+                summary: Yard-sign request paying by check
+                value:
+                  firstName: Sam
+                  lastName: Okafor
+                  email: sam@example.com
+                  phone: '507-555-0199'
+                  address: 123 Riverfront Dr, Mankato, MN 56001
+                  preferredPayment: [Check]
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/YardSignRequest'
+            encoding:
+              preferredPayment:
+                style: form
+                explode: true
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/YardSignRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Sent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerMisconfigured'
+        '502':
+          $ref: '#/components/responses/UpstreamFailed'
+    options:
+      tags: [Forms]
+      summary: CORS preflight
+      operationId: yardSignPreflight
+      responses:
+        '204':
+          $ref: '#/components/responses/Preflight'
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status, path, script_root]
+      properties:
+        status:
+          type: string
+          const: ok
+        path:
+          type: string
+          description: The path Flask matched, i.e. `/health` or `/api/health`.
+          examples: ['/api/health']
+        script_root:
+          type: string
+          description: WSGI `SCRIPT_ROOT` — the prefix the app is mounted under.
+          examples: ['']
+      examples:
+        - status: ok
+          path: /api/health
+          script_root: ''
+
+    NameFields:
+      type: object
+      description: |
+        Name handling shared by both forms. Send `firstName` (+ optional
+        `lastName`), which is what the site's forms do.
+
+        If neither `firstName` nor `lastName` is present, `name` is split on the
+        first run of whitespace into first/last. If either *is* present, they
+        win and `name` is ignored for the split. Independently, the full name
+        recorded in the notification email is `name` when supplied, otherwise
+        `firstName` and `lastName` joined with a space.
+      properties:
+        firstName:
+          type: string
+          maxLength: 80
+          description: Required (after trimming) unless supplied via `name`.
+          examples: [Alex]
+        lastName:
+          type: string
+          maxLength: 80
+          examples: [Rivera]
+        name:
+          type: string
+          description: |
+            Full name. Accepted as an alternative to `firstName`/`lastName`;
+            the site posts it as a hidden field alongside them.
+          examples: [Alex Rivera]
+
+    ContactSubmission:
+      allOf:
+        - $ref: '#/components/schemas/NameFields'
+        - type: object
+          properties:
+            email:
+              type: string
+              format: email
+              maxLength: 254
+              description: Required. Must match the server's email pattern.
+              examples: [alex@example.com]
+            phone:
+              type: string
+              maxLength: 32
+              description: Free-form; not parsed or normalized beyond trimming.
+              examples: ['507-555-0142']
+            message:
+              type: string
+              maxLength: 500
+              description: The only field that may contain newlines.
+            helpWays:
+              description: |
+                Ways the supporter wants to help. Accepts a JSON array of
+                strings, or a comma-separated string, or (in form encoding)
+                repeated `helpWays[]` fields. `helpWays[]` is also accepted as a
+                JSON key. Max 10 entries, 100 characters each.
+
+                The site's checkboxes submit: `Canvassing`, `Events`,
+                `Letter to the editor`, `Fundraiser`, `Campaign team` — but the
+                API accepts any strings within the limits.
+              oneOf:
+                - type: array
+                  maxItems: 10
+                  items:
+                    type: string
+                    maxLength: 100
+                - type: string
+              examples:
+                - [Canvassing, Events]
+
+    YardSignRequest:
+      allOf:
+        - $ref: '#/components/schemas/NameFields'
+        - type: object
+          properties:
+            email:
+              type: string
+              format: email
+              maxLength: 254
+              description: Required.
+              examples: [sam@example.com]
+            phone:
+              type: string
+              maxLength: 32
+              examples: ['507-555-0199']
+            address:
+              type: string
+              maxLength: 200
+              description: Required. Where the sign should be delivered.
+              examples: [123 Riverfront Dr, Mankato, MN 56001]
+            preferredPayment:
+              description: |
+                Accepts a JSON array of strings, a comma-separated string, or
+                repeated `preferredPayment[]` fields. `preferredPayment[]` is
+                also accepted as a JSON key. Max 3 entries, 20 characters each.
+
+                The site's checkboxes submit: `Online`, `Cash`, `Check`,
+                `Already Donated`.
+              oneOf:
+                - type: array
+                  maxItems: 3
+                  items:
+                    type: string
+                    maxLength: 20
+                - type: string
+              examples:
+                - [Check]
+
+    SuccessResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          const: Email sent successfully!
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable message, safe to show to the submitter.
+
+  responses:
+    Sent:
+      description: |
+        Submission accepted: the notification email was accepted by the SMTP
+        server and the row was appended to the sheet.
+      headers:
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SuccessResponse'
+
+    BadRequest:
+      description: |
+        The request was rejected before anything was sent. The submitter still
+        has their data and can correct it and retry.
+      headers:
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unparseable:
+              summary: Body is neither JSON nor form data
+              value:
+                error: Request body must be valid JSON or form data.
+            missingFields:
+              summary: Required field blank or absent
+              value:
+                error: First name and email are required.
+            missingYardSignFields:
+              summary: Required yard-sign fields absent
+              value:
+                error: Email and Address are required.
+            tooLong:
+              summary: A field exceeds its length limit
+              value:
+                error: Message must be 500 characters or fewer.
+            controlChars:
+              summary: A field contains control characters
+              value:
+                error: Email contains invalid characters.
+            badEmail:
+              summary: Email is well-formed text but not an address
+              value:
+                error: Please provide a valid email address.
+
+    RateLimited:
+      description: |
+        Too many submissions from this client. The limit is per endpoint and per
+        client IP — 5 requests per 60 seconds by default
+        (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`). The client is
+        identified by `CF-Connecting-IP`, falling back to the **last** hop of
+        `X-Forwarded-For`, then the socket address.
+
+        Buckets live in process memory, so they are per-worker and reset on
+        restart.
+      headers:
+        Retry-After:
+          description: Seconds until the oldest request leaves the window.
+          schema:
+            type: integer
+            minimum: 1
+          example: 42
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Too many requests. Please try again later.
+
+    ServerMisconfigured:
+      description: |
+        The server could not process the submission. Checked *before* the body
+        is parsed, so a misconfigured deployment returns this even for an
+        invalid payload.
+      headers:
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            notConfigured:
+              summary: Missing or invalid credentials/recipients
+              value:
+                error: Email service is not configured.
+            invalidSmtpConfig:
+              summary: Unparseable SMTP_PORT / SMTP_SECURITY
+              value:
+                error: Server email configuration is invalid.
+            unexpected:
+              summary: Unhandled exception
+              value:
+                error: Internal server error.
+
+    UpstreamFailed:
+      description: |
+        A downstream service failed after the request was accepted as valid. The
+        submission is lost, so the server logs the raw request body (truncated
+        at 4096 characters) as the only remaining copy.
+
+        `Email sent, but failed to save submission.` is the partial-success
+        case: the campaign got the email, the spreadsheet did not get the row.
+      headers:
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            smtpUnavailable:
+              summary: SMTP auth failure or transport error
+              value:
+                error: Unable to send email right now.
+            recipientRefused:
+              summary: SMTP server refused every recipient
+              value:
+                error: Unable to deliver email to recipient.
+            sheetsFailed:
+              summary: Email sent, Google Sheets append failed
+              value:
+                error: Email sent, but failed to save submission.
+
+    Preflight:
+      description: |
+        Empty preflight response. The CORS headers are attached by an
+        `after_request` hook and are present only when the `Origin` header
+        matches `CORS_ALLOWED_ORIGINS`.
+      headers:
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+        Access-Control-Allow-Methods:
+          description: Present only for an allowed origin.
+          schema:
+            type: string
+            const: POST, OPTIONS
+        Access-Control-Allow-Headers:
+          description: Present only for an allowed origin.
+          schema:
+            type: string
+            const: Content-Type
+        Access-Control-Max-Age:
+          description: Present only for an allowed origin.
+          schema:
+            type: string
+            const: '86400'
+
+  headers:
+    Vary:
+      description: |
+        Always includes `Origin` — on rejected origins too, so a shared cache
+        cannot serve one origin's response to another.
+      schema:
+        type: string
+      example: Origin
+
+    AccessControlAllowOrigin:
+      description: |
+        Echoes the request's `Origin` when it is in `CORS_ALLOWED_ORIGINS`.
+        Omitted entirely otherwise. Defaults to the production, www, test, and
+        test-api origins plus `http://localhost:5173`.
+      schema:
+        type: string
+      example: https://voteforjulia.com

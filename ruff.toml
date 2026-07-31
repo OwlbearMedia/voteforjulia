@@ -1,0 +1,33 @@
+# Ruff is the Python equivalent of eslint + prettier in one tool:
+# `ruff check` lints, `ruff format` formats. Config lives here rather than in a
+# pyproject.toml so it stays plain tool config with no packaging implications —
+# the deploy installs api/requirements.txt directly and does not build a package.
+
+# The host's cPanel virtualenv runs 3.11 (see docs/hosting.md). Pinning it here
+# stops `UP` autofixes from rewriting code into syntax the host can't run.
+target-version = "py311"
+
+# 100 rather than the default 88: the existing code sits comfortably under it,
+# so adopting the formatter reflows a handful of lines instead of most of them.
+line-length = 100
+
+[lint]
+select = [
+  "F",   # pyflakes — unused imports/variables, undefined names
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "I",   # isort — import ordering
+  "UP",  # pyupgrade — modernize syntax for target-version
+  "B",   # flake8-bugbear — likely bugs
+  "C4",  # flake8-comprehensions
+  "SIM", # flake8-simplify
+]
+
+ignore = [
+  # `ruff format` already enforces line-length on everything it can reflow, so
+  # E501 only ever fires on what it can't: long string literals. In this
+  # codebase those are the confirmation-email paragraphs in
+  # services/email_service.py, where one list element is one paragraph of copy.
+  # Splitting them would change what supporters receive.
+  "E501",
+]

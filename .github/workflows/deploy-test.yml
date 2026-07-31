@@ -126,7 +126,20 @@ jobs:
           name: test-frontend-dist
           path: dist
 
-      - name: Upload dist contents to test server root
+      - name: Prepare clean staging directory on test server
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+            rm -rf ./public_html_test_next
+            mkdir -p ./public_html_test_next
+
+      - name: Upload dist contents to test staging directory
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -135,11 +148,11 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
           source: dist/**
-          target: ./public_html_test
+          target: ./public_html_test_next
           overwrite: true
           strip_components: 1
 
-      - name: Upload .htaccess to test server root
+      - name: Upload .htaccess to test staging directory
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -148,9 +161,34 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
           source: dist/.htaccess
-          target: ./public_html_test
+          target: ./public_html_test_next
           overwrite: true
           strip_components: 1
+
+      - name: Atomically swap staging into the test document root
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+            if [ ! -d ./public_html_test_next ]; then
+              echo "Staging directory ./public_html_test_next is missing; aborting swap." >&2
+              exit 1
+            fi
+            # Same two-rename swap as production. Uploading straight into the live
+            # root meant the e2e suite could hit new HTML while .htaccess was still
+            # the old copy or mid-write — and because nothing ever pruned the
+            # directory, every past deploy's hashed assets accumulated there.
+            rm -rf ./public_html_test_prev
+            if [ -d ./public_html_test ]; then
+              mv ./public_html_test ./public_html_test_prev
+            fi
+            mv ./public_html_test_next ./public_html_test
+            echo "Swapped new build into ./public_html_test (previous build kept at ./public_html_test_prev)."
 
   deploy-test-api:
     name: Deploy Python API to test environment
@@ -178,6 +216,35 @@ jobs:
           target: ./api_test
           overwrite: true
           strip_components: 1
+
+      # Must run after the upload (it reads the requirements.txt just deployed)
+      # and before the restart: if the install fails the job stops here, leaving
+      # the old worker serving the old code rather than booting new code against
+      # dependencies that were never installed.
+      - name: Install Python dependencies in test virtualenv
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+            output=$(/usr/sbin/cloudlinux-selector install-modules --json \
+              --interpreter python --app-root api_test \
+              --requirements-file requirements.txt)
+            echo "$output"
+            # install-modules exits 0 even when pip fails, so the JSON "result"
+            # field is the only reliable signal. Strip whitespace before matching
+            # so the check survives minified JSON ("result":"success") as well as
+            # the spaced form the selector emits today.
+            if printf '%s' "$output" | tr -d '[:space:]' | grep -q '"result":"success"'; then
+              echo "Dependencies installed."
+            else
+              echo "Dependency install failed; aborting before restart." >&2
+              exit 1
+            fi
 
       - name: Restart Python app (Passenger) in test
         uses: appleboy/ssh-action@v1.2.5
