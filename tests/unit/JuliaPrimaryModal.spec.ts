@@ -73,12 +73,12 @@ describe('JuliaPrimaryModal', () => {
     [
       'days out',
       PRIMARY_DAY_STARTS_AT - 11 * DAY_MS,
-      'Primary Election Day is in 12 days on August 11!'
+      'Only 12 days until Primary Election Day, August 11!'
     ],
     [
       'partway through the day two nights out',
       PRIMARY_DAY_STARTS_AT - 1.5 * DAY_MS,
-      'Primary Election Day is in 3 days on August 11!'
+      'Only 3 days until Primary Election Day, August 11!'
     ],
     ['the day before', PRIMARY_DAY_STARTS_AT - 1, 'Primary Election Day is tomorrow, August 11!'],
     ['election day itself', PRIMARY_DAY_STARTS_AT, 'Primary Election Day is today, August 11!'],
