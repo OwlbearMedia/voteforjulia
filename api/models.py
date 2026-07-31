@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import re
-
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 MAX_FIRST_NAME_LENGTH = 80
 MAX_LAST_NAME_LENGTH = 80
@@ -69,7 +68,7 @@ def normalize_string_list(value: object) -> list[str]:
     return []
 
 
-def validate_submission(submission: "Submission") -> str:
+def validate_submission(submission: Submission) -> str:
     if contains_disallowed_control_chars(submission.first_name, allow_newlines=False):
         return "First name contains invalid characters."
     if contains_disallowed_control_chars(submission.last_name, allow_newlines=False):
@@ -117,7 +116,9 @@ def _compose_name(name_value: object, first_name_value: object, last_name_value:
     return " ".join(part for part in (first_name, last_name) if part).strip()
 
 
-def _split_name(name_value: object, first_name_value: object, last_name_value: object) -> tuple[str, str]:
+def _split_name(
+    name_value: object, first_name_value: object, last_name_value: object
+) -> tuple[str, str]:
     first_name = normalize_text(first_name_value)
     last_name = normalize_text(last_name_value)
     if first_name or last_name:
@@ -145,7 +146,7 @@ class Submission:
     help_ways: list[str]
 
     @classmethod
-    def from_json(cls, payload: dict) -> "Submission":
+    def from_json(cls, payload: dict) -> Submission:
         help_ways = normalize_string_list(payload.get("helpWays"))
         if not help_ways:
             help_ways = normalize_string_list(payload.get("helpWays[]"))
@@ -171,7 +172,7 @@ class Submission:
         )
 
     @classmethod
-    def from_form(cls, form_data) -> "Submission":
+    def from_form(cls, form_data) -> Submission:
         help_ways = [item.strip() for item in form_data.getlist("helpWays[]") if item.strip()]
         if not help_ways:
             help_ways = [item.strip() for item in form_data.getlist("helpWays") if item.strip()]
@@ -219,7 +220,7 @@ class Submission:
 
     def to_sheet_row(self) -> list[str]:
         return [
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
             self.first_name,
             self.last_name,
             self.email,
@@ -229,7 +230,7 @@ class Submission:
         ]
 
 
-def validate_yard_sign_request(yard_sign_request: "YardSignRequest") -> str:
+def validate_yard_sign_request(yard_sign_request: YardSignRequest) -> str:
     if contains_disallowed_control_chars(yard_sign_request.first_name, allow_newlines=False):
         return "First name contains invalid characters."
     if contains_disallowed_control_chars(yard_sign_request.last_name, allow_newlines=False):
@@ -257,7 +258,9 @@ def validate_yard_sign_request(yard_sign_request: "YardSignRequest") -> str:
     if len(yard_sign_request.address) > MAX_ADDRESS_LENGTH:
         return f"Address must be {MAX_ADDRESS_LENGTH} characters or fewer."
     if len(yard_sign_request.preferred_payment) > MAX_PREFERRED_PAYMENT_COUNT:
-        return f"Please select no more than {MAX_PREFERRED_PAYMENT_COUNT} preferred payment options."
+        return (
+            f"Please select no more than {MAX_PREFERRED_PAYMENT_COUNT} preferred payment options."
+        )
 
     for payment_option in yard_sign_request.preferred_payment:
         if len(payment_option) > MAX_PREFERRED_PAYMENT_LENGTH:
@@ -280,7 +283,7 @@ class YardSignRequest:
     preferred_payment: list[str]
 
     @classmethod
-    def from_json(cls, payload: dict) -> "YardSignRequest":
+    def from_json(cls, payload: dict) -> YardSignRequest:
         first_name, last_name = _split_name(
             payload.get("name"),
             payload.get("firstName"),
@@ -306,7 +309,7 @@ class YardSignRequest:
         )
 
     @classmethod
-    def from_form(cls, form_data) -> "YardSignRequest":
+    def from_form(cls, form_data) -> YardSignRequest:
         first_name, last_name = _split_name(
             form_data.get("name"),
             form_data.get("firstName"),
@@ -355,7 +358,7 @@ class YardSignRequest:
 
     def to_sheet_row(self) -> list[str]:
         return [
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
             self.first_name,
             self.last_name,
             self.email,

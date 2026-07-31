@@ -1,0 +1,12 @@
+# Development and CI tooling. Deliberately separate from requirements.txt:
+# that file is installed into the host's cPanel virtualenv on every deploy
+# (see docs/hosting.md), so anything added there ships to production. Nothing
+# in this file is imported by the app at runtime.
+#
+# Pinned like requirements.txt so CI results are reproducible.
+-r requirements.txt
+
+openapi-spec-validator==0.7.2
+pytest==8.4.2
+PyYAML==6.0.3
+ruff==0.14.4

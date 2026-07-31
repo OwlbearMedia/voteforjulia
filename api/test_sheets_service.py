@@ -7,9 +7,7 @@ from api.services.sheets_service import append_row, reset_sheets_service_cache
 
 def _fake_service(sheets: list[dict]) -> MagicMock:
     service = MagicMock()
-    service.spreadsheets.return_value.get.return_value.execute.return_value = {
-        "sheets": sheets
-    }
+    service.spreadsheets.return_value.get.return_value.execute.return_value = {"sheets": sheets}
     return service
 
 
@@ -40,12 +38,11 @@ class AppendRowTests(unittest.TestCase):
         build.assert_not_called()
 
     def test_resolves_gid_to_sheet_title(self) -> None:
-        service = _fake_service(
-            [{"properties": {"sheetId": 2083435320, "title": "Yard Signs"}}]
-        )
+        service = _fake_service([{"properties": {"sheetId": 2083435320, "title": "Yard Signs"}}])
 
-        with patch("google.oauth2.service_account.Credentials.from_service_account_info"), patch(
-            "googleapiclient.discovery.build", return_value=service
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", return_value=service),
         ):
             append_row(self.config, ["2026-01-01", "Jane", "Doe"])
 
@@ -68,8 +65,9 @@ class AppendRowTests(unittest.TestCase):
             "values": [["2026-01-01"], ["2026-01-02"], ["2026-01-03"]]
         }
 
-        with patch("google.oauth2.service_account.Credentials.from_service_account_info"), patch(
-            "googleapiclient.discovery.build", return_value=service
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", return_value=service),
         ):
             append_row(config, ["2026-01-04", "Jane", "Doe"])
 
@@ -98,8 +96,9 @@ class AppendRowTests(unittest.TestCase):
             ]
         }
 
-        with patch("google.oauth2.service_account.Credentials.from_service_account_info"), patch(
-            "googleapiclient.discovery.build", return_value=service
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", return_value=service),
         ):
             append_row(config, ["2026-01-04", "John", "Smith", "j@example.com", "555-5678"])
 
@@ -109,11 +108,12 @@ class AppendRowTests(unittest.TestCase):
     def test_raises_when_gid_not_found(self) -> None:
         service = _fake_service([{"properties": {"sheetId": 999, "title": "Sheet1"}}])
 
-        with patch("google.oauth2.service_account.Credentials.from_service_account_info"), patch(
-            "googleapiclient.discovery.build", return_value=service
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", return_value=service),
+            self.assertRaises(ValueError),
         ):
-            with self.assertRaises(ValueError):
-                append_row(self.config, ["row"])
+            append_row(self.config, ["row"])
 
     def test_plain_worksheet_name_is_used_without_lookup(self) -> None:
         config = SheetsConfig(
@@ -124,8 +124,9 @@ class AppendRowTests(unittest.TestCase):
         )
         service = _fake_service([])
 
-        with patch("google.oauth2.service_account.Credentials.from_service_account_info"), patch(
-            "googleapiclient.discovery.build", return_value=service
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", return_value=service),
         ):
             append_row(config, ["row"])
 

@@ -88,7 +88,7 @@ jobs:
           fail_ci_if_error: false
 
   test-api:
-    name: Python API tests
+    name: Python API lint and tests
     runs-on: ubuntu-latest
 
     steps:
@@ -98,18 +98,32 @@ jobs:
           fetch-depth: 1
 
       - name: Setup Python
+        # Read from .python-version rather than hardcoded here, so CI cannot
+        # drift from the interpreter in the host's cPanel virtualenv — which is
+        # what deploys install api/requirements.txt into. See
+        # docs/hosting.md#mind-the-interpreter-floor. ruff.toml's target-version
+        # tracks the same floor so lint fixes stay runnable on the host.
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version-file: .python-version
           cache: pip
-          cache-dependency-path: api/requirements.txt
+          cache-dependency-path: api/requirements-dev.txt
 
       - name: Install Python dependencies
-        run: python -m pip install -r api/requirements.txt
+        # requirements-dev.txt includes requirements.txt, so this installs the
+        # runtime pins production uses plus the dev-only tooling. Nothing here
+        # reaches the host: deploys install requirements.txt alone.
+        run: python -m pip install -r api/requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Check formatting
+        run: ruff format --check .
 
       - name: Run Python API tests
-        # Discovery picks up every api/test_*.py so new test files can't be
-        # silently left out of CI. -t . keeps imports resolving as the
-        # top-level "api" package.
-        run: python -m unittest discover -s api -t . -p 'test_*.py'
+        # pytest collects every api/test_*.py, so new test files can't be
+        # silently left out of CI. testpaths and import behaviour come from
+        # pytest.ini; imports resolve as the top-level "api" package.
+        run: python -m pytest
 

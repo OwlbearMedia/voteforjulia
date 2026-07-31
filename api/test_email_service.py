@@ -157,11 +157,15 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(parsed["Subject"], "Thanks for reaching out to Julia Hamann for Mayor")
         self.assertEqual(parsed.get_content_subtype(), "alternative")
         self.assertIn("Hi Julia!", plain_text_payload)
-        self.assertIn("Thank you so much for reaching out to help promote my campaign", plain_text_payload)
+        self.assertIn(
+            "Thank you so much for reaching out to help promote my campaign", plain_text_payload
+        )
         self.assertIn("All my best,", plain_text_payload)
         self.assertIn("Julia", plain_text_payload)
         self.assertIn("Hi Julia!", html_payload)
-        self.assertIn("Thank you so much for reaching out to help promote my campaign", html_payload)
+        self.assertIn(
+            "Thank you so much for reaching out to help promote my campaign", html_payload
+        )
         self.assertIn("Paid for by Julia Hamann for Mankato Mayor", html_payload)
         self.assertIn("https://voteforjulia.com/julia-hamann-for-mankato-mayor.png", html_payload)
 

@@ -1,0 +1,25 @@
+{
+  // Local-only (.vscode is gitignored except extensions.json).
+  // The venv is built on Python 3.11 to match CI and the host's cPanel
+  // virtualenv — see CLAUDE.md on the interpreter floor.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  // Empty: testpaths and options come from pytest.ini so the editor, the
+  // terminal, and CI all run the suite the same way.
+  "python.testing.pytestArgs": [],
+
+  // Use the ruff pinned in api/requirements-dev.txt rather than the version
+  // bundled with the extension, so the editor can't disagree with CI.
+  "ruff.importStrategy": "fromEnvironment",
+
+  // Scoped to Python only — leaves formatting for every other language alone.
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports.ruff": "explicit"
+    }
+  }
+}
