@@ -23,6 +23,12 @@ This README covers getting the site running. The `docs/` directory covers the
 things the source can't tell you — read the relevant one before working in that
 area:
 
+- **[docs/architecture.md](docs/architecture.md)** — the system map: what runs
+  where, how a form submission flows through the API to email and Google Sheets,
+  the two environments, and an index of the architecture decision records in
+  **[docs/adr/](docs/adr/)** explaining why the site is built this way (shared
+  hosting rather than AWS, prerendering, no database, and so on). Start here if
+  you're new to the project.
 - **[docs/conventions.md](docs/conventions.md)** — how this codebase does things:
   the multi-file checklist for adding a page, `buildPageHead` for `<head>`/SEO,
   the Tailwind theme (the default palette is switched off, so `bg-red-500` does
