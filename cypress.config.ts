@@ -82,6 +82,14 @@ export default defineConfig({
       });
 
       on('task', {
+        // Browser-side console output never reaches `cypress run`'s stdout, so
+        // the support file's failure diagnostics come back through here.
+        log(message: string): null {
+          console.log(message);
+
+          return null;
+        },
+
         async findSheetRow({
           email,
           worksheet: worksheetOverride

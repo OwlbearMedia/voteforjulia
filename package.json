@@ -15,6 +15,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "docs:api": "vite --open /api-docs.html",
     "build": "vue-tsc -b && vite-ssg build",
     "upload-sourcemaps": "node scripts/upload-sourcemaps.mjs",
     "strip-sourcemaps": "find dist -name '*.js.map' -delete",
@@ -54,6 +55,7 @@
     "googleapis": "^173.0.0",
     "jsdom": "^29.1.1",
     "prettier": "3.9.4",
+    "swagger-ui-dist": "^5.32.11",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.62.1",

@@ -294,6 +294,25 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # Chases an intermittent runner-only redirect loop (every spec's first
+      # cy.visit reloading the same URL until Cypress's redirectionLimit trips)
+      # that has never reproduced from a developer machine against the same
+      # deployment. If the host answers this runner differently — an error page,
+      # a WAF challenge, a redirect — it shows up here, before Cypress muddies
+      # the picture.
+      - name: Record what the test site serves this runner
+        run: |
+          for path in / /donate /volunteer /yard-signs; do
+            echo "--- ${path} ---"
+            curl -sS --location --max-redirs 5 \
+              -o /tmp/page.html -D /tmp/headers.txt \
+              -w 'status=%{http_code} redirects=%{num_redirects} bytes=%{size_download} time=%{time_total}s\n' \
+              "https://test.voteforjulia.com${path}" || true
+            grep -iE '^(HTTP/|server:|location:|set-cookie:|content-type:|refresh:)' /tmp/headers.txt || true
+            head -c 200 /tmp/page.html
+            echo
+          done
+
       - name: Run Cypress e2e tests
         uses: cypress-io/github-action@v7
         with:
@@ -304,3 +323,18 @@ jobs:
           CYPRESS_BASE_URL: https://test.voteforjulia.com
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          # A recording of the looping page is the one artifact that settles
+          # what it was rendering. Drop this (and the upload below) once the
+          # flake is understood.
+          CYPRESS_VIDEO: 'true'
+
+      - name: Upload Cypress screenshots and video
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cypress-failure-artifacts
+          path: |
+            cypress/screenshots
+            cypress/videos
+          if-no-files-found: ignore
+          retention-days: 7

@@ -35,6 +35,11 @@ a worked example):
    - `tests/unit/routes.spec.ts` passes automatically (it derives from
      `appRoutePaths`), as does the sitemap and `App.spec.ts`'s router setup.
 
+The one file that looks like a page but deliberately skips all of this is
+`api-docs.html` at the repo root — the local Swagger UI viewer (see the
+README). Staying out of `appRoutePaths` is what keeps it off the live site: add
+it and you would prerender it into `dist` and list it in the sitemap.
+
 ## SEO / `<head>`
 
 Every page's `<head>` is built by **`buildPageHead`** in
@@ -158,9 +163,27 @@ conventions and the traps.
   applies to anything keyed, cached, or deduplicated.
 - **Cypress `cy.visit` is overridden** in [cypress/support/e2e.ts](../cypress/support/e2e.ts)
   to seed `sessionStorage` before the app mounts — it dismisses the primary-election
-  modal (`JuliaModal` in `App.vue`) whose full-viewport backdrop would otherwise
-  intercept the form specs' clicks. Any new full-viewport overlay that opens on
-  load needs the same seeding here, or e2e clicks silently fail.
+  modal (`JuliaPrimaryModal`, mounted by `App.vue`) whose full-viewport backdrop
+  would otherwise intercept the form specs' clicks. Any new full-viewport overlay
+  that opens on load needs the same seeding here, or e2e clicks silently fail.
+- **A failed e2e test prints `[diagnostics]` lines** — the same support file
+  records every page load in the app under test (href, title, `navigationType`,
+  the head of the HTML) plus any uncaught exception, and dumps them with a fresh
+  request's status and headers through the `log` task in
+  [cypress.config.ts](../cypress.config.ts). Browser console output never reaches
+  `cypress run`'s stdout, so that task is the only way anything from the app
+  reaches a CI log. They exist for an intermittent runner-only failure where
+  every spec's first `cy.visit` reloads the same URL until Cypress's
+  `redirectionLimit` trips — _"The application redirected to … more than 20
+  times"_. Nothing in the app navigates or reloads, and it has never reproduced
+  from a developer machine against the same deployment. The e2e job also curls
+  the site before running and uploads screenshots and video on failure. Raising
+  `redirectionLimit` is not a fix — it only makes the hang longer.
+- **`1 passing` plus a `(failed).png` screenshot means a test lost its first
+  attempt** and was saved by `retries.runMode: 1`. Cypress fails a test on any
+  uncaught exception from the app, and `donate.cy.ts` hits one from Donorbox's
+  widget on most runs — see
+  [donate-integration.md](donate-integration.md#their-constructor-throws-when-vue-creates-the-element).
 - **Prettier's `format:check` globs cover `src/`, `scripts/`, `docs/`, and root
   files but not `tests/`** — run `npx prettier --write` on new frontend test files
   manually.

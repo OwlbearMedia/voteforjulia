@@ -114,3 +114,38 @@ LiteSpeed — see [hosting.md](hosting.md).
 Donorbox ships, which is why `script-src` allows the `donorbox.org` origin
 rather than specific files, and why `jspm.dev` cannot be path-scoped — its
 module graph imports version-pinned internal paths that move.
+
+## Their constructor throws when Vue creates the element
+
+The page is prerendered, so `<dbox-widget>` normally arrives in the HTML and
+Vue only hydrates it. When Vue instead _creates_ the element client-side and
+`widgets.js` has already run `customElements.define`, the vendor constructor
+blows up, twice:
+
+```
+TypeError: Cannot convert undefined or null to object
+    at DboxWidget.attributeChangedCallback (https://donorbox.org/widgets.js:146:12)
+    at DboxWidget.setDefaultAttributes (…:169:41)
+    at new DboxWidget (…:100:10)
+    at createElement (…/assets/app-<hash>.js)   ← Vue
+NotSupportedError: Failed to execute 'createElement' on 'Document': The result must not have attributes
+```
+
+The second error is the browser rejecting the element because their
+constructor sets attributes on itself, which the custom-element spec forbids.
+Both come from Donorbox's code — there is no version to pin (see the hashed
+module above) and nothing in this repo to fix.
+
+It is a load-order race, so it is intermittent, and the cost when it fires is
+real: Vue's render of that subtree dies, and **the visitor sees the donate page
+without a donation form**. New Relic is where to check how often real traffic
+hits it — search the two messages above.
+
+Where it shows up first is CI: an uncaught app exception fails a Cypress test,
+so `cypress/e2e/donate.cy.ts` loses its first attempt on most runs. That is
+invisible in the summary, because `retries.runMode: 1` passes the test on the
+retry (a cold cache is what makes attempt 1 lose the race). The tell is a run
+that reports `1 passing` and still writes a `(failed).png` screenshot. Do not
+read that as flaky infrastructure — and do not paper over it by widening
+retries or by suppressing the error in `uncaught:exception`, which would hide
+the visitor-facing half.
