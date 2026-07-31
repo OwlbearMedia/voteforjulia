@@ -23,17 +23,21 @@ const PRIMARY_MODAL_EXPIRES_AT = PRIMARY_DAY_STARTS_AT + DAY_MS;
 const showPrimaryModal = ref(false);
 const primaryCountdown = ref('');
 
-// Whole days left, counted from midnight CDT rather than the visitor's own
-// timezone so the number matches the calendar a Mankato voter is looking at.
-function daysUntilPrimary(now: number) {
+// Nights left before the primary, counted from midnight CDT rather than the
+// visitor's own timezone so the number matches the calendar a Mankato voter is
+// looking at. Zero on election day itself.
+function nightsUntilPrimary(now: number) {
   return Math.ceil((PRIMARY_DAY_STARTS_AT - now) / DAY_MS);
 }
 
 function primaryCountdownText(now: number) {
-  const days = daysUntilPrimary(now);
-  if (days <= 0) return 'Primary Election Day is today, August 11!';
-  if (days === 1) return 'Primary Election Day is tomorrow, August 11!';
-  return `Primary Election Day is in ${days} days on August 11!`;
+  const nights = nightsUntilPrimary(now);
+  if (nights <= 0) return 'Primary Election Day is today, August 11!';
+  if (nights === 1) return 'Primary Election Day is tomorrow, August 11!';
+
+  // Inclusive count — today and election day both count, so July 31 reads
+  // "12 days" rather than the 11 nights in between.
+  return `Only ${nights + 1} days until Primary Election Day, August 11!`;
 }
 
 // Computed on mount, not during setup: vite-ssg runs setup at build time, and a
