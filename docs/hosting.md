@@ -71,6 +71,50 @@ A local Apache run is still useful for catching outright syntax errors before
 you push, and it will confirm the _intended_ value, but it cannot tell you what
 LiteSpeed will emit.
 
+## An Imunify360 WAF sits in front of LiteSpeed
+
+The host runs CloudLinux (the API deploy drives `cloudlinux-selector`), and with
+it Imunify360, as an **openresty reverse proxy in front of LiteSpeed**. It is
+invisible until it decides to challenge a visitor: normally it passes requests
+through untouched, `Server: LiteSpeed` and all. When it does challenge, it
+answers **every URL on the domain** itself, and the response looks nothing like
+ours:
+
+| Signal    | Normal           | Challenged                    |
+| --------- | ---------------- | ----------------------------- |
+| `server:` | `LiteSpeed`      | `openresty/<version>`         |
+| `<title>` | the page's title | `One moment, please...`       |
+| Body      | ~40 kB prerender | ~12 kB verification splash    |
+| Status    | 200              | 200 — it is not an error page |
+
+The splash reads _"Please wait while your request is being verified…"_ under a
+green starburst.
+
+The challenge page's only content is
+`setTimeout(() => window.location.reload(), 5000)`, plus a script that
+fingerprints the browser and reports the result to a callback URL. **Nothing
+about it is visible in a status code**; a monitor that checks for HTTP 200 sees
+a healthy site.
+
+Two consequences worth knowing before debugging anything that "the site is
+broken from over there":
+
+- **It is triggered by source IP reputation**, not by the request. The same URL
+  serves fine from one network and is challenged from another, at the same
+  moment, which reads as an impossible intermittent fault.
+- **A browser that fails the fingerprint can never get past it.** The callback
+  carries the failed checks as query parameters (`failedChecks=webdriverCheck`,
+  `userAgentCheck`, `appVersionCheck`), and on a failure it simply re-serves the
+  splash — so the client reloads the same URL every 5 seconds forever. This is
+  what breaks the Cypress suite; see
+  [conventions.md](conventions.md#testing).
+
+The remedy is host-side — the account's Imunify360 settings, or a support
+request to exclude the domain. Runner or visitor IPs cannot be whitelisted:
+GitHub's are dynamic Azure ranges, and real visitors on VPNs and mobile CGNAT
+get flagged the same way. Note that the same WAF fronts the production domain,
+where an unresolvable loop lands on `/donate`.
+
 ## Deploy workflow changes cannot be tested from a PR
 
 Both deploy workflows trigger on `workflow_run`, and GitHub always executes the
