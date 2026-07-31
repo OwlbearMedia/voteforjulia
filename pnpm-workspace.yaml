@@ -1,2 +1,8 @@
 allowBuilds:
+  # Transitive dependency of swagger-ui-dist (the local-only API docs page).
+  # Its postinstall script reports install telemetry upstream, and nothing we
+  # use needs it to have run — denied rather than approved. It must be listed
+  # either way: pnpm exits non-zero on an undecided build script, which fails
+  # `pnpm build` and CI before any of the real work starts.
+  '@scarf/scarf': false
   cypress: true

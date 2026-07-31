@@ -17,7 +17,9 @@ export default defineConfig({
       reporter: ['text', 'text-summary', 'json-summary', 'lcov', 'html'],
       reportsDirectory: './coverage',
       include: ['src/**/*.{ts,vue}'],
-      exclude: ['src/main.ts', 'src/env.d.ts', 'src/**/*.d.ts']
+      // src/dev is the local-only Swagger UI entry — never built, never shipped,
+      // so it would only ever report as uncovered site code.
+      exclude: ['src/main.ts', 'src/env.d.ts', 'src/**/*.d.ts', 'src/dev/**']
     }
   }
 });

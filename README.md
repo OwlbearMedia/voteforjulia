@@ -95,6 +95,30 @@ pnpm run build
 pnpm run preview
 ```
 
+### API docs (local only)
+
+Browse the Flask API's OpenAPI spec in Swagger UI:
+
+```bash
+pnpm run docs:api
+```
+
+This opens `/api-docs.html` on the dev server, rendering
+[api/openapi.yaml](api/openapi.yaml) directly — there is no second copy to keep
+in sync. The page is a standalone Vite entry (`api-docs.html` at the repo root,
+mounted by [src/dev/apiDocs.ts](src/dev/apiDocs.ts)), not a route in the Vue
+app: it has no `appRoutePaths` entry, is never prerendered, never appears in the
+sitemap, and is never emitted to `dist`, so it does not ship to the live site.
+
+"Try it out" works, but every request is rewritten to `http://localhost:5000`
+regardless of which server the dropdown shows — a real submission against
+production would email the campaign and append a Google Sheet row. Start the
+backend first or the calls will fail to connect:
+
+```bash
+.venv/bin/python -m api.app
+```
+
 ## Build
 
 Create the production static output in dist:

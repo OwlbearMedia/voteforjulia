@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Vote for Julia API — local docs</title>
+    <!--
+      Dev-only entry point. Vite builds `index.html` and nothing else (the
+      default `rollupOptions.input`), so this file is served by `pnpm dev` but
+      is never emitted to dist/ and never deployed. It deliberately sits
+      outside the Vue app: no router, no `appRoutePaths` entry, no sitemap
+      row, no prerender, and none of the site chrome or the primary-election
+      modal.
+
+      Open it with `pnpm docs:api`, or at /api-docs.html on the dev server.
+    -->
+    <style>
+      body {
+        margin: 0;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          sans-serif;
+      }
+
+      .docs-banner {
+        padding: 0.75rem 1.25rem;
+        background: #1f2d24;
+        color: #e8f0ea;
+        font-size: 0.8125rem;
+        line-height: 1.5;
+      }
+
+      .docs-banner strong {
+        color: #fff;
+      }
+
+      .docs-banner code {
+        padding: 0.05rem 0.3rem;
+        border-radius: 0.2rem;
+        background: rgb(255 255 255 / 0.12);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="docs-banner">
+      <strong>Local docs.</strong> Every &ldquo;Try it out&rdquo; request is rewritten to
+      <code>http://localhost:5000</code> no matter which server the dropdown shows, so nothing here
+      can reach the production API. Start the backend first with <code>python -m api.app</code>, or
+      requests will fail to connect.
+    </div>
+    <div id="api-docs"></div>
+    <script type="module" src="/src/dev/apiDocs.ts"></script>
+  </body>
+</html>
