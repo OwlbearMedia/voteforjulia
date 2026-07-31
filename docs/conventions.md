@@ -142,6 +142,20 @@ conventions and the traps.
   in `tests/unit/pageHead.spec.ts`.
 - `routes.spec.ts` and `sitemap.spec.ts` both derive expectations from
   `appRoutePaths`, so keeping that list correct keeps them green.
+- **Backend tests are split by what they cover.**
+  [api/test_app.py](../api/test_app.py) has the happy paths, CORS, rate limiting,
+  and input validation; [api/test_app_pipeline.py](../api/test_app_pipeline.py)
+  has the form-encoded submission path and every failure branch of
+  `_handle_form_submission`. New failure-path tests belong in the latter — its
+  `pipeline` fixture already lets you make any collaborator raise or refuse.
+- **A "these two collide" assertion is only half a test.** The rate limiter keys
+  buckets on the _last_ `X-Forwarded-For` hop, and the original test sent two
+  requests sharing a last hop and asserted they were limited together. That
+  passes even if `X-Forwarded-For` is ignored outright, because both then fall
+  back to the same `remote_addr` — deleting the entire branch kept the suite
+  green. Any test of the form "these requests should share a bucket" needs the
+  matching "these requests should not" to actually pin the key. The same trap
+  applies to anything keyed, cached, or deduplicated.
 - **Cypress `cy.visit` is overridden** in [cypress/support/e2e.ts](../cypress/support/e2e.ts)
   to seed `sessionStorage` before the app mounts — it dismisses the primary-election
   modal (`JuliaModal` in `App.vue`) whose full-viewport backdrop would otherwise
