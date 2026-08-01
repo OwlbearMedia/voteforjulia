@@ -117,7 +117,7 @@ sequenceDiagram
 
     B->>A: POST /send-email (JSON, cross-origin)
     A->>A: rate-limit bucket, per IP per endpoint
-    A->>A: parse + validate; log field NAMES only
+    A->>A: parse + validate, then log field NAMES only
     A->>M: notification email to the campaign
     M-->>A: accepted
     A->>M: confirmation email to the submitter

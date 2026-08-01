@@ -137,6 +137,38 @@ Why `<dbox-widget>` is an in-page element rather than an iframe, and what that
 implies for the security headers, is in
 [donate-integration.md](donate-integration.md).
 
+## Diagrams in docs
+
+Diagrams are Mermaid in fenced ` ```mermaid ` blocks, rendered by GitHub. They
+live only in [architecture.md](architecture.md) — keep them there rather than
+scattering them through the ADRs, which are meant to be readable as plain text.
+
+**A broken diagram fails silently and nothing in CI catches it.** GitHub renders
+a block it cannot parse as a raw code block, with no error shown. Prettier
+formats the fence but never parses its contents, so a broken diagram passes
+`format:check` and merges green; the first sign of trouble is someone looking at
+the rendered page. This has already happened once, in the submission-flow
+sequence diagram.
+
+The trap that caused it: **`;` inside sequence-diagram message text ends the
+statement**, exactly as a newline would, so
+
+```
+A->>A: parse + validate; log field NAMES only
+```
+
+parses `log field NAMES only` as a statement of its own and fails. Use a comma
+or an em dash. Unbalanced quotes and braces in message text bite the same way;
+`<br/>` for line breaks in node labels is fine and is used in the flowchart.
+
+Check a block before pushing by pasting it into <https://mermaid.live>, which
+shows the parse error and the line. To check the file's blocks
+programmatically, install `mermaid` in a scratch directory and call
+`mermaid.parse()` on each block with the repo's `jsdom` supplying `window` and
+`document` (mermaid needs `navigator` defined via `Object.defineProperty`, not
+assignment). Both approaches use their own mermaid version rather than GitHub's,
+so they catch syntax errors, not rendering differences.
+
 ## Testing
 
 Commands are in the [README](../README.md#testing); this section covers the
@@ -172,13 +204,20 @@ conventions and the traps.
   request's status and headers through the `log` task in
   [cypress.config.ts](../cypress.config.ts). Browser console output never reaches
   `cypress run`'s stdout, so that task is the only way anything from the app
-  reaches a CI log. They exist for an intermittent runner-only failure where
-  every spec's first `cy.visit` reloads the same URL until Cypress's
-  `redirectionLimit` trips — _"The application redirected to … more than 20
-  times"_. Nothing in the app navigates or reloads, and it has never reproduced
-  from a developer machine against the same deployment. The e2e job also curls
-  the site before running and uploads screenshots and video on failure. Raising
-  `redirectionLimit` is not a fix — it only makes the hang longer.
+  reaches a CI log. They were added for, and identified, the failure below. The
+  e2e job also curls the site before running and uploads screenshots and video
+  on failure.
+- **"The application redirected to … more than 20 times" is the host's WAF, not
+  the app.** When the runner's IP is graylisted, Imunify360 answers every URL
+  with a challenge page that reloads itself every 5 seconds, and Cypress counts
+  each reload as a redirect — so all three specs die on their first `cy.visit`,
+  in a run where the app's own code never executes (the tell is `0 uncaught
+exception(s)` alongside 21 loads). Cypress's headless Chrome fails the
+  challenge's bot checks, so it can never clear;
+  [hosting.md](hosting.md#an-imunify360-waf-sits-in-front-of-litespeed) has the
+  detail and the remedy. Raising `redirectionLimit`, adding retries, or
+  re-running the job are not fixes — a re-run only helps because it lands on a
+  different IP.
 - **`1 passing` plus a `(failed).png` screenshot means a test lost its first
   attempt** and was saved by `retries.runMode: 1`. Cypress fails a test on any
   uncaught exception from the app, and `donate.cy.ts` hits one from Donorbox's
