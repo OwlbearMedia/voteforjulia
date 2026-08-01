@@ -193,7 +193,9 @@ class SheetsCredentialTests(unittest.TestCase):
             ) as from_file,
             patch("googleapiclient.discovery.build", return_value=service),
         ):
-            append_row(_config(service_account_file="/keys/sa.json", service_account_json=""), ["a"])
+            append_row(
+                _config(service_account_file="/keys/sa.json", service_account_json=""), ["a"]
+            )
 
         from_file.assert_called_once()
         self.assertEqual(from_file.call_args.args[0], "/keys/sa.json")

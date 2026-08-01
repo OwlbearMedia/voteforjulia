@@ -61,11 +61,13 @@ exercises the dependencies, and alert on both.
 
 - **Silent dependency failures now page instead of waiting to be noticed.** This
   is the whole point; the 2026-07-30 outage would have alerted in minutes.
-- **Agent memory now sits in every Passenger worker** — roughly 35–60MB RSS.
-  This is the cost 0011 declined to pay, and it is real on a shared host under a
-  CloudLinux LVE cap. Deploy to `api_test` and measure with
-  `ps -o rss,cmd -C lswsgi` before production. If workers approach the cap, this
-  decision is the one to revisit.
+- **Agent memory now sits in every Passenger worker — about +12MB**, measured on
+  the host (interpreter ~9MB, Flask +22MB, agent +12MB). This is the cost 0011
+  declined to pay, and it turns out to be roughly a tenth of a loaded worker
+  rather than the dominant term. It is still real under a CloudLinux LVE cap; if
+  workers approach it, this decision is the one to revisit. Measuring it is less
+  obvious than it looks, because workers are ephemeral —
+  [../hosting.md](../hosting.md#watch-worker-memory) has the method that works.
 - **The deploy path gains a compiled dependency.** `newrelic` ships `cp311`
   manylinux wheels so the host installs a wheel, but the cPanel venv has no
   toolchain — a future version without a matching wheel breaks deploys, so check

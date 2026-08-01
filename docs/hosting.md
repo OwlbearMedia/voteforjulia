@@ -228,17 +228,59 @@ reports, so its presence is itself the signal.
 
 #### Watch worker memory
 
-The agent adds roughly 35–60MB RSS per Passenger worker, which is the cost
-[ADR-0011](adr/0011-browser-side-observability.md) originally declined to pay on
-a shared host. After deploying to `api_test`, compare:
+Measured on the host, the agent costs **about +12MB** per worker (baseline
+interpreter ~9MB, Flask +22MB, agent +12MB). This is the cost
+[ADR-0011](adr/0011-browser-side-observability.md) declined to pay, and it is
+smaller than that record assumed.
+
+**Workers are ephemeral, which defeats the obvious measurement.** Passenger on
+this host spawns them per request and reaps them when idle — `ps` at a quiet
+moment returns _nothing at all_, and a lone worker caught between requests looks
+identical with and without the agent. Comparing one before-reading to one
+after-reading proves nothing. Generate sustained traffic and measure during it:
 
 ```
-ps -o rss,cmd -C lswsgi
+ssh vfj '(for i in $(seq 1 12); do curl -s -o /dev/null https://test-api.voteforjulia.com/health/deep; sleep 1; done) &
+         sleep 4
+         for p in $(pgrep -f api_test/passenger_wsgi.py); do
+           echo "$p pss=$(awk "/^Pss:/{print \$2}" /proc/$p/smaps_rollup)KB agent=$(grep -ci newrelic /proc/$p/maps)"
+         done'
 ```
 
-If workers approach the CloudLinux LVE cap, clear `NEW_RELIC_LICENSE_KEY` on the
-affected app and revisit [ADR-0013](adr/0013-server-side-apm.md) rather than
-shipping it to production.
+Two things that matter in that command:
+
+- **Use PSS, not RSS.** Forked workers share pages, and RSS counts them in full
+  for every process, so summing the RSS column badly overstates the total.
+  `smaps_rollup` divides shared pages proportionally.
+- **`grep -ci newrelic /proc/<pid>/maps` is the ground truth for "is the agent
+  running"** — it counts the agent's mapped C extensions. Memory figures alone
+  are too noisy to answer it. Note this only sees _file-backed_ mappings, so it
+  says nothing about pure-Python imports.
+
+Expect real workers around 80–115MB PSS under load and roughly zero at idle,
+since none are resident. If they approach the CloudLinux LVE cap (cPanel →
+Resource Usage, which is also the only place the cap and the fault count are
+readable), clear `NEW_RELIC_LICENSE_KEY` on the affected app and revisit
+[ADR-0013](adr/0013-server-side-apm.md) rather than shipping to production.
+
+#### Reading an app's configured environment
+
+`/proc/<pid>/environ` only works while a worker happens to be alive. The durable
+source is the selector, but its `get` output embeds `EMAIL_PASSWORD` and the
+Sheets IDs, so never print it raw. The app configs are nested at
+`available_versions.<version>.users.<user>.applications`, and this prints
+variable _names_ only:
+
+```
+/usr/sbin/cloudlinux-selector get --json --interpreter python > /tmp/.s && \
+~/virtualenv/api_test/3.11/bin/python -c '
+import json
+d = json.load(open("/tmp/.s"))
+for ver, vd in d.get("available_versions", {}).items():
+    for app, cfg in vd.get("users", {}).get("juliafor", {}).get("applications", {}).items():
+        print(app, sorted((cfg or {}).get("env_vars", {})))
+'; rm -f /tmp/.s
+```
 
 #### Mind the interpreter floor
 

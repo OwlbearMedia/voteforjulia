@@ -277,7 +277,9 @@ class EmailServiceTests(unittest.TestCase):
     @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
     @patch("api.services.email_service.smtplib.SMTP", new=FakeSmtpServer)
     def test_auto_security_negotiates_starttls_on_port_587(self) -> None:
-        refused = send_submission_email(_config(smtp_port=587, smtp_security="auto"), self.submission)
+        refused = send_submission_email(
+            _config(smtp_port=587, smtp_security="auto"), self.submission
+        )
 
         self.assertEqual(refused, {})
         server = FakeSmtpServer.instances[0]
@@ -287,7 +289,9 @@ class EmailServiceTests(unittest.TestCase):
     @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
     @patch("api.services.email_service.smtplib.SMTP", new=FakeSmtpServer)
     def test_auto_security_stays_implicit_ssl_on_port_465(self) -> None:
-        refused = send_submission_email(_config(smtp_port=465, smtp_security="auto"), self.submission)
+        refused = send_submission_email(
+            _config(smtp_port=465, smtp_security="auto"), self.submission
+        )
 
         self.assertEqual(refused, {})
         server = FakeSmtpServer.instances[0]
@@ -298,7 +302,9 @@ class EmailServiceTests(unittest.TestCase):
     def test_explicit_ssl_ignores_the_starttls_port(self) -> None:
         # Port 587 with smtp_security="ssl" must still take the implicit-TLS
         # path: the explicit setting wins over the port heuristic.
-        refused = send_submission_email(_config(smtp_port=587, smtp_security="ssl"), self.submission)
+        refused = send_submission_email(
+            _config(smtp_port=587, smtp_security="ssl"), self.submission
+        )
 
         self.assertEqual(refused, {})
         self.assertEqual(FakeSmtpServer.instances[0].starttls_calls, 0)
