@@ -140,6 +140,22 @@ The ordering is deliberate and load-bearing:
 - **PII never enters the routine log.** `_log_request_fields` records which
   fields were filled, never their values; full bodies are logged only on the
   paths where the submission would otherwise be lost for good.
+- **Every outbound call is bounded by an explicit timeout.** `smtplib` and
+  `httplib2` both default to waiting forever (they inherit
+  `socket.getdefaulttimeout()`, which is `None`), so a third party that accepts
+  a connection and then stalls would hold a worker open indefinitely — and
+  Passenger spawns workers per request rather than capping them, so they
+  accumulate. `SMTP_TIMEOUT_SECONDS` and `SHEETS_TIMEOUT_SECONDS` set the
+  ceilings; Sheets gets the larger one because it runs after the mail is away.
+- **The sheet append is one server-side call, not read-then-write.** Picking a
+  row with a `values.get` and writing it with a `values.update` left a window
+  where two simultaneous submissions chose the same row and the second erased
+  the first, invisibly — both returned 200 and both submitters got a
+  confirmation. `values.append` with `insertDataOption=INSERT_ROWS` resolves
+  placement inside the write, and inserts rather than overwrites, so a row can
+  land in an unexpected position but never on top of an existing one. The range
+  is scoped to just the submission's columns so unrelated ones (a checkbox
+  column defaults every cell to `FALSE`) stay out of the API's table detection.
 
 ## Environments
 

@@ -8,13 +8,15 @@ from api.config import SheetsConfig
 
 logger = logging.getLogger(__name__)
 
-# Keyed by (service_account_file, service_account_json), which together
-# identify the credentials. Building a service client involves parsing the
-# service account key and constructing the API resource; the underlying
-# google-auth credentials object refreshes its own access token as needed, so
-# it's safe to reuse across requests in this long-lived process instead of
-# rebuilding it on every submission.
-_service_cache: dict[tuple[str, str], object] = {}
+# Keyed by (service_account_file, service_account_json, timeout_seconds), which
+# together identify the client. The first two identify the credentials; the
+# timeout is part of the key because it is baked into the cached transport, so
+# a client built under one timeout must not be handed to a caller asking for
+# another. Building a service client involves parsing the service account key
+# and constructing the API resource; the underlying google-auth credentials
+# object refreshes its own access token as needed, so it's safe to reuse across
+# requests in this long-lived process instead of rebuilding it per submission.
+_service_cache: dict[tuple[str, str, float], object] = {}
 _worksheet_title_cache: dict[tuple[str, str, str], str] = {}
 
 
@@ -38,15 +40,30 @@ def _get_sheets_credentials(config: SheetsConfig):
 
 
 def _get_sheets_service(config: SheetsConfig):
-    cache_key = (config.service_account_file, config.service_account_json)
+    cache_key = (config.service_account_file, config.service_account_json, config.timeout_seconds)
     cached = _service_cache.get(cache_key)
     if cached is not None:
         return cached
 
     credentials = _get_sheets_credentials(config)
+
+    # `build(credentials=...)` constructs its own httplib2.Http, whose `timeout`
+    # defaults to None -- the same unbounded wait the SMTP client had. There is
+    # no argument for it, so the transport has to be supplied ready-made. That
+    # means authorizing it here too: `http` and `credentials` are mutually
+    # exclusive, and passing a bare Http would send the requests unauthenticated.
+    #
+    # This matters more than the SMTP timeout, not less: the Sheets write runs
+    # *after* both emails are away, so a stall here holds a worker open on a
+    # request whose user-visible side effects have already happened.
+    import google_auth_httplib2
+    import httplib2
     from googleapiclient.discovery import build
 
-    service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+    authorized_http = google_auth_httplib2.AuthorizedHttp(
+        credentials, http=httplib2.Http(timeout=config.timeout_seconds)
+    )
+    service = build("sheets", "v4", http=authorized_http, cache_discovery=False)
     _service_cache[cache_key] = service
     return service
 
@@ -126,44 +143,41 @@ def _column_letter(index: int) -> str:
     return letters
 
 
-def _find_next_empty_row(service, spreadsheet_id: str, worksheet_title: str, width: int) -> int:
-    # append()'s automatic "find the end of the table" can be thrown off by
-    # unrelated columns that hold values in rows with no real submission (e.g.
-    # a checkbox column defaults every cell to FALSE rather than truly empty),
-    # so only look at the columns this submission will actually write to.
-    # Within those, a row counts as occupied if *any* cell has content --
-    # manually entered rows may be missing the column A timestamp, and
-    # writing there would overwrite them.
-    end_column = _column_letter(max(width, 1))
-    range_name = f"{_quote_sheet_title(worksheet_title)}!A2:{end_column}"
-    result = (
-        service.spreadsheets()
-        .values()
-        .get(spreadsheetId=spreadsheet_id, range=range_name)
-        .execute()
-    )
-    values = result.get("values", [])
-    last_occupied = 0
-    for offset, cells in enumerate(values, start=1):
-        if any(str(cell).strip() for cell in cells):
-            last_occupied = offset
-    return 2 + last_occupied
-
-
 def append_row(config: SheetsConfig, row: list[str]) -> None:
     if not config.spreadsheet_id:
         return
 
     service = _get_sheets_service(config)
     worksheet_title = _resolve_worksheet_title(service, config.spreadsheet_id, config.worksheet)
-    next_row = _find_next_empty_row(service, config.spreadsheet_id, worksheet_title, len(row))
-    range_name = f"{_quote_sheet_title(worksheet_title)}!A{next_row}"
 
-    service.spreadsheets().values().update(
+    # The range is scoped to exactly the columns this submission writes, which
+    # is what the previous hand-rolled row search was really for: append()'s
+    # table detection was "thrown off" by unrelated columns holding values in
+    # rows with no real submission (a checkbox column defaults every cell to
+    # FALSE rather than truly empty). Bounding the range excludes those columns
+    # from detection without taking the placement decision away from the API.
+    end_column = _column_letter(max(len(row), 1))
+    range_name = f"{_quote_sheet_title(worksheet_title)}!A:{end_column}"
+
+    # Read-then-write is what this replaces. Choosing the row with a values.get
+    # and then writing to it with a values.update is a time-of-check/
+    # time-of-use gap: two submissions in flight pick the same row and the
+    # second update overwrites the first, silently -- both submitters got their
+    # confirmation email and both requests returned 200. Passenger runs several
+    # worker processes, so no in-process lock could have closed it.
+    #
+    # append() resolves the insertion point server-side in the same call that
+    # writes, so there is no gap. INSERT_ROWS is the other half: it inserts a
+    # new row rather than writing over whatever occupies the target cells, so
+    # even if table detection lands somewhere unexpected the failure mode is a
+    # row in an odd position, never a row destroyed. That is also what now
+    # protects manually entered rows that have no column A timestamp.
+    service.spreadsheets().values().append(
         spreadsheetId=config.spreadsheet_id,
         range=range_name,
         valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS",
         body={"values": [row]},
     ).execute()
 
-    logger.info("Wrote row to %s in spreadsheet %s", range_name, config.spreadsheet_id)
+    logger.info("Appended row to %s in spreadsheet %s", range_name, config.spreadsheet_id)

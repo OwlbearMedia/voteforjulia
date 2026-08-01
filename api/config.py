@@ -10,6 +10,24 @@ DEFAULT_RECIPIENT_EMAIL = "info@voteforjulia.com"
 DEFAULT_SHEETS_WORKSHEET = "Sheet1"
 DEFAULT_YARDSIGN_SHEETS_WORKSHEET = "Yard Signs"
 
+# Both network calls a submission makes are to third parties that can accept a
+# connection and then stall. Without an explicit timeout, smtplib and httplib2
+# both inherit `socket.getdefaulttimeout()`, which is None -- so a stalled peer
+# parks the worker forever, and Passenger spawns workers per request rather
+# than capping them (docs/hosting.md), so stalled ones accumulate.
+#
+# The values are upper bounds on pathological behaviour, not on the normal case:
+# a healthy SMTP handshake is well under a second, and a Sheets write is a few
+# hundred milliseconds. Sheets gets the larger budget because it runs *after*
+# both emails are away, so giving up there loses a row that email already has.
+DEFAULT_SMTP_TIMEOUT_SECONDS = 10.0
+DEFAULT_SHEETS_TIMEOUT_SECONDS = 15.0
+
+# The forms' combined field limits (api/models.py) come to roughly 1.5KB, so
+# 64KB is generous for anything legitimate while keeping a hostile body from
+# being buffered and parsed in full before validation rejects it.
+DEFAULT_MAX_REQUEST_BYTES = 64 * 1024
+
 
 def env(name: str, default: str = "") -> str:
     value = os.getenv(name, default).strip()
@@ -22,6 +40,28 @@ def env_bool(name: str, default: bool = False) -> bool:
         return default
 
     return value.lower() in {"1", "true", "yes", "on"}
+
+
+def env_positive_number(name: str, default: float) -> float:
+    """A strictly positive number from the environment, or `default` if unset.
+
+    Raises ValueError on a value that is unparseable or non-positive rather than
+    silently falling back: a timeout typo'd to `1O` should surface, not quietly
+    restore the unbounded-wait behaviour these settings exist to prevent.
+    """
+    raw = env(name)
+    if not raw:
+        return default
+
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number, got {raw!r}") from exc
+
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than zero, got {raw!r}")
+
+    return value
 
 
 def parse_recipients(value: str) -> list[str]:
@@ -38,6 +78,7 @@ class EmailConfig:
     email_password: str
     recipients: list[str]
     plain_text_confirmation_only: bool
+    timeout_seconds: float = DEFAULT_SMTP_TIMEOUT_SECONDS
 
 
 @dataclass(frozen=True)
@@ -46,6 +87,7 @@ class SheetsConfig:
     worksheet: str
     service_account_file: str
     service_account_json: str
+    timeout_seconds: float = DEFAULT_SHEETS_TIMEOUT_SECONDS
 
 
 def load_email_config(recipient_env: str = "RECIPIENT_EMAIL") -> EmailConfig:
@@ -66,6 +108,7 @@ def load_email_config(recipient_env: str = "RECIPIENT_EMAIL") -> EmailConfig:
         email_password=env("EMAIL_PASSWORD"),
         recipients=parse_recipients(recipients_raw),
         plain_text_confirmation_only=env_bool("PLAIN_TEXT_CONFIRMATION_ONLY", False),
+        timeout_seconds=env_positive_number("SMTP_TIMEOUT_SECONDS", DEFAULT_SMTP_TIMEOUT_SECONDS),
     )
 
 
@@ -78,4 +121,7 @@ def load_sheets_config(
         worksheet=env(worksheet_env, default_worksheet),
         service_account_file=env("GOOGLE_SERVICE_ACCOUNT_FILE"),
         service_account_json=env("GOOGLE_SERVICE_ACCOUNT_JSON"),
+        timeout_seconds=env_positive_number(
+            "SHEETS_TIMEOUT_SECONDS", DEFAULT_SHEETS_TIMEOUT_SECONDS
+        ),
     )

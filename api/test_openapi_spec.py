@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from werkzeug.exceptions import RequestEntityTooLarge
 
 import api.app as app_module
 from api.app import (
@@ -165,6 +166,13 @@ GENERATED_ERRORS = {
     "Message must be 500 characters or fewer.": lambda: validate_submission(
         _contact(message="x" * (MAX_MESSAGE_LENGTH + 1))
     ),
+    # Not ours: the size cap is enforced by Werkzeug, and `json_http_error`
+    # relays its stock description. Sourced from the exception rather than
+    # copied so a Werkzeug upgrade that rewords it fails here instead of
+    # leaving the spec quoting text the API no longer sends.
+    "The data value transmitted exceeds the capacity limit.": (
+        lambda: RequestEntityTooLarge().description
+    ),
 }
 
 _SOURCE = "\n".join(
@@ -282,6 +290,29 @@ def test_rate_limit_defaults_match_the_spec():
     description = SPEC["components"]["responses"]["RateLimited"]["description"]
     assert f"{app_module._RATE_LIMIT_MAX_REQUESTS} requests" in description
     assert f"{app_module._RATE_LIMIT_WINDOW_SECONDS} seconds" in description
+
+
+def test_documented_request_size_limit_matches_the_app():
+    # The 413 description quotes the byte cap as the default, the same way the
+    # 429 description quotes the rate-limit numbers.
+    description = SPEC["components"]["responses"]["PayloadTooLarge"]["description"]
+    assert str(app_module.app.config["MAX_CONTENT_LENGTH"]) in description
+
+
+@pytest.mark.parametrize("path", ["/send-email", "/yard-sign"])
+def test_oversized_body_returns_the_documented_status(path):
+    # The route-level drift tests compare paths and methods; nothing otherwise
+    # checks that a documented *status* is one the app can actually produce. A
+    # 413 documented on an endpoint whose cap was lifted would go unnoticed.
+    assert "413" in SPEC["paths"][path]["post"]["responses"]
+
+    oversized = "x" * (app_module.app.config["MAX_CONTENT_LENGTH"] + 1)
+    response = app_module.app.test_client().post(
+        path, data=oversized, content_type="application/json"
+    )
+
+    assert response.status_code == 413
+    assert response.mimetype == "application/json"
 
 
 def test_documented_cors_origins_match_the_defaults():

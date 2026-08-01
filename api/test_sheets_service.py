@@ -60,64 +60,56 @@ class AppendRowTests(unittest.TestCase):
         ):
             append_row(self.config, ["2026-01-01", "Jane", "Doe"])
 
-        update_call = service.spreadsheets.return_value.values.return_value.update
-        update_call.assert_called_once()
-        self.assertEqual(update_call.call_args.kwargs["range"], "'Yard Signs'!A2")
+        append_call = service.spreadsheets.return_value.values.return_value.append
+        append_call.assert_called_once()
+        self.assertEqual(append_call.call_args.kwargs["range"], "'Yard Signs'!A:C")
         self.assertEqual(
-            update_call.call_args.kwargs["body"], {"values": [["2026-01-01", "Jane", "Doe"]]}
+            append_call.call_args.kwargs["body"], {"values": [["2026-01-01", "Jane", "Doe"]]}
         )
 
-    def test_writes_after_last_non_empty_row(self) -> None:
-        config = SheetsConfig(
-            spreadsheet_id="sheet-123",
-            worksheet="Sheet1",
-            service_account_file="",
-            service_account_json='{"type": "service_account"}',
-        )
+    def test_row_placement_is_resolved_server_side_in_the_write_call(self) -> None:
+        # Regression test for silent overwrites. Placement used to be chosen by
+        # a values.get and then written with a values.update, which left a
+        # window where two concurrent submissions picked the same row and the
+        # second destroyed the first -- invisibly, since both requests returned
+        # 200 and both submitters got a confirmation email. Passenger runs
+        # several worker processes, so no in-process lock could close it.
+        #
+        # Asserting the *absence* of a preceding read is the point: it is what
+        # proves there is no check whose result could go stale before the write.
         service = _fake_service([])
-        service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
-            "values": [["2026-01-01"], ["2026-01-02"], ["2026-01-03"]]
-        }
 
         with (
             patch("google.oauth2.service_account.Credentials.from_service_account_info"),
             patch("googleapiclient.discovery.build", return_value=service),
         ):
-            append_row(config, ["2026-01-04", "Jane", "Doe"])
+            append_row(_config(), ["2026-01-04", "Jane", "Doe"])
 
-        get_call = service.spreadsheets.return_value.values.return_value.get
-        self.assertEqual(get_call.call_args.kwargs["range"], "Sheet1!A2:C")
-        update_call = service.spreadsheets.return_value.values.return_value.update
-        self.assertEqual(update_call.call_args.kwargs["range"], "Sheet1!A5")
+        values = service.spreadsheets.return_value.values.return_value
+        values.get.assert_not_called()
+        values.update.assert_not_called()
+        values.append.assert_called_once()
 
-    def test_skips_manual_rows_missing_column_a(self) -> None:
-        # Regression test: a manually entered row may have no timestamp in
-        # column A but still hold data in other columns. It must not be
-        # overwritten -- any occupied cell in the written columns marks the
-        # row as taken.
-        config = SheetsConfig(
-            spreadsheet_id="sheet-123",
-            worksheet="Sheet1",
-            service_account_file="",
-            service_account_json='{"type": "service_account"}',
-        )
+    def test_append_inserts_rather_than_overwriting(self) -> None:
+        # The other half of the guarantee above, and what now protects the
+        # manually entered rows the old row search handled by hand (a row with
+        # no column A timestamp but data in other columns). INSERT_ROWS makes
+        # the API open a new row instead of writing over whatever occupies the
+        # target cells, so even if table detection lands somewhere unexpected
+        # the worst case is a row in an odd position, never a row destroyed.
         service = _fake_service([])
-        service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
-            "values": [
-                ["2026-01-01"],
-                [],
-                ["", "Jane", "Doe", "", "555-1234"],
-            ]
-        }
 
         with (
             patch("google.oauth2.service_account.Credentials.from_service_account_info"),
             patch("googleapiclient.discovery.build", return_value=service),
         ):
-            append_row(config, ["2026-01-04", "John", "Smith", "j@example.com", "555-5678"])
+            append_row(_config(), ["2026-01-04", "Jane", "Doe"])
 
-        update_call = service.spreadsheets.return_value.values.return_value.update
-        self.assertEqual(update_call.call_args.kwargs["range"], "Sheet1!A5")
+        append_call = service.spreadsheets.return_value.values.return_value.append
+        self.assertEqual(append_call.call_args.kwargs["insertDataOption"], "INSERT_ROWS")
+        # RAW keeps a leading "=" stored as text instead of evaluated, so a
+        # submitted field cannot become a live formula in the volunteers' sheet.
+        self.assertEqual(append_call.call_args.kwargs["valueInputOption"], "RAW")
 
     def test_raises_when_gid_not_found(self) -> None:
         service = _fake_service([{"properties": {"sheetId": 999, "title": "Sheet1"}}])
@@ -145,8 +137,8 @@ class AppendRowTests(unittest.TestCase):
             append_row(config, ["row"])
 
         service.spreadsheets.return_value.get.assert_not_called()
-        update_call = service.spreadsheets.return_value.values.return_value.update
-        self.assertEqual(update_call.call_args.kwargs["range"], "Sheet1!A2")
+        append_call = service.spreadsheets.return_value.values.return_value.append
+        self.assertEqual(append_call.call_args.kwargs["range"], "Sheet1!A:A")
 
     def test_escapes_apostrophes_in_worksheet_title(self) -> None:
         # A1 notation quotes a title containing spaces or punctuation with
@@ -161,8 +153,8 @@ class AppendRowTests(unittest.TestCase):
         ):
             append_row(_config(worksheet="Julia's Signs"), ["row"])
 
-        update_call = service.spreadsheets.return_value.values.return_value.update
-        self.assertEqual(update_call.call_args.kwargs["range"], "'Julia''s Signs'!A2")
+        append_call = service.spreadsheets.return_value.values.return_value.append
+        self.assertEqual(append_call.call_args.kwargs["range"], "'Julia''s Signs'!A:A")
 
     def test_column_letters_continue_past_z(self) -> None:
         service = _fake_service([])
@@ -173,8 +165,8 @@ class AppendRowTests(unittest.TestCase):
         ):
             append_row(_config(), [f"value-{index}" for index in range(27)])
 
-        get_call = service.spreadsheets.return_value.values.return_value.get
-        self.assertEqual(get_call.call_args.kwargs["range"], "Sheet1!A2:AA")
+        append_call = service.spreadsheets.return_value.values.return_value.append
+        self.assertEqual(append_call.call_args.kwargs["range"], "Sheet1!A:AA")
 
 
 class SheetsCredentialTests(unittest.TestCase):
@@ -234,6 +226,45 @@ class SheetsCredentialTests(unittest.TestCase):
 
         from_info.assert_called_once()
         self.assertEqual(from_info.call_args.args[0], {"type": "service_account"})
+
+    def test_transport_is_built_with_the_configured_timeout(self) -> None:
+        # `build(credentials=...)` makes its own httplib2.Http whose timeout is
+        # None, which is the unbounded wait this replaces -- and the Sheets call
+        # runs after both emails are away, so a stall there holds a worker on a
+        # request that has already had its user-visible effect. There is no
+        # timeout argument on build(), so the transport is constructed here and
+        # passed in; this asserts the value survives that hand-off.
+        service = _fake_service([])
+
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("httplib2.Http") as http,
+            patch("googleapiclient.discovery.build", return_value=service),
+        ):
+            append_row(_config(timeout_seconds=7.5), ["a"])
+
+        http.assert_called_once_with(timeout=7.5)
+
+    def test_transport_is_authorized_with_the_credentials(self) -> None:
+        # The negative half of the test above. `http` and `credentials` are
+        # mutually exclusive on build(), so supplying a transport to carry the
+        # timeout means authorizing it here instead -- and handing build() a
+        # bare Http would send every request unauthenticated while still
+        # passing the timeout assertion.
+        service = _fake_service([])
+
+        with (
+            patch(
+                "google.oauth2.service_account.Credentials.from_service_account_info"
+            ) as from_info,
+            patch("google_auth_httplib2.AuthorizedHttp") as authorized_http,
+            patch("googleapiclient.discovery.build", return_value=service) as build,
+        ):
+            append_row(_config(), ["a"])
+
+        self.assertEqual(authorized_http.call_args.args[0], from_info.return_value)
+        self.assertIs(build.call_args.kwargs["http"], authorized_http.return_value)
+        self.assertNotIn("credentials", build.call_args.kwargs)
 
     def test_raises_when_no_credentials_are_configured(self) -> None:
         # A configured spreadsheet with no credentials is a misconfiguration,
@@ -344,8 +375,8 @@ class WorksheetResolutionTests(unittest.TestCase):
         ):
             append_row(_config(worksheet="2026"), ["row"])
 
-        update_call = service.spreadsheets.return_value.values.return_value.update
-        self.assertEqual(update_call.call_args.kwargs["range"], "2026!A2")
+        append_call = service.spreadsheets.return_value.values.return_value.append
+        self.assertEqual(append_call.call_args.kwargs["range"], "2026!A:A")
 
     def test_all_digit_title_is_cached_as_itself(self) -> None:
         service = _fake_service([{"properties": {"sheetId": 999, "title": "2026"}}])
@@ -359,8 +390,8 @@ class WorksheetResolutionTests(unittest.TestCase):
             append_row(config, ["second"])
 
         self.assertEqual(service.spreadsheets.return_value.get.call_count, 1)
-        update_call = service.spreadsheets.return_value.values.return_value.update
-        self.assertEqual(update_call.call_args.kwargs["range"], "2026!A2")
+        append_call = service.spreadsheets.return_value.values.return_value.append
+        self.assertEqual(append_call.call_args.kwargs["range"], "2026!A:A")
 
 
 class VerifySheetsAccessTests(unittest.TestCase):

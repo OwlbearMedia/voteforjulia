@@ -9,6 +9,14 @@
 Flask==3.1.3
 google-api-python-client==2.198.0
 google-auth==2.56.2
+# Both arrive anyway as google-api-python-client dependencies, but
+# services/sheets_service.py imports them directly to build the HTTP transport
+# with an explicit timeout — `build(credentials=...)` makes its own with none.
+# A direct import wants a direct pin: otherwise a google-api-python-client bump
+# that drops or reshuffles them breaks the Sheets write with an ImportError
+# that names a package nothing in the repo appears to depend on.
+google-auth-httplib2==0.4.0
+httplib2==0.32.0
 # APM agent, initialised in passenger_wsgi.py before the app is imported. It
 # ships cp311 manylinux wheels, so the host installs a wheel rather than
 # compiling — check that still holds before bumping, because the cPanel venv has

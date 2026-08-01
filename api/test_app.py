@@ -1,3 +1,4 @@
+import json
 import smtplib
 import unittest
 from collections import deque
@@ -5,7 +6,15 @@ from time import monotonic
 
 import api.app as app_module
 from api.config import EmailConfig, SheetsConfig
-from api.models import MAX_MESSAGE_LENGTH
+from api.models import (
+    MAX_EMAIL_LENGTH,
+    MAX_FIRST_NAME_LENGTH,
+    MAX_HELP_WAY_LENGTH,
+    MAX_HELP_WAYS_COUNT,
+    MAX_LAST_NAME_LENGTH,
+    MAX_MESSAGE_LENGTH,
+    MAX_PHONE_LENGTH,
+)
 
 
 class AppCorsTests(unittest.TestCase):
@@ -64,6 +73,99 @@ class AppCorsTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers.get("Vary"), "Origin")
+
+
+class AppErrorShapeTests(unittest.TestCase):
+    """Framework-raised errors come back as JSON, like the handlers' own do."""
+
+    def setUp(self) -> None:
+        self.client = app_module.app.test_client()
+
+    def test_unknown_route_returns_json(self) -> None:
+        response = self.client.get("/api/does-not-exist")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.mimetype, "application/json")
+        self.assertIn("error", response.get_json())
+
+    def test_wrong_method_returns_json_and_keeps_allow(self) -> None:
+        # `Allow` is the reason the handler rebuilds Werkzeug's own response
+        # instead of calling jsonify: a 405 without it is a less useful 405, and
+        # a jsonify-based handler would silently drop it.
+        response = self.client.get("/api/send-email")
+
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.mimetype, "application/json")
+        self.assertIn("error", response.get_json())
+        self.assertIn("POST", response.headers.get("Allow", ""))
+
+    def test_error_responses_still_carry_cors_headers(self) -> None:
+        # The error handler returns a fresh response object, so it bypasses the
+        # view entirely -- this checks the after_request hook still runs over
+        # it. Without CORS headers the browser reports a generic network error
+        # instead of surfacing the status the form could act on.
+        response = self.client.get(
+            "/api/does-not-exist", headers={"Origin": "https://voteforjulia.com"}
+        )
+
+        self.assertEqual(
+            response.headers.get("Access-Control-Allow-Origin"), "https://voteforjulia.com"
+        )
+        self.assertEqual(response.headers.get("Vary"), "Origin")
+
+
+class AppRequestSizeTests(unittest.TestCase):
+    """A body past MAX_CONTENT_LENGTH is refused before it is buffered."""
+
+    def setUp(self) -> None:
+        self.client = app_module.app.test_client()
+        self.oversized = "x" * (app_module.app.config["MAX_CONTENT_LENGTH"] + 1)
+
+    def test_oversized_json_body_is_rejected(self) -> None:
+        # The encoding that matters: form posts were already bounded by Flask's
+        # MAX_FORM_MEMORY_SIZE default, but it does not cover application/json,
+        # which is what the site actually posts. Before the cap this was read
+        # and parsed in full, then rejected on a 500-character field limit.
+        response = self.client.post(
+            "/api/send-email",
+            data=json.dumps(
+                {"firstName": "A", "email": "a@example.com", "message": self.oversized}
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.mimetype, "application/json")
+        self.assertIn("error", response.get_json())
+
+    def test_oversized_form_body_is_rejected(self) -> None:
+        response = self.client.post(
+            "/api/send-email",
+            data={"firstName": "A", "email": "a@example.com", "message": self.oversized},
+            content_type="application/x-www-form-urlencoded",
+        )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.mimetype, "application/json")
+
+    def test_a_normal_submission_is_well_under_the_cap(self) -> None:
+        # The negative half: a cap set below what the forms legitimately send
+        # would reject real submissions, and every test above would still pass.
+        # Every field at its documented maximum, plus JSON overhead.
+        largest_legitimate = json.dumps(
+            {
+                "firstName": "x" * MAX_FIRST_NAME_LENGTH,
+                "lastName": "x" * MAX_LAST_NAME_LENGTH,
+                "email": "x" * MAX_EMAIL_LENGTH,
+                "phone": "x" * MAX_PHONE_LENGTH,
+                "message": "x" * MAX_MESSAGE_LENGTH,
+                "helpWays": ["x" * MAX_HELP_WAY_LENGTH] * MAX_HELP_WAYS_COUNT,
+            }
+        )
+
+        self.assertLess(
+            len(largest_legitimate.encode()), app_module.app.config["MAX_CONTENT_LENGTH"]
+        )
 
 
 class AppRateLimitTests(unittest.TestCase):

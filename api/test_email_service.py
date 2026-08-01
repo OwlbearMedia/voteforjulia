@@ -22,9 +22,10 @@ def _decode_payload(part: Message) -> str:
 class FakeSmtpServer:
     instances: list["FakeSmtpServer"] = []
 
-    def __init__(self, smtp_server: str, smtp_port: int) -> None:
+    def __init__(self, smtp_server: str, smtp_port: int, timeout: float | None = None) -> None:
         self.smtp_server = smtp_server
         self.smtp_port = smtp_port
+        self.timeout = timeout
         self.login_args: tuple[str, str] | None = None
         self.sent_messages: list[tuple[str, list[str], str]] = []
         self.ehlo_calls = 0
@@ -71,6 +72,11 @@ def _config(**overrides) -> EmailConfig:
         "email_password": "placeholder-value",
         "recipients": ["team@example.com"],
         "plain_text_confirmation_only": False,
+        # Deliberately not DEFAULT_SMTP_TIMEOUT_SECONDS: the timeout tests below
+        # assert this exact value reaches the constructor, so hardcoding the
+        # default in email_service.py instead of reading it from the config
+        # would fail rather than pass by coincidence.
+        "timeout_seconds": 12.5,
     }
     return EmailConfig(**{**defaults, **overrides})
 
@@ -308,6 +314,24 @@ class EmailServiceTests(unittest.TestCase):
 
         self.assertEqual(refused, {})
         self.assertEqual(FakeSmtpServer.instances[0].starttls_calls, 0)
+
+    # The next two are a pair for the same reason as the auto-security ones:
+    # the timeout has to reach *both* constructors, and a test that only
+    # exercised the SSL branch would stay green with the STARTTLS one left
+    # unbounded. Without it smtplib inherits socket.getdefaulttimeout() -- None
+    # -- and a mail server that accepts the connection then stalls holds the
+    # worker open indefinitely.
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_ssl_connection_is_given_a_timeout(self) -> None:
+        send_submission_email(_config(smtp_port=465, smtp_security="ssl"), self.submission)
+
+        self.assertEqual(FakeSmtpServer.instances[0].timeout, 12.5)
+
+    @patch("api.services.email_service.smtplib.SMTP", new=FakeSmtpServer)
+    def test_starttls_connection_is_given_a_timeout(self) -> None:
+        send_submission_email(_config(smtp_port=587, smtp_security="starttls"), self.submission)
+
+        self.assertEqual(FakeSmtpServer.instances[0].timeout, 12.5)
 
     @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
     def test_each_message_gets_its_own_connection(self) -> None:

@@ -5,7 +5,8 @@ import smtplib
 from collections import deque
 from time import monotonic
 
-from flask import Flask, jsonify, request
+from flask import Flask, json, jsonify, request
+from werkzeug.exceptions import HTTPException
 
 try:
     from googleapiclient.errors import HttpError
@@ -16,9 +17,11 @@ except Exception:  # pragma: no cover - fallback for environments without google
 
 
 from api.config import (
+    DEFAULT_MAX_REQUEST_BYTES,
     DEFAULT_YARDSIGN_SHEETS_WORKSHEET,
     EmailConfig,
     env,
+    env_positive_number,
     load_email_config,
     load_sheets_config,
 )
@@ -39,6 +42,15 @@ from api.services.email_service import (
 from api.services.sheets_service import append_row, verify_sheets_access
 
 app = Flask(__name__)
+
+# Without this, `MAX_CONTENT_LENGTH` is None and a JSON body of any size is read
+# and parsed in full before validation rejects it on a 500-character field
+# limit. Form posts were already bounded by Flask's MAX_FORM_MEMORY_SIZE
+# default, but that setting does not cover application/json, which is what the
+# site actually posts.
+app.config["MAX_CONTENT_LENGTH"] = int(
+    env_positive_number("MAX_REQUEST_BYTES", DEFAULT_MAX_REQUEST_BYTES)
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -87,6 +99,30 @@ def add_cors_headers(response):
         )
         response.headers["Access-Control-Max-Age"] = "86400"
 
+    return response
+
+
+@app.errorhandler(HTTPException)
+def json_http_error(exc: HTTPException):
+    """Render framework-raised errors in the same JSON shape as the handlers.
+
+    Every error the view functions produce themselves is `{"error": ...}`, but
+    anything raised before or around them -- a 404, a 405, and now the 413 from
+    the size cap above -- came back as Werkzeug's HTML page. A client calling
+    `response.json()` on the error path got a parse exception instead of a
+    message it could show, and the 413 is reachable from the real form.
+
+    Flask routes uncaught non-HTTP exceptions through here as a 500 as well, so
+    this is also the JSON fallback for an unhandled crash. `exc.description` is
+    Werkzeug's own generic text in every one of those cases -- never anything
+    derived from the request -- so this cannot leak internals into a response.
+
+    Built from `exc.get_response()` rather than `jsonify` so headers that carry
+    meaning survive: a 405 keeps its `Allow`, a 401 would keep `WWW-Authenticate`.
+    """
+    response = exc.get_response()
+    response.set_data(json.dumps({"error": exc.description}))
+    response.content_type = "application/json"
     return response
 
 
