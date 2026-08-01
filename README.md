@@ -38,6 +38,10 @@ area:
   pipelines: LiteSpeed rather than Apache (its `.htaccess` parser differs from
   Apache's in silent ways), the atomic production swap and rollback, and how
   deploys install Python dependencies into the host's cPanel virtualenv.
+- **[docs/monitoring.md](docs/monitoring.md)** — what watches the site, which
+  alerts will fire, and how to tell a genuine outage from a WAF false positive.
+  The New Relic dashboard and alert definitions are version-controlled in
+  [monitoring/](monitoring/), since New Relic has no export-to-git story.
 - **[docs/donate-integration.md](docs/donate-integration.md)** — how the Donorbox
   widget and Stripe actually load on `/donate`, and which Content-Security-Policy
   and `Permissions-Policy` entries exist solely because of it.

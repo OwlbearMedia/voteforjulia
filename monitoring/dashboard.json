@@ -1,0 +1,353 @@
+{
+  "name": "Vote for Julia — Site Health",
+  "description": "Browser monitoring for voteforjulia.com. Production-only unless noted (test.voteforjulia.com and localhost are filtered out).",
+  "permissions": "PUBLIC_READ_WRITE",
+  "pages": [
+    {
+      "name": "Overview",
+      "description": "Traffic, form conversions, and API health for the production site.",
+      "widgets": [
+        {
+          "title": "Page views",
+          "layout": { "column": 1, "row": 1, "width": 3, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) AS 'Page views' FROM PageView WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' COMPARE WITH 1 week ago"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false }
+          }
+        },
+        {
+          "title": "Unique sessions",
+          "layout": { "column": 4, "row": 1, "width": 3, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT uniqueCount(session) AS 'Sessions' FROM PageView WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' COMPARE WITH 1 week ago"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false }
+          }
+        },
+        {
+          "title": "Form submissions",
+          "layout": { "column": 7, "row": 1, "width": 3, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) AS 'Submissions' FROM PageAction WHERE actionName IN ('volunteer_form_request', 'yard_sign_form_request') AND pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' COMPARE WITH 1 week ago"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false }
+          }
+        },
+        {
+          "title": "JavaScript errors",
+          "layout": { "column": 10, "row": 1, "width": 3, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) AS 'Errors' FROM JavaScriptError WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' COMPARE WITH 1 week ago"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false },
+            "thresholds": [
+              { "alertSeverity": "WARNING", "value": 10 },
+              { "alertSeverity": "CRITICAL", "value": 50 }
+            ]
+          }
+        },
+        {
+          "title": "Traffic over time by environment",
+          "layout": { "column": 1, "row": 4, "width": 8, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.area" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) FROM PageView FACET CASES (WHERE pageUrl LIKE '%localhost%' AS 'Local dev', WHERE pageUrl LIKE '%test.voteforjulia%' AS 'Test', WHERE pageUrl LIKE 'https://voteforjulia.com%' OR pageUrl LIKE 'https://www.voteforjulia.com%' AS 'Production') TIMESERIES"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false }
+          }
+        },
+        {
+          "title": "Traffic split",
+          "layout": { "column": 9, "row": 4, "width": 4, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.pie" },
+          "rawConfiguration": {
+            "facet": { "showOtherSeries": false },
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) FROM PageView FACET CASES (WHERE pageUrl LIKE '%localhost%' AS 'Local dev', WHERE pageUrl LIKE '%test.voteforjulia%' AS 'Test', WHERE pageUrl LIKE 'https://voteforjulia.com%' OR pageUrl LIKE 'https://www.voteforjulia.com%' AS 'Production')"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false }
+          }
+        },
+        {
+          "title": "Top pages (production)",
+          "layout": { "column": 1, "row": 7, "width": 6, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.bar" },
+          "rawConfiguration": {
+            "facet": { "showOtherSeries": false },
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) FROM PageView WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' FACET pageUrl LIMIT 10"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false }
+          }
+        },
+        {
+          "title": "Form submissions over time",
+          "layout": { "column": 7, "row": 7, "width": 6, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.line" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) FROM PageAction WHERE actionName IN ('volunteer_form_request', 'yard_sign_form_request') AND pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' FACET actionName TIMESERIES"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false },
+            "yAxisLeft": { "zero": true }
+          }
+        },
+        {
+          "title": "API calls by endpoint and status",
+          "layout": { "column": 1, "row": 10, "width": 6, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.table" },
+          "rawConfiguration": {
+            "facet": { "showOtherSeries": false },
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) FROM AjaxRequest WHERE requestUrl LIKE '%api.voteforjulia.com%' FACET requestUrl, httpResponseCode"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false }
+          }
+        },
+        {
+          "title": "API error rate",
+          "layout": { "column": 7, "row": 10, "width": 3, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT percentage(count(*), WHERE httpResponseCode != '200') AS 'Error %' FROM AjaxRequest WHERE requestUrl LIKE '%api.voteforjulia.com%'"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false },
+            "thresholds": [
+              { "alertSeverity": "WARNING", "value": 1 },
+              { "alertSeverity": "CRITICAL", "value": 5 }
+            ]
+          }
+        },
+        {
+          "title": "Failed API calls",
+          "layout": { "column": 10, "row": 10, "width": 3, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.line" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) FROM AjaxRequest WHERE requestUrl LIKE '%api.voteforjulia.com%' AND httpResponseCode != '200' TIMESERIES"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false },
+            "yAxisLeft": { "zero": true }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Performance & Errors",
+      "description": "Core Web Vitals (75th percentile, seconds) and JavaScript error detail for production.",
+      "widgets": [
+        {
+          "title": "LCP p75 (target < 2.5s)",
+          "layout": { "column": 1, "row": 1, "width": 3, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT percentile(largestContentfulPaint, 75) AS 'LCP (s)' FROM PageViewTiming WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%'"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false },
+            "thresholds": [
+              { "alertSeverity": "WARNING", "value": 2.5 },
+              { "alertSeverity": "CRITICAL", "value": 4 }
+            ]
+          }
+        },
+        {
+          "title": "FCP p75 (target < 1.8s)",
+          "layout": { "column": 4, "row": 1, "width": 3, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT percentile(firstContentfulPaint, 75) AS 'FCP (s)' FROM PageViewTiming WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%'"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false },
+            "thresholds": [
+              { "alertSeverity": "WARNING", "value": 1.8 },
+              { "alertSeverity": "CRITICAL", "value": 3 }
+            ]
+          }
+        },
+        {
+          "title": "CLS p75 (target < 0.1)",
+          "layout": { "column": 7, "row": 1, "width": 3, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT percentile(cumulativeLayoutShift, 75) AS 'CLS' FROM PageViewTiming WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%'"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false },
+            "thresholds": [
+              { "alertSeverity": "WARNING", "value": 0.1 },
+              { "alertSeverity": "CRITICAL", "value": 0.25 }
+            ]
+          }
+        },
+        {
+          "title": "INP p75 (target < 0.2s)",
+          "layout": { "column": 10, "row": 1, "width": 3, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT percentile(interactionToNextPaint, 75) AS 'INP (s)' FROM PageViewTiming WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%'"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false },
+            "thresholds": [
+              { "alertSeverity": "WARNING", "value": 0.2 },
+              { "alertSeverity": "CRITICAL", "value": 0.5 }
+            ]
+          }
+        },
+        {
+          "title": "LCP p75 over time",
+          "layout": { "column": 1, "row": 4, "width": 6, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.line" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT percentile(largestContentfulPaint, 75) FROM PageViewTiming WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' TIMESERIES"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false },
+            "yAxisLeft": { "zero": true }
+          }
+        },
+        {
+          "title": "Interactivity and layout stability over time",
+          "layout": { "column": 7, "row": 4, "width": 6, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.line" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT percentile(interactionToNextPaint, 75) AS 'INP (s)', percentile(cumulativeLayoutShift, 75) AS 'CLS' FROM PageViewTiming WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' TIMESERIES"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false },
+            "yAxisLeft": { "zero": true }
+          }
+        },
+        {
+          "title": "Slowest pages by LCP p75",
+          "layout": { "column": 1, "row": 7, "width": 6, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.table" },
+          "rawConfiguration": {
+            "facet": { "showOtherSeries": false },
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT percentile(largestContentfulPaint, 75) AS 'LCP (s)', count(*) AS 'Samples' FROM PageViewTiming WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' FACET pageUrl LIMIT 10"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false }
+          }
+        },
+        {
+          "title": "JavaScript errors by message",
+          "layout": { "column": 7, "row": 7, "width": 6, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.table" },
+          "rawConfiguration": {
+            "facet": { "showOtherSeries": false },
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) FROM JavaScriptError WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' FACET errorMessage LIMIT 20"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false }
+          }
+        },
+        {
+          "title": "JavaScript error detail",
+          "layout": { "column": 1, "row": 10, "width": 12, "height": 3 },
+          "linkedEntityGuids": null,
+          "visualization": { "id": "viz.table" },
+          "rawConfiguration": {
+            "facet": { "showOtherSeries": false },
+            "nrqlQueries": [
+              {
+                "accountIds": [8127277],
+                "query": "SELECT count(*) FROM JavaScriptError WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' FACET errorMessage, errorClass, pageUrl, browserName LIMIT 30"
+              }
+            ],
+            "platformOptions": { "ignoreTimeRange": false }
+          }
+        }
+      ]
+    }
+  ]
+}

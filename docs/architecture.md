@@ -191,6 +191,10 @@ coexisted with every form on the site failing. `/health/deep` is the one a
 synthetic monitor watches: it authenticates against SMTP and reads spreadsheet
 metadata, and returns 503 when either is broken.
 
+What is watched, what the alerts mean, and what to do when one fires is
+[monitoring.md](monitoring.md); the dashboard and alert definitions themselves
+are version-controlled in [monitoring/](../monitoring/).
+
 **Testing.** Vitest for units, Cypress against the deployed test site for the two
 form flows end to end (they submit real data and clean up after themselves), and
 pytest for the API. The OpenAPI spec is kept honest by a test that diffs it

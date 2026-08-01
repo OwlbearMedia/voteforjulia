@@ -1,0 +1,200 @@
+# New Relic alerting setup for voteforjulia
+# Paste into https://api.newrelic.com/graphiql — run in order, each step's
+# output feeds the next. Account 8127277.
+#
+# NOT TESTED: the MCP server is read-only, so none of this has been executed.
+# Verify field names against the explorer's schema pane as you go.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Synthetic monitor — production
+# ─────────────────────────────────────────────────────────────────────────────
+# shouldBypassHeadRequest is required: a SIMPLE monitor sends HEAD by default,
+# which returns no body, and the body is what we need to validate.
+
+mutation CreateProductionMonitor {
+  syntheticsCreateSimpleMonitor(
+    accountId: 8127277
+    monitor: {
+      name: "voteforjulia-api /health/deep"
+      uri: "https://api.voteforjulia.com/health/deep"
+      period: EVERY_5_MINUTES
+      status: ENABLED
+      locations: { public: ["AWS_US_EAST_2", "AWS_US_WEST_1"] }
+      advancedOptions: {
+        shouldBypassHeadRequest: true
+        redirectIsFailure: true
+        useTlsValidation: true
+        responseValidationText: "\"status\":\"ok\""
+      }
+      tags: [
+        { key: "env", values: ["production"] }
+        { key: "service", values: ["voteforjulia-api"] }
+      ]
+    }
+  ) {
+    monitor { guid name period status }
+    errors { description type }
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Synthetic monitor — test (optional, and deliberately NOT wired to alerts)
+# ─────────────────────────────────────────────────────────────────────────────
+
+mutation CreateTestMonitor {
+  syntheticsCreateSimpleMonitor(
+    accountId: 8127277
+    monitor: {
+      name: "voteforjulia-api-test /health/deep"
+      uri: "https://test-api.voteforjulia.com/health/deep"
+      period: EVERY_15_MINUTES
+      status: ENABLED
+      locations: { public: ["AWS_US_EAST_2"] }
+      advancedOptions: {
+        shouldBypassHeadRequest: true
+        useTlsValidation: true
+        responseValidationText: "\"status\":\"ok\""
+      }
+      tags: [{ key: "env", values: ["test"] }]
+    }
+  ) {
+    monitor { guid name }
+    errors { description type }
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. Alert policy
+# ─────────────────────────────────────────────────────────────────────────────
+# PER_CONDITION so an SMTP outage and a Sheets outage open separate issues
+# rather than collapsing into one.
+
+mutation CreatePolicy {
+  alertsPolicyCreate(
+    accountId: 8127277
+    policy: { name: "voteforjulia — API", incidentPreference: PER_CONDITION }
+  ) {
+    id
+    name
+  }
+}
+
+# → note the returned id as <POLICY_ID>
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. Condition: dependency check failing
+# ─────────────────────────────────────────────────────────────────────────────
+# This is the one that would have caught the 2026-07-30 SMTP outage.
+# Two consecutive failures (thresholdDuration 600 at a 5-min period) so a single
+# transient network blip does not page.
+
+mutation ConditionSyntheticFailure {
+  alertsNrqlConditionStaticCreate(
+    accountId: 8127277
+    policyId: "<POLICY_ID>"
+    condition: {
+      name: "API dependency check failing (production)"
+      enabled: true
+      nrql: {
+        query: "SELECT filter(count(*), WHERE result = 'FAILED') FROM SyntheticCheck WHERE monitorName = 'voteforjulia-api /health/deep'"
+      }
+      signal: {
+        aggregationWindow: 300
+        aggregationMethod: EVENT_FLOW
+        aggregationDelay: 120
+        fillOption: STATIC
+        fillValue: 0
+      }
+      terms: [
+        {
+          threshold: 0
+          operator: ABOVE
+          priority: CRITICAL
+          thresholdDuration: 600
+          thresholdOccurrences: ALL
+        }
+      ]
+      violationTimeLimitSeconds: 259200
+    }
+  ) {
+    id
+    name
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. Condition: API error rate
+# ─────────────────────────────────────────────────────────────────────────────
+# Catches failures the synthetic cannot see — a form endpoint 500ing while
+# /health/deep stays green.
+
+mutation ConditionErrorRate {
+  alertsNrqlConditionStaticCreate(
+    accountId: 8127277
+    policyId: "<POLICY_ID>"
+    condition: {
+      name: "API error rate above 5% (production)"
+      enabled: true
+      nrql: {
+        query: "SELECT percentage(count(*), WHERE error IS true) FROM Transaction WHERE appName = 'voteforjulia-api'"
+      }
+      signal: {
+        aggregationWindow: 60
+        aggregationMethod: EVENT_FLOW
+        aggregationDelay: 120
+        fillOption: NONE
+      }
+      terms: [
+        {
+          threshold: 5
+          operator: ABOVE
+          priority: CRITICAL
+          thresholdDuration: 300
+          thresholdOccurrences: ALL
+        }
+      ]
+      violationTimeLimitSeconds: 259200
+    }
+  ) {
+    id
+    name
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. Condition: API stopped reporting entirely
+# ─────────────────────────────────────────────────────────────────────────────
+# fillOption STATIC/0 makes silence look like zero throughput, so a dead worker
+# or a crashed agent trips this instead of going quiet.
+
+mutation ConditionNoData {
+  alertsNrqlConditionStaticCreate(
+    accountId: 8127277
+    policyId: "<POLICY_ID>"
+    condition: {
+      name: "API not reporting (production)"
+      enabled: true
+      nrql: { query: "SELECT count(*) FROM Transaction WHERE appName = 'voteforjulia-api'" }
+      signal: {
+        aggregationWindow: 300
+        aggregationMethod: EVENT_FLOW
+        aggregationDelay: 180
+        fillOption: STATIC
+        fillValue: 0
+      }
+      terms: [
+        {
+          threshold: 1
+          operator: BELOW
+          priority: WARNING
+          thresholdDuration: 1800
+          thresholdOccurrences: ALL
+        }
+      ]
+      violationTimeLimitSeconds: 259200
+    }
+  ) {
+    id
+    name
+  }
+}
