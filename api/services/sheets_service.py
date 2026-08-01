@@ -51,6 +51,25 @@ def _get_sheets_service(config: SheetsConfig):
     return service
 
 
+def verify_sheets_access(config: SheetsConfig) -> None:
+    """Check the service account can actually read the spreadsheet. Raises on failure.
+
+    Deliberately its own metadata read rather than a call to
+    `_resolve_worksheet_title`: that helper returns immediately for a
+    non-numeric worksheet (the common case — "Sheet1", "Yard Signs"), so it
+    would verify nothing. Requesting only `spreadsheetId` keeps the response
+    small while still proving credentials parse, the token refreshes, and the
+    sheet is shared with the service account.
+    """
+    if not config.spreadsheet_id:
+        raise ValueError("Google Sheets is not configured: missing GOOGLE_SHEETS_SPREADSHEET_ID")
+
+    service = _get_sheets_service(config)
+    service.spreadsheets().get(
+        spreadsheetId=config.spreadsheet_id, fields="spreadsheetId"
+    ).execute()
+
+
 def _quote_sheet_title(title: str) -> str:
     if re.fullmatch(r"[A-Za-z0-9_]+", title):
         return title

@@ -147,6 +147,18 @@ def _smtp_connection(config: EmailConfig):
         yield server
 
 
+def verify_smtp_credentials(config: EmailConfig) -> None:
+    """Connect and authenticate, sending nothing. Raises on failure.
+
+    Opening and immediately closing the connection exercises exactly the step
+    that broke silently during the `$`-in-password incident: the server was
+    reachable and /health was green, but LOGIN was rejected. No message is sent,
+    so the mail server's one-message-per-connection limit is not in play.
+    """
+    with _smtp_connection(config):
+        pass
+
+
 def send_submission_email(config: EmailConfig, submission: Submission) -> dict:
     msg = _build_submission_message(config, submission)
 

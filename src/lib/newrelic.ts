@@ -24,6 +24,12 @@ const NEW_RELIC_OPTIONS: BrowserAgentOptions = {
       enabled: false
     },
     distributed_tracing: {
+      // The API is a different origin, and the agent only attaches trace
+      // headers cross-origin to origins listed here. Without this, browser and
+      // API telemetry stay two unrelated halves. The API must also name those
+      // headers in Access-Control-Allow-Headers (api/app.py) or the preflight
+      // rejects them. Both hosts are listed so test traces link up too.
+      allowed_origins: ['https://api.voteforjulia.com', 'https://test-api.voteforjulia.com'],
       enabled: true
     },
     performance: {

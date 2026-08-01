@@ -34,8 +34,9 @@ from api.services.email_service import (
     send_submission_email,
     send_yard_sign_confirmation_email,
     send_yard_sign_request_email,
+    verify_smtp_credentials,
 )
-from api.services.sheets_service import append_row
+from api.services.sheets_service import append_row, verify_sheets_access
 
 app = Flask(__name__)
 
@@ -76,7 +77,14 @@ def add_cors_headers(response):
     if origin and origin in _CORS_ALLOWED_ORIGINS:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        # The trace headers are what let a browser AJAX call and the API
+        # transaction it triggers join into one distributed trace. The browser
+        # agent only sends them cross-origin when the origin is listed in its
+        # own distributed_tracing.allowed_origins (src/lib/newrelic.ts), and
+        # the preflight fails without them named here.
+        response.headers["Access-Control-Allow-Headers"] = (
+            "Content-Type, newrelic, traceparent, tracestate"
+        )
         response.headers["Access-Control-Max-Age"] = "86400"
 
     return response
@@ -366,6 +374,39 @@ def health_check():
             "script_root": request.script_root,
         }
     ), 200
+
+
+def _probe(name: str, check) -> tuple[str, bool]:
+    """Run one dependency check, reducing any failure to "fail"."""
+    try:
+        check()
+        return "ok", True
+    except Exception:
+        # Logged server-side in full; the response says only "fail". Exception
+        # text from smtplib and googleapiclient quotes the credentials and
+        # spreadsheet IDs it was given, and this endpoint is unauthenticated.
+        logger.exception("Deep health check failed for %s", name)
+        return "fail", False
+
+
+@app.route("/health/deep", methods=["GET"])
+@app.route("/api/health/deep", methods=["GET"])
+def deep_health_check():
+    retry_after = _consume_rate_limit("health-deep")
+    if retry_after is not None:
+        return _rate_limited_response(retry_after)
+
+    smtp_status, smtp_ok = _probe("smtp", lambda: verify_smtp_credentials(load_email_config()))
+    sheets_status, sheets_ok = _probe("sheets", lambda: verify_sheets_access(load_sheets_config()))
+
+    healthy = smtp_ok and sheets_ok
+    return jsonify(
+        {
+            "status": "ok" if healthy else "degraded",
+            "smtp": smtp_status,
+            "sheets": sheets_status,
+        }
+    ), (200 if healthy else 503)
 
 
 @app.route("/send-email", methods=["POST", "OPTIONS"])

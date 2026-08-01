@@ -199,6 +199,47 @@ Three things about that command are load-bearing:
 is what makes CI meaningful: it installs the same versions production runs. Keep
 it that way — with ranges, CI and the host resolve independently and can differ.
 
+### New Relic agent environment
+
+The APM agent ([ADR-0013](adr/0013-server-side-apm.md)) is configured entirely
+through the Passenger environment — there is no `newrelic.ini`. Set these per
+app in the cPanel Python selector:
+
+| Variable                | `api`              | `api_test`              |
+| ----------------------- | ------------------ | ----------------------- |
+| `NEW_RELIC_LICENSE_KEY` | ingest licence key | same key                |
+| `NEW_RELIC_APP_NAME`    | `voteforjulia-api` | `voteforjulia-api-test` |
+
+Use the **ingest licence key** (40 hex characters ending `NRAL`), not the
+`NRAK-` user key the source map upload uses — they are different credentials and
+the agent silently fails to report with the wrong one. Being hex, the licence key
+is safe under the `$`-in-`SetEnv` hazard above; the app name is ASCII letters and
+dashes, likewise safe.
+
+**With `NEW_RELIC_LICENSE_KEY` unset the agent does not start**, and the app
+serves normally without it. That is the intended local and CI behaviour, and it
+is also the fallback if the agent ever misbehaves: clear the variable and
+restart, no deploy needed.
+
+Confirm a worker is actually reporting by checking the app appears in New Relic,
+or query `SELECT count(*) FROM Transaction WHERE appName = 'voteforjulia-api'`.
+The `Transaction` event type does not exist for this account until the agent
+reports, so its presence is itself the signal.
+
+#### Watch worker memory
+
+The agent adds roughly 35–60MB RSS per Passenger worker, which is the cost
+[ADR-0011](adr/0011-browser-side-observability.md) originally declined to pay on
+a shared host. After deploying to `api_test`, compare:
+
+```
+ps -o rss,cmd -C lswsgi
+```
+
+If workers approach the CloudLinux LVE cap, clear `NEW_RELIC_LICENSE_KEY` on the
+affected app and revisit [ADR-0013](adr/0013-server-side-apm.md) rather than
+shipping it to production.
+
 #### Mind the interpreter floor
 
 The host interpreter is the constraint that bites here. `google-auth` 2.51+

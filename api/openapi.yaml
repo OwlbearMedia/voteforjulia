@@ -72,6 +72,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
 
+  /health/deep:
+    get:
+      tags: [Ops]
+      summary: Dependency health check
+      description: |
+        Verifies the two dependencies `/health` deliberately does not touch:
+        SMTP authentication (connect and `LOGIN`, sending no mail) and Google
+        Sheets access (a metadata read on the configured spreadsheet).
+
+        Exists because `/health` can be green while every form on the site
+        fails — which is what happened when a rotated `EMAIL_PASSWORD` reached
+        the app truncated. Intended for a synthetic monitor, and rate limited
+        like the form endpoints because each call does real network I/O.
+
+        Failures report `fail` and nothing more; the underlying exception text
+        quotes credentials and is logged server-side only. The deploy pipeline
+        checks `/health`, not this — a mail-server blip must not fail a deploy.
+      operationId: deepHealthCheck
+      responses:
+        '200':
+          description: Both dependencies are reachable and authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeepHealthStatus'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: At least one dependency failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeepHealthStatus'
+
   /send-email:
     post:
       tags: [Forms]
@@ -212,6 +246,32 @@ components:
         - status: ok
           path: /api/health
           script_root: ''
+
+    DeepHealthStatus:
+      type: object
+      required: [status, smtp, sheets]
+      description: |
+        `status` is `ok` only when both dependencies pass; any `fail` makes it
+        `degraded` and the response a 503.
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        smtp:
+          type: string
+          enum: [ok, fail]
+          description: SMTP connect and authenticate. No mail is sent.
+        sheets:
+          type: string
+          enum: [ok, fail]
+          description: Metadata read on the configured spreadsheet.
+      examples:
+        - status: ok
+          smtp: ok
+          sheets: ok
+        - status: degraded
+          smtp: fail
+          sheets: ok
 
     NameFields:
       type: object
@@ -492,10 +552,13 @@ components:
             type: string
             const: POST, OPTIONS
         Access-Control-Allow-Headers:
-          description: Present only for an allowed origin.
+          description: |
+            Present only for an allowed origin. The trace headers are there so
+            a browser AJAX call and the API transaction it triggers join into
+            one distributed trace.
           schema:
             type: string
-            const: Content-Type
+            const: Content-Type, newrelic, traceparent, tracestate
         Access-Control-Max-Age:
           description: Present only for an allowed origin.
           schema:

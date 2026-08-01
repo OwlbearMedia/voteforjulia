@@ -33,6 +33,29 @@ describe('newrelic', () => {
         })
       );
     });
+
+    it('allows trace headers to reach both API origins', async () => {
+      // Distributed tracing across origins needs this list AND the matching
+      // Access-Control-Allow-Headers in api/app.py. Drop either and nothing
+      // breaks loudly — browser and API traces just stop correlating, which is
+      // only noticed when someone goes looking for a trace that should exist.
+      initNewRelic();
+      await flushPromises();
+
+      expect(MockBrowserAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          init: expect.objectContaining({
+            distributed_tracing: {
+              allowed_origins: [
+                'https://api.voteforjulia.com',
+                'https://test-api.voteforjulia.com'
+              ],
+              enabled: true
+            }
+          })
+        })
+      );
+    });
   });
 
   describe('initNewRelicWhenReady', () => {
