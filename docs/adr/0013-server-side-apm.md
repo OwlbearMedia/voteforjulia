@@ -64,10 +64,15 @@ exercises the dependencies, and alert on both.
 - **Agent memory now sits in every Passenger worker — about +12MB**, measured on
   the host (interpreter ~9MB, Flask +22MB, agent +12MB). This is the cost 0011
   declined to pay, and it turns out to be roughly a tenth of a loaded worker
-  rather than the dominant term. It is still real under a CloudLinux LVE cap; if
-  workers approach it, this decision is the one to revisit. Measuring it is less
-  obvious than it looks, because workers are ephemeral —
-  [../hosting.md](../hosting.md#watch-worker-memory) has the method that works.
+  rather than the dominant term. **The objection does not survive the numbers:**
+  the account's LVE caps are 3GB of memory and 300 processes, against an observed
+  peak of ~0.5GB and ~10 processes with the agent live in both environments, and
+  cPanel records no resource faults of any kind. That observation is from a quiet
+  window, though — the spiky, deadline-bound traffic this record was written
+  against has not been measured yet.
+  Measuring this is less obvious than it looks, because workers are ephemeral —
+  [../hosting.md](../hosting.md#watch-worker-memory) has the method that works,
+  and the limits table.
 - **The deploy path gains a compiled dependency.** `newrelic` ships `cp311`
   manylinux wheels so the host installs a wheel, but the cPanel venv has no
   toolchain — a future version without a matching wheel breaks deploys, so check

@@ -302,10 +302,34 @@ Two things that matter in that command:
   says nothing about pure-Python imports.
 
 Expect real workers around 80–115MB PSS under load and roughly zero at idle,
-since none are resident. If they approach the CloudLinux LVE cap (cPanel →
-Resource Usage, which is also the only place the cap and the fault count are
-readable), clear `NEW_RELIC_LICENSE_KEY` on the affected app and revisit
-[ADR-0013](adr/0013-server-side-apm.md) rather than shipping to production.
+since none are resident.
+
+**The account's LVE limits**, read from cPanel → Resource Usage on 2026-08-01
+with the agent live in both environments:
+
+| Limit               | Cap  | Observed |
+| ------------------- | ---- | -------- |
+| Physical memory     | 3GB  | ~0.5GB   |
+| Number of processes | 300  | ~10      |
+| Entry processes     | 200  | ~0       |
+| CPU                 | 100% | <20%     |
+
+**Faults: none**, across all seven categories cPanel tracks (CPU, EP, VMem,
+Nproc, PMem, IO, IOPS). That is the number that matters. The usage graphs plot
+averages and can hide a brief spike, but a zero fault count means no limit was
+ever actually hit — so the headroom is real rather than merely plausible, and
+it is why [ADR-0013](adr/0013-server-side-apm.md) went ahead despite
+[ADR-0011](adr/0011-browser-side-observability.md)'s memory objection.
+
+Two caveats against reading too much into it. The sample was ~4.5 hours
+overnight, and most of the visible activity was the deploy and its own
+verification traffic — so it says nothing about a genuine surge, and spiky,
+deadline-bound traffic is precisely the pattern ADR-0013 was written against.
+Re-check this page after the first real one (a yard-sign push, the week before a
+vote) rather than treating the question as settled.
+
+If memory does approach the cap, clear `NEW_RELIC_LICENSE_KEY` on the affected
+app — that disables the agent without a deploy — and revisit ADR-0013.
 
 #### Reading an app's configured environment
 
