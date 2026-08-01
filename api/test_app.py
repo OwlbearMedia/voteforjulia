@@ -36,7 +36,13 @@ class AppCorsTests(unittest.TestCase):
         )
         self.assertEqual(response.headers.get("Vary"), "Origin")
         self.assertEqual(response.headers.get("Access-Control-Allow-Methods"), "POST, OPTIONS")
-        self.assertEqual(response.headers.get("Access-Control-Allow-Headers"), "Content-Type")
+        # The trace headers must survive preflight or the browser agent's
+        # distributed tracing headers are stripped and browser/API telemetry
+        # never correlates.
+        self.assertEqual(
+            response.headers.get("Access-Control-Allow-Headers"),
+            "Content-Type, newrelic, traceparent, tracestate",
+        )
 
     def test_preflight_omits_cors_headers_for_disallowed_origin(self) -> None:
         response = self.client.options(
@@ -484,6 +490,150 @@ class AppYardSignTests(unittest.TestCase):
             {"error": "First name contains invalid characters."},
         )
         self.assertEqual(len(self.sent_requests), 0)
+
+
+class AppDeepHealthTests(unittest.TestCase):
+    """Covers /health/deep — the check a synthetic monitor watches.
+
+    The dependency checks are replaced wholesale: a real one would open a
+    socket to the live mail server and to Google.
+    """
+
+    def setUp(self) -> None:
+        self._orig_verify_smtp = app_module.verify_smtp_credentials
+        self._orig_verify_sheets = app_module.verify_sheets_access
+        self._orig_rate_limit_max_requests = app_module._RATE_LIMIT_MAX_REQUESTS
+        self._orig_rate_limit_buckets = app_module._RATE_LIMIT_BUCKETS
+
+        app_module._RATE_LIMIT_MAX_REQUESTS = 5
+        app_module._RATE_LIMIT_BUCKETS = {}
+        self._ok()
+        self.client = app_module.app.test_client()
+
+    def tearDown(self) -> None:
+        app_module.verify_smtp_credentials = self._orig_verify_smtp
+        app_module.verify_sheets_access = self._orig_verify_sheets
+        app_module._RATE_LIMIT_MAX_REQUESTS = self._orig_rate_limit_max_requests
+        app_module._RATE_LIMIT_BUCKETS = self._orig_rate_limit_buckets
+
+    def _ok(self) -> None:
+        app_module.verify_smtp_credentials = lambda config: None
+        app_module.verify_sheets_access = lambda config: None
+
+    @staticmethod
+    def _raise(exc: Exception):
+        def _check(config):
+            raise exc
+
+        return _check
+
+    def _get(self, path: str = "/api/health/deep", ip: str = "203.0.113.90"):
+        return self.client.get(path, headers={"X-Forwarded-For": ip})
+
+    def test_reports_ok_when_both_dependencies_pass(self) -> None:
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.get_json(),
+            {"status": "ok", "smtp": "ok", "sheets": "ok"},
+        )
+
+    def test_registered_under_both_prefixes(self) -> None:
+        # Passenger may mount the app under /api, so every route is declared
+        # twice; a synthetic monitor pointed at the wrong one must not 404.
+        for path in ("/health/deep", "/api/health/deep"):
+            with self.subTest(path=path):
+                app_module._RATE_LIMIT_BUCKETS = {}
+                self.assertEqual(self._get(path).status_code, 200)
+
+    def test_smtp_auth_failure_reports_503(self) -> None:
+        # The exact shape of the $-in-password incident: the mail server was
+        # reachable and /health was green, but LOGIN was rejected.
+        app_module.verify_smtp_credentials = self._raise(
+            smtplib.SMTPAuthenticationError(535, b"Incorrect authentication data")
+        )
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.get_json(),
+            {"status": "degraded", "smtp": "fail", "sheets": "ok"},
+        )
+
+    def test_sheets_failure_reports_503(self) -> None:
+        app_module.verify_sheets_access = self._raise(ValueError("credentials are not configured"))
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.get_json(),
+            {"status": "degraded", "smtp": "ok", "sheets": "fail"},
+        )
+
+    def test_both_checks_run_even_when_the_first_fails(self) -> None:
+        # Short-circuiting would report sheets as healthy without testing it,
+        # so a two-dependency outage would look like a one-dependency outage.
+        app_module.verify_smtp_credentials = self._raise(OSError("connection refused"))
+        app_module.verify_sheets_access = self._raise(OSError("connection refused"))
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.get_json(),
+            {"status": "degraded", "smtp": "fail", "sheets": "fail"},
+        )
+
+    def test_failure_response_does_not_leak_exception_text(self) -> None:
+        # smtplib and googleapiclient quote the credentials they were handed,
+        # and this endpoint is unauthenticated.
+        app_module.verify_smtp_credentials = self._raise(
+            smtplib.SMTPAuthenticationError(535, b"auth failed for hunter2@voteforjulia.com")
+        )
+
+        response = self._get()
+
+        self.assertNotIn("hunter2", response.get_data(as_text=True))
+
+    def test_is_rate_limited(self) -> None:
+        # Each call opens an SMTP connection and hits the Sheets API, so an
+        # unlimited endpoint is a free amplifier against both.
+        app_module._RATE_LIMIT_MAX_REQUESTS = 2
+
+        for _ in range(2):
+            self.assertEqual(self._get(ip="203.0.113.91").status_code, 200)
+
+        response = self._get(ip="203.0.113.91")
+
+        self.assertEqual(response.status_code, 429)
+        self.assertIn("Retry-After", response.headers)
+
+    def test_rate_limit_is_separate_from_the_form_endpoints(self) -> None:
+        # A monitor polling every minute must never consume the budget a
+        # supporter needs to submit a form.
+        app_module._RATE_LIMIT_MAX_REQUESTS = 1
+        self.assertEqual(self._get(ip="203.0.113.92").status_code, 200)
+        self.assertEqual(self._get(ip="203.0.113.92").status_code, 429)
+
+        # Same client, different scope — still has its full budget.
+        with app_module.app.test_request_context(
+            "/api/send-email", headers={"X-Forwarded-For": "203.0.113.92"}
+        ):
+            self.assertIsNone(app_module._consume_rate_limit("send-email"))
+
+    def test_shallow_health_is_unchanged(self) -> None:
+        # The deploy pipeline curls /health. It must not gain a dependency on
+        # SMTP, or a mail-server blip fails deploys.
+        app_module.verify_smtp_credentials = self._raise(OSError("connection refused"))
+        app_module.verify_sheets_access = self._raise(OSError("connection refused"))
+
+        response = self.client.get("/api/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["status"], "ok")
 
 
 if __name__ == "__main__":

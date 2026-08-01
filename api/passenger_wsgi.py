@@ -1,7 +1,40 @@
 import importlib.util
+import logging
 import os
 import sys
 import types
+
+logger = logging.getLogger(__name__)
+
+
+def _start_new_relic() -> object | None:
+    """Initialise the APM agent, returning its WSGI wrapper (or None).
+
+    Must run before app.py is imported below: the agent instruments Flask,
+    smtplib and googleapiclient through import hooks, so anything already
+    imported is never traced.
+
+    Every failure here is swallowed. This module is the entry point for the
+    whole API, so an exception — a missing package, an unreadable log path, a
+    rejected licence key — would take every form on the site down to gain
+    monitoring. Degrading to an un-instrumented app is always the better trade.
+    Configuration comes from the environment (NEW_RELIC_LICENSE_KEY,
+    NEW_RELIC_APP_NAME), set per app in cPanel, so no key lives in the repo.
+    """
+    if not os.environ.get("NEW_RELIC_LICENSE_KEY", "").strip():
+        return None
+
+    try:
+        import newrelic.agent
+
+        newrelic.agent.initialize()
+        return newrelic.agent.WSGIApplicationWrapper
+    except Exception:
+        logger.exception("New Relic agent failed to start; continuing without it")
+        return None
+
+
+_new_relic_wrapper = _start_new_relic()
 
 project_home = os.path.dirname(os.path.abspath(__file__))
 workspace_root = os.path.dirname(project_home)
@@ -26,3 +59,6 @@ if spec is None or spec.loader is None:
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 application = module.app
+
+if _new_relic_wrapper is not None:
+    application = _new_relic_wrapper(application)

@@ -9,3 +9,9 @@
 Flask==3.1.3
 google-api-python-client==2.198.0
 google-auth==2.56.2
+# APM agent, initialised in passenger_wsgi.py before the app is imported. It
+# ships cp311 manylinux wheels, so the host installs a wheel rather than
+# compiling — check that still holds before bumping, because the cPanel venv has
+# no toolchain to fall back on. Inert without NEW_RELIC_LICENSE_KEY, so
+# installing it locally or in CI costs nothing at runtime.
+newrelic==13.4.0

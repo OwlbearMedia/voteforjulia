@@ -199,6 +199,89 @@ Three things about that command are load-bearing:
 is what makes CI meaningful: it installs the same versions production runs. Keep
 it that way — with ranges, CI and the host resolve independently and can differ.
 
+### New Relic agent environment
+
+The APM agent ([ADR-0013](adr/0013-server-side-apm.md)) is configured entirely
+through the Passenger environment — there is no `newrelic.ini`. Set these per
+app in the cPanel Python selector:
+
+| Variable                | `api`              | `api_test`              |
+| ----------------------- | ------------------ | ----------------------- |
+| `NEW_RELIC_LICENSE_KEY` | ingest licence key | same key                |
+| `NEW_RELIC_APP_NAME`    | `voteforjulia-api` | `voteforjulia-api-test` |
+
+Use the **ingest licence key** (40 hex characters ending `NRAL`), not the
+`NRAK-` user key the source map upload uses — they are different credentials and
+the agent silently fails to report with the wrong one. Being hex, the licence key
+is safe under the `$`-in-`SetEnv` hazard above; the app name is ASCII letters and
+dashes, likewise safe.
+
+**With `NEW_RELIC_LICENSE_KEY` unset the agent does not start**, and the app
+serves normally without it. That is the intended local and CI behaviour, and it
+is also the fallback if the agent ever misbehaves: clear the variable and
+restart, no deploy needed.
+
+Confirm a worker is actually reporting by checking the app appears in New Relic,
+or query `SELECT count(*) FROM Transaction WHERE appName = 'voteforjulia-api'`.
+The `Transaction` event type does not exist for this account until the agent
+reports, so its presence is itself the signal.
+
+#### Watch worker memory
+
+Measured on the host, the agent costs **about +12MB** per worker (baseline
+interpreter ~9MB, Flask +22MB, agent +12MB). This is the cost
+[ADR-0011](adr/0011-browser-side-observability.md) declined to pay, and it is
+smaller than that record assumed.
+
+**Workers are ephemeral, which defeats the obvious measurement.** Passenger on
+this host spawns them per request and reaps them when idle — `ps` at a quiet
+moment returns _nothing at all_, and a lone worker caught between requests looks
+identical with and without the agent. Comparing one before-reading to one
+after-reading proves nothing. Generate sustained traffic and measure during it:
+
+```
+ssh vfj '(for i in $(seq 1 12); do curl -s -o /dev/null https://test-api.voteforjulia.com/health/deep; sleep 1; done) &
+         sleep 4
+         for p in $(pgrep -f api_test/passenger_wsgi.py); do
+           echo "$p pss=$(awk "/^Pss:/{print \$2}" /proc/$p/smaps_rollup)KB agent=$(grep -ci newrelic /proc/$p/maps)"
+         done'
+```
+
+Two things that matter in that command:
+
+- **Use PSS, not RSS.** Forked workers share pages, and RSS counts them in full
+  for every process, so summing the RSS column badly overstates the total.
+  `smaps_rollup` divides shared pages proportionally.
+- **`grep -ci newrelic /proc/<pid>/maps` is the ground truth for "is the agent
+  running"** — it counts the agent's mapped C extensions. Memory figures alone
+  are too noisy to answer it. Note this only sees _file-backed_ mappings, so it
+  says nothing about pure-Python imports.
+
+Expect real workers around 80–115MB PSS under load and roughly zero at idle,
+since none are resident. If they approach the CloudLinux LVE cap (cPanel →
+Resource Usage, which is also the only place the cap and the fault count are
+readable), clear `NEW_RELIC_LICENSE_KEY` on the affected app and revisit
+[ADR-0013](adr/0013-server-side-apm.md) rather than shipping to production.
+
+#### Reading an app's configured environment
+
+`/proc/<pid>/environ` only works while a worker happens to be alive. The durable
+source is the selector, but its `get` output embeds `EMAIL_PASSWORD` and the
+Sheets IDs, so never print it raw. The app configs are nested at
+`available_versions.<version>.users.<user>.applications`, and this prints
+variable _names_ only:
+
+```
+/usr/sbin/cloudlinux-selector get --json --interpreter python > /tmp/.s && \
+~/virtualenv/api_test/3.11/bin/python -c '
+import json
+d = json.load(open("/tmp/.s"))
+for ver, vd in d.get("available_versions", {}).items():
+    for app, cfg in vd.get("users", {}).get("juliafor", {}).get("applications", {}).items():
+        print(app, sorted((cfg or {}).get("env_vars", {})))
+'; rm -f /tmp/.s
+```
+
 #### Mind the interpreter floor
 
 The host interpreter is the constraint that bites here. `google-auth` 2.51+

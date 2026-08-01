@@ -1,7 +1,12 @@
 # 0011. Observe the site from the browser, not the server
 
-**Status:** Accepted
+**Status:** Superseded by [0013](0013-server-side-apm.md)
 **Date:** 2026-07-31 (recorded; decided at project start)
+
+> The browser-side half of this decision still stands and is still in force —
+> New Relic Browser, GA4, hidden source maps, and the PII redaction rules are
+> unchanged. What [0013](0013-server-side-apm.md) reverses is the "and nothing on
+> the server" half, after the outage this record's own consequences predicted.
 
 ## Context
 

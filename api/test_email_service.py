@@ -1,3 +1,4 @@
+import smtplib
 import unittest
 from email import message_from_string
 from email.message import Message
@@ -10,6 +11,7 @@ from api.services.email_service import (
     send_submission_email,
     send_yard_sign_confirmation_email,
     send_yard_sign_request_email,
+    verify_smtp_credentials,
 )
 
 
@@ -51,6 +53,26 @@ class FakeSmtpServer:
 
     def quit(self) -> None:
         self.quit_calls += 1
+
+
+class RejectingLoginSmtpServer(FakeSmtpServer):
+    """Reproduces the `$`-in-password incident: reachable server, refused LOGIN."""
+
+    def login(self, username: str, password: str) -> None:
+        raise smtplib.SMTPAuthenticationError(535, b"Incorrect authentication data")
+
+
+def _config(**overrides) -> EmailConfig:
+    defaults = {
+        "smtp_server": "mail.example.com",
+        "smtp_port": 465,
+        "smtp_security": "ssl",
+        "email_address": "info@example.com",
+        "email_password": "placeholder-value",
+        "recipients": ["team@example.com"],
+        "plain_text_confirmation_only": False,
+    }
+    return EmailConfig(**{**defaults, **overrides})
 
 
 class EmailServiceTests(unittest.TestCase):
@@ -247,6 +269,100 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(server.login_args, ("info@example.com", "placeholder-value"))
         self.assertEqual(server.quit_calls, 1)
 
+    # The next two are a pair, and only mean something together. Both patch
+    # SMTP and SMTP_SSL with the same fake, so neither can pass by accident of
+    # which class was patched -- the assertion is on whether STARTTLS was
+    # negotiated. "auto" is the shipped default (config.DEFAULT_SMTP_SECURITY),
+    # so this is the branch production actually takes.
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    @patch("api.services.email_service.smtplib.SMTP", new=FakeSmtpServer)
+    def test_auto_security_negotiates_starttls_on_port_587(self) -> None:
+        refused = send_submission_email(
+            _config(smtp_port=587, smtp_security="auto"), self.submission
+        )
+
+        self.assertEqual(refused, {})
+        server = FakeSmtpServer.instances[0]
+        self.assertEqual(server.starttls_calls, 1)
+        self.assertEqual(server.ehlo_calls, 2)
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    @patch("api.services.email_service.smtplib.SMTP", new=FakeSmtpServer)
+    def test_auto_security_stays_implicit_ssl_on_port_465(self) -> None:
+        refused = send_submission_email(
+            _config(smtp_port=465, smtp_security="auto"), self.submission
+        )
+
+        self.assertEqual(refused, {})
+        server = FakeSmtpServer.instances[0]
+        self.assertEqual(server.starttls_calls, 0)
+        self.assertEqual(server.ehlo_calls, 0)
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_explicit_ssl_ignores_the_starttls_port(self) -> None:
+        # Port 587 with smtp_security="ssl" must still take the implicit-TLS
+        # path: the explicit setting wins over the port heuristic.
+        refused = send_submission_email(
+            _config(smtp_port=587, smtp_security="ssl"), self.submission
+        )
+
+        self.assertEqual(refused, {})
+        self.assertEqual(FakeSmtpServer.instances[0].starttls_calls, 0)
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_each_message_gets_its_own_connection(self) -> None:
+        # The mail server drops every message after the first on a shared
+        # connection, so the notification and the confirmation must never be
+        # consolidated onto one. Asserting the connection count is what would
+        # catch that refactor.
+        send_submission_email(self.config, self.submission)
+        send_confirmation_email(self.config, self.submission)
+
+        self.assertEqual(len(FakeSmtpServer.instances), 2)
+        self.assertEqual([len(server.sent_messages) for server in FakeSmtpServer.instances], [1, 1])
+
+
+class VerifySmtpCredentialsTests(unittest.TestCase):
+    """The deep health check's SMTP probe (api/app.py's /health/deep)."""
+
+    def setUp(self) -> None:
+        FakeSmtpServer.instances.clear()
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_authenticates_without_sending_anything(self) -> None:
+        # Sending a message here would burn the connection's one-message
+        # allowance and put mail in the campaign's inbox on every health poll.
+        verify_smtp_credentials(_config())
+
+        self.assertEqual(len(FakeSmtpServer.instances), 1)
+        server = FakeSmtpServer.instances[0]
+        self.assertEqual(server.login_args, ("info@example.com", "placeholder-value"))
+        self.assertEqual(server.sent_messages, [])
+
+    @patch("api.services.email_service.smtplib.SMTP", new=FakeSmtpServer)
+    def test_closes_the_starttls_connection(self) -> None:
+        verify_smtp_credentials(_config(smtp_port=587, smtp_security="starttls"))
+
+        server = FakeSmtpServer.instances[0]
+        self.assertEqual(server.starttls_calls, 1)
+        self.assertEqual(server.sent_messages, [])
+        self.assertEqual(server.quit_calls, 1)
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=RejectingLoginSmtpServer)
+    def test_propagates_authentication_failure(self) -> None:
+        # The probe is only useful if a refused LOGIN raises: /health/deep
+        # reports "fail" by catching this. Swallowing it would make the check
+        # green during exactly the outage it exists to catch.
+        with self.assertRaises(smtplib.SMTPAuthenticationError):
+            verify_smtp_credentials(_config())
+
+    @patch("api.services.email_service.smtplib.SMTP", new=RejectingLoginSmtpServer)
+    def test_closes_the_connection_when_login_is_refused(self) -> None:
+        with self.assertRaises(smtplib.SMTPAuthenticationError):
+            verify_smtp_credentials(_config(smtp_port=587, smtp_security="starttls"))
+
+        self.assertEqual(FakeSmtpServer.instances[0].quit_calls, 1)
+
 
 class YardSignEmailServiceTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -338,6 +454,25 @@ class YardSignEmailServiceTests(unittest.TestCase):
         plain_text_payload = _decode_payload(parsed.get_payload()[0])
 
         self.assertIn("Thanks so much for your support, friend!", plain_text_payload)
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_send_yard_sign_confirmation_email_can_send_plain_text_only(self) -> None:
+        refused = send_yard_sign_confirmation_email(
+            _config(plain_text_confirmation_only=True), self.yard_sign_request
+        )
+
+        self.assertEqual(refused, {})
+        _, recipients, raw_message = FakeSmtpServer.instances[0].sent_messages[0]
+        parsed = message_from_string(raw_message)
+
+        self.assertEqual(recipients, ["supporter@example.com"])
+        self.assertEqual(parsed.get_content_type(), "text/plain")
+        self.assertEqual(
+            parsed["Subject"], "Thanks for requesting a yard sign for Julia Hamann for Mayor"
+        )
+        plain_text_payload = _decode_payload(parsed)
+        self.assertIn("Thanks so much for your support, Julia!", plain_text_payload)
+        self.assertIn("Paid for by Julia Hamann for Mankato Mayor", plain_text_payload)
 
 
 if __name__ == "__main__":
