@@ -504,9 +504,15 @@ def test_distinct_last_forwarded_hops_get_separate_buckets(client, pipeline, mon
     Deleting the whole X-Forwarded-For branch kept the rest of the suite green.
     This is the other half of the property: different last hops must not share
     a bucket.
+
+    The header has to be trusted explicitly now. That is the point of
+    ADR-0014 — untrusted is the default, because with nothing in front of the
+    app the header is only ever the caller's own claim.
     """
     monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 1)
     monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_TRUSTED_CLIENT_IP_HEADER", "X-Forwarded-For")
+    monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
 
     first = client.post(
         CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"X-Forwarded-For": "198.51.100.1"}
@@ -525,6 +531,8 @@ def test_distinct_last_forwarded_hops_get_separate_buckets(client, pipeline, mon
 
 def test_empty_last_forwarded_hop_falls_back_to_remote_addr(client, pipeline, monkeypatch):
     monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_TRUSTED_CLIENT_IP_HEADER", "X-Forwarded-For")
+    monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
     # A trailing comma leaves no usable last hop; the socket address is used
     # rather than trusting the attacker-controlled earlier entries.
     client.post(

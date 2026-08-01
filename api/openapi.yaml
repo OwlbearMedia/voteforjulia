@@ -495,12 +495,21 @@ components:
       description: |
         Too many submissions from this client. The limit is per endpoint and per
         client IP — 5 requests per 60 seconds by default
-        (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`). The client is
-        identified by `CF-Connecting-IP`, falling back to the **last** hop of
-        `X-Forwarded-For`, then the socket address.
+        (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`).
+
+        The client is identified by the socket address. Forwarding headers are
+        **not** trusted: nothing sits in front of this API to overwrite them, so
+        `CF-Connecting-IP` and `X-Forwarded-For` are only ever the caller's own
+        claim, and honouring one let any caller mint a fresh bucket per request.
+        Setting `TRUSTED_CLIENT_IP_HEADER` to the header a real proxy overwrites
+        makes that header authoritative (its **last** hop); no other header is
+        consulted. See ADR-0014.
 
         Buckets live in process memory, so they are per-worker and reset on
         restart.
+
+        `Retry-After` is rounded up, so honouring it exactly is enough to clear
+        the window.
       headers:
         Retry-After:
           description: Seconds until the oldest request leaves the window.
