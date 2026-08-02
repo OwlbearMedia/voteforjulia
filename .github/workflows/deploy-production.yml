@@ -5,6 +5,11 @@ on:
     workflows: ["CI"]
     types:
       - completed
+    # Matches `workflow_run.head_branch`, which is the branch the CI run was for
+    # — NOT proof that the commit is on this repo's main. CI also runs on
+    # `pull_request`, where head_branch is the PR's head branch, and a fork's
+    # default branch is called `main` too. This filter is therefore a convenience,
+    # not a trust boundary; the `if:` on every entry job below is the boundary.
     branches:
       - main
 
@@ -18,8 +23,32 @@ concurrency:
 jobs:
   build-frontend:
     name: Build frontend
-    # Only deploy when CI passed — a failed or cancelled CI run should not deploy.
-    if: github.event.workflow_run.conclusion == 'success'
+    # Three conditions, and only the first is about CI health:
+    #
+    # - `conclusion == 'success'` — a failed or cancelled CI run must not deploy.
+    # - `event == 'push'` — the CI run must have been triggered by a push, not by
+    #   a `pull_request`. Without this, a PR from a fork whose head branch is
+    #   named `main` (the default for a fresh fork) satisfies the `branches:`
+    #   filter above, and the jobs below happily check out
+    #   `workflow_run.head_sha` — the fork's commit — build it, and SCP the
+    #   result over the live document root and the API app directory.
+    # - `head_repository` — the commit must come from this repo, not a fork.
+    #   Redundant against `event == 'push'` today (a fork's pushes cannot trigger
+    #   our workflows), kept because it states the intent directly and costs
+    #   nothing if the push condition is ever relaxed.
+    #
+    # The `environment: production` gates below do NOT cover this. Their only
+    # protection rule is a branch policy for `main`, and a `workflow_run` job
+    # runs with `github.ref` = the default branch regardless of which commit it
+    # checked out — so the policy passes while the deployed bytes are the fork's.
+    # There are no required reviewers.
+    #
+    # [deploy-test.yml](deploy-test.yml)'s `gate` job carries the same
+    # `head_repository` check for the same reason.
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
 
     steps:
@@ -148,7 +177,15 @@ jobs:
 
   deploy-api:
     name: Deploy Python API
-    if: github.event.workflow_run.conclusion == 'success'
+    # Same gate as build-frontend — see the comment there for why the
+    # `branches:` filter is not sufficient on its own. This job is the more
+    # dangerous of the two: it uploads `api/**` and touches restart.txt, so an
+    # unguarded fork commit would be arbitrary Python running on the host that
+    # holds the SMTP credentials and the Sheets service account.
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     environment:
       name: production
