@@ -1,5 +1,5 @@
 import { mount, RouterLinkStub } from '@vue/test-utils';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useHead } from '@unhead/vue';
 import JuliaAbout from '../../src/pages/JuliaAbout.vue';
 import JuliaDonate from '../../src/pages/JuliaDonate.vue';
@@ -16,9 +16,15 @@ vi.mock('@unhead/vue', () => ({
 
 const useHeadMock = vi.mocked(useHead);
 
+// JuliaDonate appends this to <head> on mount, and the shared jsdom cleanup in
+// vitest.setup.ts only resets <body> — so without an explicit reset it leaks
+// into every later test in the file.
+const DONORBOX_LOADER = 'script[src="https://donorbox.org/widgets.js"]';
+
 describe('Page components', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    document.head.querySelectorAll(DONORBOX_LOADER).forEach((el) => el.remove());
   });
 
   it('JuliaHome renders key content and configures home SEO metadata', () => {
@@ -188,12 +194,6 @@ describe('Page components', () => {
   });
 
   describe('JuliaDonate Donorbox loader', () => {
-    const loaderSelector = 'script[src="https://donorbox.org/widgets.js"]';
-
-    afterEach(() => {
-      document.head.querySelectorAll(loaderSelector).forEach((el) => el.remove());
-    });
-
     // The loader must not sit in <head> at page-load time: when it beat
     // hydration it upgraded <dbox-widget> early, Vue saw a mismatch, re-created
     // the element, and the vendor constructor threw. Preload without executing.
@@ -215,18 +215,18 @@ describe('Page components', () => {
     });
 
     it('appends the loader on mount, once', () => {
-      expect(document.head.querySelectorAll(loaderSelector)).toHaveLength(0);
+      expect(document.head.querySelectorAll(DONORBOX_LOADER)).toHaveLength(0);
 
       mountDonate();
 
-      const loader = document.head.querySelector<HTMLScriptElement>(loaderSelector);
+      const loader = document.head.querySelector<HTMLScriptElement>(DONORBOX_LOADER);
       expect(loader).not.toBeNull();
       expect(loader?.type).toBe('module');
       expect(loader?.async).toBe(true);
 
       // Remounting (a second SPA visit to /donate) must not stack loaders.
       mountDonate();
-      expect(document.head.querySelectorAll(loaderSelector)).toHaveLength(1);
+      expect(document.head.querySelectorAll(DONORBOX_LOADER)).toHaveLength(1);
     });
   });
 
