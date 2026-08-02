@@ -105,6 +105,20 @@ describe('buildPageHead', () => {
     expect(head.script[1].type).toBe('application/ld+json');
   });
 
+  it('appends extra links after the canonical link', () => {
+    const head = buildPageHead({
+      path: '/donate',
+      title: 'T',
+      description: 'D',
+      extraLinks: [{ rel: 'modulepreload', href: 'https://donorbox.org/widgets.js' }]
+    });
+
+    expect(head.link).toEqual([
+      { rel: 'canonical', href: 'https://voteforjulia.com/donate' },
+      { rel: 'modulepreload', href: 'https://donorbox.org/widgets.js' }
+    ]);
+  });
+
   it('appends extra meta entries', () => {
     const head = buildPageHead({
       path: '/donate',

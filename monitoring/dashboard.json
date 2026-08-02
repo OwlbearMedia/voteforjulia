@@ -333,7 +333,9 @@
         },
         {
           "title": "JavaScript error detail",
-          "layout": { "column": 1, "row": 10, "width": 12, "height": 3 },
+          "description": "One row per distinct error message. 'Trace?' is true when a session trace was captured, so the error is worth opening in Errors Inbox; false or empty means the event below is all there is. Click the title for Errors Inbox.",
+          "link": "https://one.newrelic.com/nr1-core/errors-inbox/entity-inbox/ODEyNzI3N3xCUk9XU0VSfEFQUExJQ0FUSU9OfDY1MzQxOTMyOQ",
+          "layout": { "column": 1, "row": 10, "width": 12, "height": 4 },
           "linkedEntityGuids": null,
           "visualization": { "id": "viz.table" },
           "rawConfiguration": {
@@ -341,7 +343,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [8127277],
-                "query": "SELECT count(*) FROM JavaScriptError WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' FACET errorMessage, errorClass, pageUrl, browserName LIMIT 30"
+                "query": "SELECT count(*) AS 'Count', latest(errorClass) AS 'Class', latest(hasTrace) AS 'Trace?', latest(userAgentName) AS 'Browser', latest(pageUrl) AS 'Page', latest(sessionTraceId) AS 'Session trace', latest(stackTrace) AS 'Stack' FROM JavaScriptError WHERE pageUrl NOT LIKE '%localhost%' AND pageUrl NOT LIKE '%test.voteforjulia%' FACET errorMessage LIMIT 30"
               }
             ],
             "platformOptions": { "ignoreTimeRange": false }

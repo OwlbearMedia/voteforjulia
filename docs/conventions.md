@@ -121,20 +121,33 @@ keep the SVG's own `viewBox`, and drop in the new path.
 ## Custom elements
 
 Third-party custom elements (currently only Donorbox's `<dbox-widget>` on
-`/donate`) must be listed in **`isCustomElement`** in
-[vue-compiler-options.ts](../vue-compiler-options.ts). That module is the single
-source shared by `vite.config.ts` and `vitest.config.ts` — add the tag there
-once, never to a config directly.
+`/donate`) go in as **raw markup — a module-level string rendered with
+`v-html` — never as a tag in a template.**
 
-The failure mode is quiet: an undeclared tag is compiled as a _component_
-lookup, which fails. Vitest and the dev server still render it (the client
-falls back to the raw tag), but SSG emits `<!---->` in its place, so the
-element is missing from the prerendered HTML and only appears after hydration
-— a hydration mismatch that no test catches. Verify with
-`grep dbox-widget dist/donate.html` after a build.
+That is not a style preference. Vue creates elements with
+`document.createElement`, which runs a registered custom element's constructor
+synchronously and then rejects the result if that constructor gave itself
+attributes. Vendor constructors do exactly that, so the call throws and the
+widget never renders. Assigning `innerHTML` parses a fragment instead, and
+fragment parsing always defers custom elements to the _upgrade_ path, where the
+same constructor is legal. It also keeps the vendor's DOM outside Vue's vdom, so
+shadow roots and injected scripts cannot register as a hydration mismatch.
 
-Why `<dbox-widget>` is an in-page element rather than an iframe, and what that
-implies for the security headers, is in
+Load the vendor's script from the component's `onMounted`, not from
+`buildPageHead`'s `scripts` — anything that defines the element before hydration
+finishes brings the race back. A `modulepreload` entry in `extraLinks` keeps the
+download early.
+
+SSG renders `v-html` content into the static HTML, so prerendering is unaffected
+and the verification step is unchanged — a typo'd string fails just as quietly
+as an undeclared tag did:
+
+```
+grep dbox-widget dist/donate.html
+```
+
+The crash this avoids, why `<dbox-widget>` is an in-page element rather than an
+iframe, and what that implies for the security headers are all in
 [donate-integration.md](donate-integration.md).
 
 ## Diagrams in docs
