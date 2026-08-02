@@ -1,20 +1,35 @@
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import re
+import ssl
 
 from api.config import SheetsConfig
 
 logger = logging.getLogger(__name__)
 
-# Keyed by (service_account_file, service_account_json), which together
-# identify the credentials. Building a service client involves parsing the
-# service account key and constructing the API resource; the underlying
-# google-auth credentials object refreshes its own access token as needed, so
-# it's safe to reuse across requests in this long-lived process instead of
-# rebuilding it on every submission.
-_service_cache: dict[tuple[str, str], object] = {}
+# Raised when the cached client writes into a keep-alive socket the far end has
+# already closed. Observed in production as `BrokenPipeError: [Errno 32]` from
+# nine `/health/deep` probes in a day, always on the SSL response read.
+#
+# googleapiclient's `HttpError` is deliberately absent: a 403, 404 or quota
+# refusal is the API answering, and rebuilding the client would not change it.
+# `TimeoutError` is absent too — a timeout means the server is slow, not that
+# the socket is dead, and retrying only doubles a wait `timeout_seconds` exists
+# to bound.
+_STALE_CONNECTION_ERRORS = (ConnectionError, ssl.SSLError, http.client.HTTPException)
+
+# Keyed by (service_account_file, service_account_json, timeout_seconds), which
+# together identify the client. The first two identify the credentials; the
+# timeout is part of the key because it is baked into the cached transport, so
+# a client built under one timeout must not be handed to a caller asking for
+# another. Building a service client involves parsing the service account key
+# and constructing the API resource; the underlying google-auth credentials
+# object refreshes its own access token as needed, so it's safe to reuse across
+# requests in this long-lived process instead of rebuilding it per submission.
+_service_cache: dict[tuple[str, str, float], object] = {}
 _worksheet_title_cache: dict[tuple[str, str, str], str] = {}
 
 
@@ -38,17 +53,47 @@ def _get_sheets_credentials(config: SheetsConfig):
 
 
 def _get_sheets_service(config: SheetsConfig):
-    cache_key = (config.service_account_file, config.service_account_json)
+    cache_key = (config.service_account_file, config.service_account_json, config.timeout_seconds)
     cached = _service_cache.get(cache_key)
     if cached is not None:
         return cached
 
     credentials = _get_sheets_credentials(config)
+
+    # `build(credentials=...)` constructs its own httplib2.Http, whose `timeout`
+    # defaults to None -- the same unbounded wait the SMTP client had. There is
+    # no argument for it, so the transport has to be supplied ready-made. That
+    # means authorizing it here too: `http` and `credentials` are mutually
+    # exclusive, and passing a bare Http would send the requests unauthenticated.
+    #
+    # This matters more than the SMTP timeout, not less: the Sheets write runs
+    # *after* both emails are away, so a stall here holds a worker open on a
+    # request whose user-visible side effects have already happened.
+    import google_auth_httplib2
+    import httplib2
     from googleapiclient.discovery import build
 
-    service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+    authorized_http = google_auth_httplib2.AuthorizedHttp(
+        credentials, http=httplib2.Http(timeout=config.timeout_seconds)
+    )
+    service = build("sheets", "v4", http=authorized_http, cache_discovery=False)
     _service_cache[cache_key] = service
     return service
+
+
+def _read_with_reconnect(config: SheetsConfig, build_request):
+    """Run a **read** against the cached client, rebuilding it once if the socket is dead.
+
+    Only safe for reads. A connection error surfaces while reading the
+    response, which cannot be told apart from a request the server already
+    applied — so retrying a write risks a duplicate row. See `append_row`.
+    """
+    try:
+        return build_request(_get_sheets_service(config)).execute()
+    except _STALE_CONNECTION_ERRORS:
+        logger.warning("Sheets client had a dead connection; rebuilding and retrying the read once")
+        reset_sheets_service_cache()
+        return build_request(_get_sheets_service(config)).execute()
 
 
 def verify_sheets_access(config: SheetsConfig) -> None:
@@ -64,10 +109,12 @@ def verify_sheets_access(config: SheetsConfig) -> None:
     if not config.spreadsheet_id:
         raise ValueError("Google Sheets is not configured: missing GOOGLE_SHEETS_SPREADSHEET_ID")
 
-    service = _get_sheets_service(config)
-    service.spreadsheets().get(
-        spreadsheetId=config.spreadsheet_id, fields="spreadsheetId"
-    ).execute()
+    _read_with_reconnect(
+        config,
+        lambda service: service.spreadsheets().get(
+            spreadsheetId=config.spreadsheet_id, fields="spreadsheetId"
+        ),
+    )
 
 
 def _quote_sheet_title(title: str) -> str:
@@ -126,44 +173,59 @@ def _column_letter(index: int) -> str:
     return letters
 
 
-def _find_next_empty_row(service, spreadsheet_id: str, worksheet_title: str, width: int) -> int:
-    # append()'s automatic "find the end of the table" can be thrown off by
-    # unrelated columns that hold values in rows with no real submission (e.g.
-    # a checkbox column defaults every cell to FALSE rather than truly empty),
-    # so only look at the columns this submission will actually write to.
-    # Within those, a row counts as occupied if *any* cell has content --
-    # manually entered rows may be missing the column A timestamp, and
-    # writing there would overwrite them.
-    end_column = _column_letter(max(width, 1))
-    range_name = f"{_quote_sheet_title(worksheet_title)}!A2:{end_column}"
-    result = (
-        service.spreadsheets()
-        .values()
-        .get(spreadsheetId=spreadsheet_id, range=range_name)
-        .execute()
-    )
-    values = result.get("values", [])
-    last_occupied = 0
-    for offset, cells in enumerate(values, start=1):
-        if any(str(cell).strip() for cell in cells):
-            last_occupied = offset
-    return 2 + last_occupied
-
-
 def append_row(config: SheetsConfig, row: list[str]) -> None:
     if not config.spreadsheet_id:
         return
 
     service = _get_sheets_service(config)
     worksheet_title = _resolve_worksheet_title(service, config.spreadsheet_id, config.worksheet)
-    next_row = _find_next_empty_row(service, config.spreadsheet_id, worksheet_title, len(row))
-    range_name = f"{_quote_sheet_title(worksheet_title)}!A{next_row}"
 
-    service.spreadsheets().values().update(
-        spreadsheetId=config.spreadsheet_id,
-        range=range_name,
-        valueInputOption="RAW",
-        body={"values": [row]},
-    ).execute()
+    # The range is scoped to exactly the columns this submission writes, which
+    # is what the previous hand-rolled row search was really for: append()'s
+    # table detection was "thrown off" by unrelated columns holding values in
+    # rows with no real submission (a checkbox column defaults every cell to
+    # FALSE rather than truly empty). Bounding the range excludes those columns
+    # from detection without taking the placement decision away from the API.
+    end_column = _column_letter(max(len(row), 1))
+    range_name = f"{_quote_sheet_title(worksheet_title)}!A:{end_column}"
 
-    logger.info("Wrote row to %s in spreadsheet %s", range_name, config.spreadsheet_id)
+    # Read-then-write is what this replaces. Choosing the row with a values.get
+    # and then writing to it with a values.update is a time-of-check/
+    # time-of-use gap: two submissions in flight pick the same row and the
+    # second update overwrites the first, silently -- both submitters got their
+    # confirmation email and both requests returned 200. Passenger runs several
+    # worker processes, so no in-process lock could have closed it.
+    #
+    # append() resolves the insertion point server-side in the same call that
+    # writes, so there is no gap. INSERT_ROWS is the other half: it inserts a
+    # new row rather than writing over whatever occupies the target cells, so
+    # even if table detection lands somewhere unexpected the failure mode is a
+    # row in an odd position, never a row destroyed. That is also what now
+    # protects manually entered rows that have no column A timestamp.
+    # Not retried, unlike the reads in `_read_with_reconnect`. A dead keep-alive
+    # socket surfaces while reading the *response*, which is indistinguishable
+    # from a request the server already applied — so a retry can duplicate a
+    # supporter's row, silently, in the sheet that is half the system of record
+    # ([ADR-0004](../../docs/adr/0004-no-database.md)). Failing is the better
+    # error: the caller returns a 502 and logs the raw body, which is the
+    # designed recovery path.
+    #
+    # The cache is still cleared, so the poisoned client dies with this request
+    # instead of failing every submission until the worker recycles. In
+    # practice /health/deep exercises the same cached client every 5 minutes and
+    # discards a stale one long before a submission — rare traffic riding on a
+    # frequent probe's connection hygiene.
+    try:
+        service.spreadsheets().values().append(
+            spreadsheetId=config.spreadsheet_id,
+            range=range_name,
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": [row]},
+        ).execute()
+    except _STALE_CONNECTION_ERRORS:
+        logger.warning("Sheets client had a dead connection during append; discarding it")
+        reset_sheets_service_cache()
+        raise
+
+    logger.info("Appended row to %s in spreadsheet %s", range_name, config.spreadsheet_id)

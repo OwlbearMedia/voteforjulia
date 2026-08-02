@@ -294,12 +294,13 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      # Chases an intermittent runner-only redirect loop (every spec's first
-      # cy.visit reloading the same URL until Cypress's redirectionLimit trips)
-      # that has never reproduced from a developer machine against the same
-      # deployment. If the host answers this runner differently — an error page,
-      # a WAF challenge, a redirect — it shows up here, before Cypress muddies
-      # the picture.
+      # Kept now that the redirect loop is understood, because it is the cheapest
+      # detector for its return. The cause was the host's Imunify360 WAF
+      # challenging the runner's IP, disabled site-wide on 2026-08-01
+      # (docs/hosting.md#imunify360-waf-disabled) — but that is a host-side
+      # setting we do not control. `server: openresty`, a ~12 kB body, or a
+      # "One moment, please..." title here means it is back, and it shows up
+      # before Cypress muddies the picture.
       - name: Record what the test site serves this runner
         run: |
           for path in / /donate /volunteer /yard-signs; do
@@ -323,18 +324,18 @@ jobs:
           CYPRESS_BASE_URL: https://test.voteforjulia.com
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          # A recording of the looping page is the one artifact that settles
-          # what it was rendering. Drop this (and the upload below) once the
-          # flake is understood.
-          CYPRESS_VIDEO: 'true'
 
-      - name: Upload Cypress screenshots and video
+      # Screenshots only. Video recording was added to capture the looping page
+      # during the redirect-loop hunt; the cause turned out to be the host's
+      # Imunify360 WAF, disabled site-wide on 2026-08-01
+      # (docs/hosting.md#imunify360-waf-disabled), so the recording no longer
+      # earns the time it costs on every run. Cypress does not record video by
+      # default, so removing CYPRESS_VIDEO above is the whole switch.
+      - name: Upload Cypress screenshots
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: cypress-failure-artifacts
-          path: |
-            cypress/screenshots
-            cypress/videos
+          path: cypress/screenshots
           if-no-files-found: ignore
           retention-days: 7

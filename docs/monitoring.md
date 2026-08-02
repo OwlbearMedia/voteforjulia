@@ -96,12 +96,18 @@ FROM SyntheticCheck WHERE result = 'FAILED' SINCE 2 hours ago
 
 - **All locations failed within the same minute** → the endpoint really is
   broken. Nothing about a genuine outage is location-specific.
-- **One location failed while others passed** → suspect the
-  [Imunify360 WAF](hosting.md#an-imunify360-waf-sits-in-front-of-litespeed). It
-  challenges by source IP reputation, and synthetic checks come from AWS ranges
-  that get flagged. A challenged request returns **HTTP 200** with a
-  verification splash, so the status code looks healthy and only the response
-  validation catches it — as a false positive on a working API.
+- **One location failed while others passed** → nothing about the API is
+  location-specific, so suspect something between the probe and the app. The
+  known candidate is the
+  [Imunify360 WAF](hosting.md#imunify360-waf-disabled), which challenges by
+  source IP reputation and would flag the AWS ranges synthetics run from. A
+  challenged request returns **HTTP 200** with a verification splash, so the
+  status code looks healthy and only the response validation catches it — a
+  false positive on a working API.
+
+  **It was disabled site-wide on 2026-08-01**, so this should not happen. A
+  single-location failure is therefore worth taking seriously as evidence the
+  WAF is back, rather than dismissing as noise.
 
 ### If it is real
 
@@ -118,8 +124,37 @@ curl -s https://api.voteforjulia.com/health/deep | jq
   shared with it.
 
 The response deliberately says only `fail` — the underlying exception text
-quotes credentials, so it is logged server-side and never returned. For the
-actual error, look at the transaction in New Relic or the Passenger log.
+quotes credentials, so it is never returned to an unauthenticated caller. The
+detail goes to the agent instead, tagged with which dependency broke:
+
+```
+SELECT count(*) FROM TransactionError
+WHERE appName = 'voteforjulia-api' FACET health.dependency, error.class
+SINCE 24 hours ago
+```
+
+That attribute exists because the first version swallowed the exception
+entirely: nine production 503s recorded a status code and nothing else, and
+finding out they were all Sheets took an SSH session into
+`~/api/stderr.log`. The full traceback is still there if the agent's copy is
+not enough.
+
+### Stale Sheets connections
+
+The failure to expect, because it has already happened: `BrokenPipeError` from
+Google Sheets. The client is cached for the worker's lifetime and its
+keep-alive socket gets closed while idle, so the next call writes into a dead
+connection.
+
+Reads rebuild the client and retry once. **The append deliberately does not** —
+a connection error surfaces while reading the response, which cannot be told
+apart from a request the server already applied, so a retry could duplicate a
+supporter's row. It clears the cached client and fails, which returns a 502 and
+logs the raw body for recovery.
+
+One useful side effect: `/health/deep` exercises the same cached client every
+five minutes, so a stale connection is usually discovered and discarded by a
+probe long before a real submission meets it.
 
 ### Turning it off
 

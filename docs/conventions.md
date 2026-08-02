@@ -207,17 +207,18 @@ conventions and the traps.
   reaches a CI log. They were added for, and identified, the failure below. The
   e2e job also curls the site before running and uploads screenshots and video
   on failure.
-- **"The application redirected to … more than 20 times" is the host's WAF, not
-  the app.** When the runner's IP is graylisted, Imunify360 answers every URL
-  with a challenge page that reloads itself every 5 seconds, and Cypress counts
-  each reload as a redirect — so all three specs die on their first `cy.visit`,
-  in a run where the app's own code never executes (the tell is `0 uncaught
-exception(s)` alongside 21 loads). Cypress's headless Chrome fails the
-  challenge's bot checks, so it can never clear;
-  [hosting.md](hosting.md#an-imunify360-waf-sits-in-front-of-litespeed) has the
-  detail and the remedy. Raising `redirectionLimit`, adding retries, or
-  re-running the job are not fixes — a re-run only helps because it lands on a
-  different IP.
+- **"The application redirected to … more than 20 times" was the host's WAF, not
+  the app** — and the WAF was **disabled site-wide on 2026-08-01**, so this
+  should no longer occur. When the runner's IP was graylisted, Imunify360
+  answered every URL with a challenge page that reloaded itself every 5 seconds,
+  and Cypress counted each reload as a redirect — so all three specs died on
+  their first `cy.visit`, in a run where the app's own code never executed (the
+  tell is `0 uncaught exception(s)` alongside 21 loads). Cypress's headless
+  Chrome failed the challenge's bot checks, so it could never clear.
+  [hosting.md](hosting.md#imunify360-waf-disabled) has the detail and how it was
+  resolved. **If this returns, it means the WAF is back** — raising
+  `redirectionLimit`, adding retries, or re-running the job are not fixes, and a
+  re-run only ever helped because it landed on a different IP.
 - **`1 passing` plus a `(failed).png` screenshot means a test lost its first
   attempt** and was saved by `retries.runMode: 1`. Cypress fails a test on any
   uncaught exception from the app, and `donate.cy.ts` hits one from Donorbox's

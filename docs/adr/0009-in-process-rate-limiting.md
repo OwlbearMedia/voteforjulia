@@ -1,7 +1,14 @@
 # 0009. Rate-limit in process memory, keyed per IP and endpoint
 
-**Status:** Accepted
+**Status:** Superseded by [0014](0014-do-not-trust-forwarding-headers.md)
 **Date:** 2026-07-31 (recorded; decided at project start)
+
+> The limiter itself — in process memory, per endpoint and per client — still
+> stands. What [0014](0014-do-not-trust-forwarding-headers.md) replaces is the
+> client-identification rule below: trusting `CF-Connecting-IP` and
+> `X-Forwarded-For` unconditionally made the limiter bypassable by anyone who
+> sent either header, because nothing sits in front of the API to overwrite
+> them. Do not implement the "Two details are deliberate" section as written.
 
 ## Context
 

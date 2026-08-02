@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 import smtplib
 from collections import deque
+from math import ceil
 from time import monotonic
 
-from flask import Flask, jsonify, request
+from flask import Flask, json, jsonify, request
+from werkzeug.exceptions import HTTPException
 
 try:
     from googleapiclient.errors import HttpError
@@ -16,6 +18,7 @@ except Exception:  # pragma: no cover - fallback for environments without google
 
 
 from api.config import (
+    DEFAULT_MAX_REQUEST_BYTES,
     DEFAULT_YARDSIGN_SHEETS_WORKSHEET,
     EmailConfig,
     env,
@@ -38,14 +41,80 @@ from api.services.email_service import (
 )
 from api.services.sheets_service import append_row, verify_sheets_access
 
+try:
+    import newrelic.agent as _newrelic_agent
+except Exception:  # pragma: no cover - the agent is absent locally and in CI
+    _newrelic_agent = None
+
 app = Flask(__name__)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-_RATE_LIMIT_WINDOW_SECONDS = max(int(env("RATE_LIMIT_WINDOW_SECONDS", "60")), 1)
-_RATE_LIMIT_MAX_REQUESTS = max(int(env("RATE_LIMIT_MAX_REQUESTS", "5")), 1)
+
+def _int_setting(name: str, default: int) -> int:
+    """A positive integer from the environment, degrading to `default` if unusable.
+
+    These are read at import, which is the whole reason this logs instead of
+    raising: an exception here fails module import, and this module is the
+    entry point for the API, so a mistyped value in cPanel would take every
+    form on the site down rather than fall back to a working default. Same
+    trade `passenger_wsgi._start_new_relic` makes, for the same reason.
+
+    Contrast `load_email_config`, which does raise on a bad timeout: that runs
+    per request, where app.py already renders a ValueError as a JSON 500.
+
+    Parsed as an int rather than via `env_positive_number`, whose float return
+    made a fractional value the one input class that mutated silently instead
+    of degrading -- "2.5" became 2, and "0.5" became 1 via a clamp.
+    """
+    raw = env(name)
+    if not raw:
+        return default
+
+    try:
+        value = int(raw)
+        if value < 1:
+            raise ValueError
+    except ValueError:
+        logger.error(
+            "%s must be a positive integer, got %r; falling back to %s", name, raw, default
+        )
+        return default
+
+    return value
+
+
+# Without this, `MAX_CONTENT_LENGTH` is None and a JSON body of any size is read
+# and parsed in full before validation rejects it on a 500-character field
+# limit. Form posts were already bounded by Flask's MAX_FORM_MEMORY_SIZE
+# default, but that setting does not cover application/json, which is what the
+# site actually posts.
+app.config["MAX_CONTENT_LENGTH"] = _int_setting("MAX_REQUEST_BYTES", DEFAULT_MAX_REQUEST_BYTES)
+
+_RATE_LIMIT_WINDOW_SECONDS = _int_setting("RATE_LIMIT_WINDOW_SECONDS", 60)
+_RATE_LIMIT_MAX_REQUESTS = _int_setting("RATE_LIMIT_MAX_REQUESTS", 5)
+
+# A ceiling on how many client keys are tracked at once, so the dict cannot grow
+# without bound. Far above any plausible number of distinct clients in a
+# 60-second window for a municipal campaign; it exists as a backstop, not as a
+# limit anyone should reach. See `_evict_to_cap` for what crossing it costs.
+_RATE_LIMIT_MAX_BUCKETS = _int_setting("RATE_LIMIT_MAX_BUCKETS", 10_000)
+
 _RATE_LIMIT_BUCKETS: dict[str, deque[float]] = {}
+
+# Timestamp of the next full sweep. Starts in the past so the first request
+# after boot sweeps, which keeps the scheduling logic identical on every path.
+_next_bucket_sweep_at = 0.0
+
+# The header naming the real client, for when something that overwrites it sits
+# in front of the app. Unset by default, and that default is load-bearing:
+# nothing currently fronts this API (ADR-0003), so a forwarding header is just
+# a string the caller chose. Trusting one unconditionally let any caller mint a
+# fresh bucket per request and bypass the limiter entirely -- see ADR-0014.
+# Putting Cloudflare in front stays a config change (set this to
+# `CF-Connecting-IP`), not a code change.
+_TRUSTED_CLIENT_IP_HEADER = env("TRUSTED_CLIENT_IP_HEADER")
 
 _CORS_ALLOWED_ORIGINS = {
     item.strip()
@@ -87,6 +156,30 @@ def add_cors_headers(response):
         )
         response.headers["Access-Control-Max-Age"] = "86400"
 
+    return response
+
+
+@app.errorhandler(HTTPException)
+def json_http_error(exc: HTTPException):
+    """Render framework-raised errors in the same JSON shape as the handlers.
+
+    Every error the view functions produce themselves is `{"error": ...}`, but
+    anything raised before or around them -- a 404, a 405, and now the 413 from
+    the size cap above -- came back as Werkzeug's HTML page. A client calling
+    `response.json()` on the error path got a parse exception instead of a
+    message it could show, and the 413 is reachable from the real form.
+
+    Flask routes uncaught non-HTTP exceptions through here as a 500 as well, so
+    this is also the JSON fallback for an unhandled crash. `exc.description` is
+    Werkzeug's own generic text in every one of those cases -- never anything
+    derived from the request -- so this cannot leak internals into a response.
+
+    Built from `exc.get_response()` rather than `jsonify` so headers that carry
+    meaning survive: a 405 keeps its `Allow`, a 401 would keep `WWW-Authenticate`.
+    """
+    response = exc.get_response()
+    response.set_data(json.dumps({"error": exc.description}))
+    response.content_type = "application/json"
     return response
 
 
@@ -164,42 +257,101 @@ def _missing_required_yard_sign_fields_message(yard_sign_request: YardSignReques
 
 
 def _rate_limit_key() -> str:
-    # Prefer CF-Connecting-IP: Cloudflare overwrites it on proxied requests, so
-    # the client can't forge it. X-Forwarded-For is only a fallback, and only
-    # its *last* hop counts — proxies append the connecting address to whatever
-    # list the client sent, so the first hop is attacker-controlled and would
-    # let a caller mint a fresh rate-limit bucket per request.
-    connecting_ip = request.headers.get("CF-Connecting-IP", "").strip()
-    if connecting_ip:
-        return connecting_ip
+    """Identify the client, trusting a forwarding header only when told to.
 
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
-    if forwarded_for:
-        last_hop = forwarded_for.rsplit(",", 1)[-1].strip()
+    A forwarding header is only evidence about the client if something between
+    the client and this process overwrites it. Nothing does by default, so the
+    socket address is the only thing here the caller cannot choose.
+
+    When `TRUSTED_CLIENT_IP_HEADER` names one, its *last* hop is the value that
+    counts, never the first: a proxy appends the connecting address to whatever
+    list the client sent, so earlier entries are still caller-supplied. For a
+    single-value header like `CF-Connecting-IP` this is simply the whole value.
+    """
+    if _TRUSTED_CLIENT_IP_HEADER:
+        forwarded = request.headers.get(_TRUSTED_CLIENT_IP_HEADER, "")
+        last_hop = forwarded.rsplit(",", 1)[-1].strip()
         if last_hop:
             return last_hop
 
     return request.remote_addr or "unknown"
 
 
-def _consume_rate_limit(scope: str) -> int | None:
-    now = monotonic()
-    cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
-
-    # Prune every bucket, not just the current key's: one-off client addresses
-    # would otherwise leave empty deques behind forever, growing the dict
-    # without bound over the life of the process.
+def _sweep_expired_buckets(cutoff: float) -> None:
+    """Drop timestamps older than the window, and any bucket left empty."""
     for stale_key, stale_bucket in list(_RATE_LIMIT_BUCKETS.items()):
         while stale_bucket and stale_bucket[0] <= cutoff:
             stale_bucket.popleft()
         if not stale_bucket:
             del _RATE_LIMIT_BUCKETS[stale_key]
 
+
+def _evict_to_cap() -> None:
+    """Force the bucket count under the cap, oldest activity first.
+
+    Only reachable when more distinct clients are active within one window than
+    the cap allows -- a sweep has already removed everything expired. Evicting a
+    bucket resets that client's allowance, so this fails open: under genuine
+    pressure the limiter gets more permissive rather than refusing real
+    submissions or growing until the worker is killed. For a campaign form
+    that is the right way round, and with the key space no longer caller-
+    controlled it takes real traffic to get here.
+    """
+    if len(_RATE_LIMIT_BUCKETS) <= _RATE_LIMIT_MAX_BUCKETS:
+        return
+
+    # Trim to a low-water mark, not to the cap itself. Landing exactly on the
+    # cap leaves the dict full, so the very next request crosses it again and
+    # forces another sweep-and-sort -- which would turn this safety valve back
+    # into the per-request O(n) cost it exists to remove. Headroom means it runs
+    # once per (cap / 10) new keys instead.
+    keep = max(_RATE_LIMIT_MAX_BUCKETS * 9 // 10, 1)
+    excess = len(_RATE_LIMIT_BUCKETS) - keep
+
+    # bucket[-1] is that key's most recent request; every bucket is non-empty
+    # because the sweep runs first.
+    by_least_recent = sorted(_RATE_LIMIT_BUCKETS.items(), key=lambda item: item[1][-1])
+    for stale_key, _ in by_least_recent[:excess]:
+        del _RATE_LIMIT_BUCKETS[stale_key]
+
+    logger.warning(
+        "Rate-limit bucket cap (%d) exceeded; evicted %d least-recently-active keys",
+        _RATE_LIMIT_MAX_BUCKETS,
+        excess,
+    )
+
+
+def _consume_rate_limit(scope: str) -> int | None:
+    global _next_bucket_sweep_at
+
+    now = monotonic()
+    cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
+
+    # The sweep touches every bucket, so running it per request made the cost of
+    # each request scale with the number of live keys. Once per window is enough
+    # to bound memory -- nothing survives more than a window past its expiry --
+    # and turns that into O(1) amortised. The cap is the safety valve for a
+    # burst of new keys arriving between sweeps.
+    if now >= _next_bucket_sweep_at or len(_RATE_LIMIT_BUCKETS) >= _RATE_LIMIT_MAX_BUCKETS:
+        _sweep_expired_buckets(cutoff)
+        _evict_to_cap()
+        _next_bucket_sweep_at = now + _RATE_LIMIT_WINDOW_SECONDS
+
     key = f"{scope}:{_rate_limit_key()}"
     bucket = _RATE_LIMIT_BUCKETS.setdefault(key, deque())
 
+    # Prune this key inline as well. Its count has to be exact on every request
+    # regardless of how long ago the last sweep ran, or a client would be held
+    # to a stale window.
+    while bucket and bucket[0] <= cutoff:
+        bucket.popleft()
+
     if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
-        retry_after = max(1, int(bucket[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
+        # Round up, not down: the oldest request leaves the window at
+        # `bucket[0] + window`, and truncating that toward zero advertises a
+        # wait that is still inside it -- so a client that honours Retry-After
+        # exactly gets a second 429 for doing the right thing.
+        retry_after = max(1, ceil(bucket[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
         return retry_after
 
     bucket.append(now)
@@ -376,6 +528,32 @@ def health_check():
     ), 200
 
 
+def _report_probe_failure(name: str) -> None:
+    """Attach the failed dependency to the current New Relic transaction.
+
+    Swallowing the exception keeps credentials out of an unauthenticated
+    response, but it also hides the failure from the agent: the transaction
+    records a 503 and nothing about why. That gap cost an SSH session into
+    `stderr.log` to find out that nine production 503s were all
+    `BrokenPipeError` from Sheets. `notice_error` puts the traceback in the
+    errors inbox and the attributes make it queryable:
+
+        SELECT count(*) FROM TransactionError
+        WHERE health.dependency IS NOT NULL FACET health.dependency
+
+    Best-effort by design — the agent is absent locally and in CI, and
+    monitoring must never be the thing that breaks a health check.
+    """
+    if _newrelic_agent is None:
+        return
+
+    try:
+        _newrelic_agent.add_custom_attribute("health.dependency", name)
+        _newrelic_agent.notice_error()
+    except Exception:  # pragma: no cover - never let reporting break the probe
+        logger.debug("Could not report the %s probe failure to New Relic", name, exc_info=True)
+
+
 def _probe(name: str, check) -> tuple[str, bool]:
     """Run one dependency check, reducing any failure to "fail"."""
     try:
@@ -386,6 +564,7 @@ def _probe(name: str, check) -> tuple[str, bool]:
         # text from smtplib and googleapiclient quotes the credentials and
         # spreadsheet IDs it was given, and this endpoint is unauthenticated.
         logger.exception("Deep health check failed for %s", name)
+        _report_probe_failure(name)
         return "fail", False
 
 

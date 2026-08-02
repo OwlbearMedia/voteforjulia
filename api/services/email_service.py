@@ -130,8 +130,15 @@ def _should_use_starttls(config: EmailConfig) -> bool:
 
 @contextmanager
 def _smtp_connection(config: EmailConfig):
+    # `timeout` is not optional dressing. Both constructors default it to
+    # `socket._GLOBAL_DEFAULT_TIMEOUT`, which resolves to
+    # `socket.getdefaulttimeout()` -- None -- so a mail server that completes
+    # the TCP handshake and then stalls blocks the worker in connect() or
+    # login() with no upper bound. That is the common failure; a refused
+    # connection is the easy one. It applies to every socket operation on the
+    # connection, so the send is covered too, not just the handshake.
     if _should_use_starttls(config):
-        server = smtplib.SMTP(config.smtp_server, config.smtp_port)
+        server = smtplib.SMTP(config.smtp_server, config.smtp_port, timeout=config.timeout_seconds)
         try:
             server.ehlo()
             server.starttls()
@@ -142,7 +149,9 @@ def _smtp_connection(config: EmailConfig):
             server.quit()
         return
 
-    with smtplib.SMTP_SSL(config.smtp_server, config.smtp_port) as server:
+    with smtplib.SMTP_SSL(
+        config.smtp_server, config.smtp_port, timeout=config.timeout_seconds
+    ) as server:
         server.login(config.email_address, config.email_password)
         yield server
 

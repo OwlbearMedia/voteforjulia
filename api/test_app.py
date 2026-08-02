@@ -1,11 +1,22 @@
+import json
 import smtplib
+import types
 import unittest
 from collections import deque
 from time import monotonic
+from unittest import mock
 
 import api.app as app_module
 from api.config import EmailConfig, SheetsConfig
-from api.models import MAX_MESSAGE_LENGTH
+from api.models import (
+    MAX_EMAIL_LENGTH,
+    MAX_FIRST_NAME_LENGTH,
+    MAX_HELP_WAY_LENGTH,
+    MAX_HELP_WAYS_COUNT,
+    MAX_LAST_NAME_LENGTH,
+    MAX_MESSAGE_LENGTH,
+    MAX_PHONE_LENGTH,
+)
 
 
 class AppCorsTests(unittest.TestCase):
@@ -66,11 +77,107 @@ class AppCorsTests(unittest.TestCase):
         self.assertEqual(response.headers.get("Vary"), "Origin")
 
 
+class AppErrorShapeTests(unittest.TestCase):
+    """Framework-raised errors come back as JSON, like the handlers' own do."""
+
+    def setUp(self) -> None:
+        self.client = app_module.app.test_client()
+
+    def test_unknown_route_returns_json(self) -> None:
+        response = self.client.get("/api/does-not-exist")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.mimetype, "application/json")
+        self.assertIn("error", response.get_json())
+
+    def test_wrong_method_returns_json_and_keeps_allow(self) -> None:
+        # `Allow` is the reason the handler rebuilds Werkzeug's own response
+        # instead of calling jsonify: a 405 without it is a less useful 405, and
+        # a jsonify-based handler would silently drop it.
+        response = self.client.get("/api/send-email")
+
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.mimetype, "application/json")
+        self.assertIn("error", response.get_json())
+        self.assertIn("POST", response.headers.get("Allow", ""))
+
+    def test_error_responses_still_carry_cors_headers(self) -> None:
+        # The error handler returns a fresh response object, so it bypasses the
+        # view entirely -- this checks the after_request hook still runs over
+        # it. Without CORS headers the browser reports a generic network error
+        # instead of surfacing the status the form could act on.
+        response = self.client.get(
+            "/api/does-not-exist", headers={"Origin": "https://voteforjulia.com"}
+        )
+
+        self.assertEqual(
+            response.headers.get("Access-Control-Allow-Origin"), "https://voteforjulia.com"
+        )
+        self.assertEqual(response.headers.get("Vary"), "Origin")
+
+
+class AppRequestSizeTests(unittest.TestCase):
+    """A body past MAX_CONTENT_LENGTH is refused before it is buffered."""
+
+    def setUp(self) -> None:
+        self.client = app_module.app.test_client()
+        self.oversized = "x" * (app_module.app.config["MAX_CONTENT_LENGTH"] + 1)
+
+    def test_oversized_json_body_is_rejected(self) -> None:
+        # The encoding that matters: form posts were already bounded by Flask's
+        # MAX_FORM_MEMORY_SIZE default, but it does not cover application/json,
+        # which is what the site actually posts. Before the cap this was read
+        # and parsed in full, then rejected on a 500-character field limit.
+        response = self.client.post(
+            "/api/send-email",
+            data=json.dumps(
+                {"firstName": "A", "email": "a@example.com", "message": self.oversized}
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.mimetype, "application/json")
+        self.assertIn("error", response.get_json())
+
+    def test_oversized_form_body_is_rejected(self) -> None:
+        response = self.client.post(
+            "/api/send-email",
+            data={"firstName": "A", "email": "a@example.com", "message": self.oversized},
+            content_type="application/x-www-form-urlencoded",
+        )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.mimetype, "application/json")
+
+    def test_a_normal_submission_is_well_under_the_cap(self) -> None:
+        # The negative half: a cap set below what the forms legitimately send
+        # would reject real submissions, and every test above would still pass.
+        # Every field at its documented maximum, plus JSON overhead.
+        largest_legitimate = json.dumps(
+            {
+                "firstName": "x" * MAX_FIRST_NAME_LENGTH,
+                "lastName": "x" * MAX_LAST_NAME_LENGTH,
+                "email": "x" * MAX_EMAIL_LENGTH,
+                "phone": "x" * MAX_PHONE_LENGTH,
+                "message": "x" * MAX_MESSAGE_LENGTH,
+                "helpWays": ["x" * MAX_HELP_WAY_LENGTH] * MAX_HELP_WAYS_COUNT,
+            }
+        )
+
+        self.assertLess(
+            len(largest_legitimate.encode()), app_module.app.config["MAX_CONTENT_LENGTH"]
+        )
+
+
 class AppRateLimitTests(unittest.TestCase):
     def setUp(self) -> None:
         self._orig_rate_limit_window_seconds = app_module._RATE_LIMIT_WINDOW_SECONDS
         self._orig_rate_limit_max_requests = app_module._RATE_LIMIT_MAX_REQUESTS
         self._orig_rate_limit_buckets = app_module._RATE_LIMIT_BUCKETS
+        self._orig_trusted_client_ip_header = app_module._TRUSTED_CLIENT_IP_HEADER
+        self._orig_next_bucket_sweep_at = app_module._next_bucket_sweep_at
+        self._orig_rate_limit_max_buckets = app_module._RATE_LIMIT_MAX_BUCKETS
         self._orig_load_email_config = app_module.load_email_config
         self._orig_load_sheets_config = app_module.load_sheets_config
         self._orig_send_submission_email = app_module.send_submission_email
@@ -80,6 +187,13 @@ class AppRateLimitTests(unittest.TestCase):
         app_module._RATE_LIMIT_WINDOW_SECONDS = 60
         app_module._RATE_LIMIT_MAX_REQUESTS = 1
         app_module._RATE_LIMIT_BUCKETS = {}
+        # No proxy trusted, matching the shipped default. Tests that need a
+        # forwarding header honoured opt in explicitly.
+        app_module._TRUSTED_CLIENT_IP_HEADER = ""
+        # In the past, so the first request of each test sweeps. The sweep is
+        # now scheduled rather than per-request, and the schedule is module
+        # state that would otherwise leak between tests.
+        app_module._next_bucket_sweep_at = 0.0
 
         self.sent_submissions = []
         self.confirmation_submissions = []
@@ -127,6 +241,9 @@ class AppRateLimitTests(unittest.TestCase):
         app_module._RATE_LIMIT_WINDOW_SECONDS = self._orig_rate_limit_window_seconds
         app_module._RATE_LIMIT_MAX_REQUESTS = self._orig_rate_limit_max_requests
         app_module._RATE_LIMIT_BUCKETS = self._orig_rate_limit_buckets
+        app_module._TRUSTED_CLIENT_IP_HEADER = self._orig_trusted_client_ip_header
+        app_module._next_bucket_sweep_at = self._orig_next_bucket_sweep_at
+        app_module._RATE_LIMIT_MAX_BUCKETS = self._orig_rate_limit_max_buckets
         app_module.load_email_config = self._orig_load_email_config
         app_module.load_sheets_config = self._orig_load_sheets_config
         app_module.send_submission_email = self._orig_send_submission_email
@@ -145,7 +262,10 @@ class AppRateLimitTests(unittest.TestCase):
 
         self.assertEqual(first_response.status_code, 200)
         self.assertEqual(second_response.status_code, 429)
-        self.assertEqual(second_response.headers.get("Retry-After"), "59")
+        # 60, not 59: both requests land in the same instant, so the oldest
+        # leaves the window a full 60 seconds later. Rounding down here was the
+        # bug -- it told the client to retry while still inside the window.
+        self.assertEqual(second_response.headers.get("Retry-After"), "60")
         self.assertEqual(
             second_response.get_json(),
             {"error": "Too many requests. Please try again later."},
@@ -154,11 +274,77 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertEqual(len(self.confirmation_submissions), 1)
         self.assertEqual(len(self.sheet_rows), 1)
 
-    def test_rate_limit_ignores_spoofed_first_x_forwarded_for_hop(self) -> None:
-        payload = {
-            "firstName": "Julia",
-            "email": "julia@example.com",
-        }
+    def test_forwarding_headers_do_not_key_the_bucket_by_default(self) -> None:
+        # THE regression test for the bypass. Nothing fronts this API, so a
+        # forwarding header is a string the caller picked. While these were
+        # trusted unconditionally, a different value per request minted a fresh
+        # bucket every time and the limiter did nothing at all -- twelve
+        # requests against a limit of five, zero refused.
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        first = self.client.post(
+            "/api/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.1"}
+        )
+        second = self.client.post(
+            "/api/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.2"}
+        )
+        third = self.client.post(
+            "/api/send-email", json=payload, headers={"X-Forwarded-For": "203.0.113.3"}
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 429)
+        self.assertEqual(third.status_code, 429)
+        # All three collapsed onto the socket address, the only value here the
+        # caller cannot choose.
+        self.assertEqual(list(app_module._RATE_LIMIT_BUCKETS), ["send-email:127.0.0.1"])
+
+    def test_configured_header_keys_the_bucket_when_trusted(self) -> None:
+        # The other half: opting in has to actually work, or putting Cloudflare
+        # in front would silently lump every visitor into a single bucket.
+        app_module._TRUSTED_CLIENT_IP_HEADER = "CF-Connecting-IP"
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        first = self.client.post(
+            "/api/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.1"}
+        )
+        second = self.client.post(
+            "/api/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.2"}
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(
+            sorted(app_module._RATE_LIMIT_BUCKETS),
+            ["send-email:203.0.113.1", "send-email:203.0.113.2"],
+        )
+
+    def test_only_the_configured_header_is_trusted(self) -> None:
+        # Trusting one header must not re-trust the rest. With CF-Connecting-IP
+        # configured, X-Forwarded-For is still caller input and must not split
+        # the bucket.
+        app_module._TRUSTED_CLIENT_IP_HEADER = "CF-Connecting-IP"
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        first_response = self.client.post(
+            "/api/send-email",
+            json=payload,
+            headers={"CF-Connecting-IP": "203.0.113.7", "X-Forwarded-For": "198.51.100.30"},
+        )
+        second_response = self.client.post(
+            "/api/send-email",
+            json=payload,
+            headers={"CF-Connecting-IP": "203.0.113.7", "X-Forwarded-For": "198.51.100.31"},
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 429)
+
+    def test_trusted_header_uses_the_last_hop_only(self) -> None:
+        # A proxy appends the connecting address to whatever the client sent,
+        # so earlier entries stay caller-controlled even on a trusted header.
+        app_module._TRUSTED_CLIENT_IP_HEADER = "X-Forwarded-For"
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
 
         first_response = self.client.post(
             "/api/send-email",
@@ -174,31 +360,19 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertEqual(first_response.status_code, 200)
         self.assertEqual(second_response.status_code, 429)
 
-    def test_rate_limit_prefers_cf_connecting_ip_over_x_forwarded_for(self) -> None:
-        payload = {
-            "firstName": "Julia",
-            "email": "julia@example.com",
-        }
+    def test_retry_after_covers_the_full_remaining_wait(self) -> None:
+        # Truncating this advertised a wait still inside the window, so a client
+        # honouring Retry-After exactly earned a second 429 for doing the right
+        # thing. Rounding up is what makes the header safe to obey literally.
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        self.client.post("/api/send-email", json=payload)
 
-        first_response = self.client.post(
-            "/api/send-email",
-            json=payload,
-            headers={
-                "CF-Connecting-IP": "203.0.113.7",
-                "X-Forwarded-For": "198.51.100.30",
-            },
-        )
-        second_response = self.client.post(
-            "/api/send-email",
-            json=payload,
-            headers={
-                "CF-Connecting-IP": "203.0.113.7",
-                "X-Forwarded-For": "198.51.100.31",
-            },
-        )
+        blocked = self.client.post("/api/send-email", json=payload)
+        retry_after = int(blocked.headers["Retry-After"])
 
-        self.assertEqual(first_response.status_code, 200)
-        self.assertEqual(second_response.status_code, 429)
+        bucket = app_module._RATE_LIMIT_BUCKETS["send-email:127.0.0.1"]
+        true_wait = bucket[0] + app_module._RATE_LIMIT_WINDOW_SECONDS - monotonic()
+        self.assertGreaterEqual(retry_after, true_wait)
 
     def test_rate_limit_evicts_stale_buckets(self) -> None:
         stale_key = "send-email:198.51.100.99"
@@ -214,6 +388,79 @@ class AppRateLimitTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(stale_key, app_module._RATE_LIMIT_BUCKETS)
+
+    def test_sweep_is_scheduled_rather_than_run_per_request(self) -> None:
+        # The sweep walks every bucket, so doing it per request made each
+        # request cost O(live keys) -- measured at 0.23ms with 1k buckets and
+        # 3.06ms with 20k. Once per window bounds memory just as well, because
+        # nothing outlives its expiry by more than a window.
+        app_module._next_bucket_sweep_at = monotonic() + 3600
+        stale_key = "send-email:198.51.100.99"
+        app_module._RATE_LIMIT_BUCKETS[stale_key] = deque([monotonic() - 10_000])
+
+        self.client.post(
+            "/api/send-email", json={"firstName": "Julia", "email": "julia@example.com"}
+        )
+
+        self.assertIn(stale_key, app_module._RATE_LIMIT_BUCKETS)
+
+    def test_the_current_key_is_pruned_even_between_sweeps(self) -> None:
+        # The counterpart: deferring the sweep must not let a client be judged
+        # against a stale window. Its own bucket is pruned inline every time.
+        app_module._next_bucket_sweep_at = monotonic() + 3600
+        expired = monotonic() - app_module._RATE_LIMIT_WINDOW_SECONDS - 1
+        app_module._RATE_LIMIT_BUCKETS["send-email:127.0.0.1"] = deque([expired])
+
+        response = self.client.post(
+            "/api/send-email", json={"firstName": "Julia", "email": "julia@example.com"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_bucket_count_is_capped(self) -> None:
+        # The safety valve for a burst of new keys arriving between sweeps.
+        # Eviction resets those clients' allowances, so it fails open by
+        # design -- better than refusing real submissions or growing until the
+        # worker is killed.
+        app_module._RATE_LIMIT_MAX_BUCKETS = 20
+        app_module._next_bucket_sweep_at = monotonic() + 3600
+        now = monotonic()
+        for index in range(50):
+            app_module._RATE_LIMIT_BUCKETS[f"send-email:198.51.100.{index}"] = deque([now - index])
+
+        self.client.post(
+            "/api/send-email", json={"firstName": "Julia", "email": "julia@example.com"}
+        )
+
+        self.assertLessEqual(len(app_module._RATE_LIMIT_BUCKETS), 20)
+        # Least-recently-active go first, so the freshest keys survive.
+        self.assertIn("send-email:198.51.100.0", app_module._RATE_LIMIT_BUCKETS)
+        self.assertNotIn("send-email:198.51.100.49", app_module._RATE_LIMIT_BUCKETS)
+
+    def test_hitting_the_cap_does_not_force_a_sweep_on_every_request(self) -> None:
+        # The property the low-water mark buys. Without headroom the dict sits
+        # pinned at the cap and every subsequent request re-sweeps and re-sorts.
+        app_module._RATE_LIMIT_MAX_BUCKETS = 20
+        app_module._next_bucket_sweep_at = monotonic() + 3600
+        now = monotonic()
+        for index in range(25):
+            app_module._RATE_LIMIT_BUCKETS[f"other:198.51.100.{index}"] = deque([now - index])
+
+        sweeps = []
+        real_sweep = app_module._sweep_expired_buckets
+        app_module._sweep_expired_buckets = lambda cutoff: (
+            sweeps.append(cutoff),
+            real_sweep(cutoff),
+        )[-1]
+        try:
+            for _ in range(5):
+                self.client.post(
+                    "/api/send-email", json={"firstName": "Julia", "email": "j@example.com"}
+                )
+        finally:
+            app_module._sweep_expired_buckets = real_sweep
+
+        self.assertEqual(len(sweeps), 1)
 
     def test_send_email_returns_json_error_when_email_config_is_invalid(self) -> None:
         def raise_config_error(recipient_env="RECIPIENT_EMAIL"):
@@ -362,6 +609,9 @@ class AppYardSignTests(unittest.TestCase):
         self._orig_rate_limit_window_seconds = app_module._RATE_LIMIT_WINDOW_SECONDS
         self._orig_rate_limit_max_requests = app_module._RATE_LIMIT_MAX_REQUESTS
         self._orig_rate_limit_buckets = app_module._RATE_LIMIT_BUCKETS
+        self._orig_trusted_client_ip_header = app_module._TRUSTED_CLIENT_IP_HEADER
+        self._orig_next_bucket_sweep_at = app_module._next_bucket_sweep_at
+        self._orig_rate_limit_max_buckets = app_module._RATE_LIMIT_MAX_BUCKETS
         self._orig_load_email_config = app_module.load_email_config
         self._orig_load_sheets_config = app_module.load_sheets_config
         self._orig_send_yard_sign_request_email = app_module.send_yard_sign_request_email
@@ -422,6 +672,9 @@ class AppYardSignTests(unittest.TestCase):
         app_module._RATE_LIMIT_WINDOW_SECONDS = self._orig_rate_limit_window_seconds
         app_module._RATE_LIMIT_MAX_REQUESTS = self._orig_rate_limit_max_requests
         app_module._RATE_LIMIT_BUCKETS = self._orig_rate_limit_buckets
+        app_module._TRUSTED_CLIENT_IP_HEADER = self._orig_trusted_client_ip_header
+        app_module._next_bucket_sweep_at = self._orig_next_bucket_sweep_at
+        app_module._RATE_LIMIT_MAX_BUCKETS = self._orig_rate_limit_max_buckets
         app_module.load_email_config = self._orig_load_email_config
         app_module.load_sheets_config = self._orig_load_sheets_config
         app_module.send_yard_sign_request_email = self._orig_send_yard_sign_request_email
@@ -623,6 +876,62 @@ class AppDeepHealthTests(unittest.TestCase):
             "/api/send-email", headers={"X-Forwarded-For": "203.0.113.92"}
         ):
             self.assertIsNone(app_module._consume_rate_limit("send-email"))
+
+    def test_failure_is_reported_to_the_new_relic_agent(self) -> None:
+        # Swallowing the exception keeps credentials out of the response, but
+        # it also hid the reason from the agent: nine production 503s recorded
+        # a status code and nothing else, and diagnosing them needed SSH.
+        agent = types.SimpleNamespace(
+            attributes=[],
+            errors=0,
+            add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
+            notice_error=lambda: setattr(agent, "errors", agent.errors + 1),
+        )
+        app_module.verify_sheets_access = self._raise(BrokenPipeError(32, "Broken pipe"))
+
+        with mock.patch.object(app_module, "_newrelic_agent", agent):
+            response = self._get()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn(("health.dependency", "sheets"), agent.attributes)
+        self.assertEqual(agent.errors, 1)
+
+    def test_healthy_probe_reports_nothing(self) -> None:
+        agent = types.SimpleNamespace(
+            attributes=[],
+            errors=0,
+            add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
+            notice_error=lambda: setattr(agent, "errors", agent.errors + 1),
+        )
+
+        with mock.patch.object(app_module, "_newrelic_agent", agent):
+            self.assertEqual(self._get().status_code, 200)
+
+        self.assertEqual(agent.attributes, [])
+        self.assertEqual(agent.errors, 0)
+
+    def test_probe_survives_a_broken_agent(self) -> None:
+        # Monitoring may never be the thing that breaks the health check.
+        def explode(*args, **kwargs):
+            raise RuntimeError("agent is unwell")
+
+        agent = types.SimpleNamespace(add_custom_attribute=explode, notice_error=explode)
+        app_module.verify_smtp_credentials = self._raise(OSError("connection refused"))
+
+        with mock.patch.object(app_module, "_newrelic_agent", agent):
+            response = self._get()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["smtp"], "fail")
+
+    def test_probe_works_without_the_agent_installed(self) -> None:
+        app_module.verify_sheets_access = self._raise(OSError("connection refused"))
+
+        with mock.patch.object(app_module, "_newrelic_agent", None):
+            response = self._get()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["sheets"], "fail")
 
     def test_shallow_health_is_unchanged(self) -> None:
         # The deploy pipeline curls /health. It must not gain a dependency on

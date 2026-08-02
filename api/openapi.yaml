@@ -155,6 +155,8 @@ paths:
           $ref: '#/components/responses/Sent'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -211,6 +213,8 @@ paths:
           $ref: '#/components/responses/Sent'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -449,16 +453,63 @@ components:
               value:
                 error: Please provide a valid email address.
 
+    PayloadTooLarge:
+      description: |
+        The request body exceeds `MAX_REQUEST_BYTES` (65536 by default) and was
+        refused before being buffered or parsed. The forms' combined field
+        limits come to roughly 1.5KB, so nothing a supporter can legitimately
+        submit reaches this.
+
+        The message is Werkzeug's own, not one of the API's — see
+        `#/components/responses/FrameworkError`.
+      headers:
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: The data value transmitted exceeds the capacity limit.
+
+    FrameworkError:
+      description: |
+        Errors raised by the framework rather than by a handler — an unrouted
+        path (`404`), a wrong method (`405`), an oversized body (`413`), and an
+        unhandled exception (`500`). All are rendered into the same
+        `{"error": …}` shape as every other response so a client can parse the
+        error path without special-casing it; `Allow` and other meaningful
+        headers are preserved.
+
+        The `error` text in these is Werkzeug's stock description and is not
+        part of the API's contract — it is generic by construction and never
+        derived from the request. Match on the status code, not the string.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
     RateLimited:
       description: |
         Too many submissions from this client. The limit is per endpoint and per
         client IP — 5 requests per 60 seconds by default
-        (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`). The client is
-        identified by `CF-Connecting-IP`, falling back to the **last** hop of
-        `X-Forwarded-For`, then the socket address.
+        (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`).
+
+        The client is identified by the socket address. Forwarding headers are
+        **not** trusted: nothing sits in front of this API to overwrite them, so
+        `CF-Connecting-IP` and `X-Forwarded-For` are only ever the caller's own
+        claim, and honouring one let any caller mint a fresh bucket per request.
+        Setting `TRUSTED_CLIENT_IP_HEADER` to the header a real proxy overwrites
+        makes that header authoritative (its **last** hop); no other header is
+        consulted. See ADR-0014.
 
         Buckets live in process memory, so they are per-worker and reset on
         restart.
+
+        `Retry-After` is rounded up, so honouring it exactly is enough to clear
+        the window.
       headers:
         Retry-After:
           description: Seconds until the oldest request leaves the window.

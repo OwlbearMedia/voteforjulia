@@ -140,6 +140,22 @@ The ordering is deliberate and load-bearing:
 - **PII never enters the routine log.** `_log_request_fields` records which
   fields were filled, never their values; full bodies are logged only on the
   paths where the submission would otherwise be lost for good.
+- **Every outbound call is bounded by an explicit timeout.** `smtplib` and
+  `httplib2` both default to waiting forever (they inherit
+  `socket.getdefaulttimeout()`, which is `None`), so a third party that accepts
+  a connection and then stalls would hold a worker open indefinitely — and
+  Passenger spawns workers per request rather than capping them, so they
+  accumulate. `SMTP_TIMEOUT_SECONDS` and `SHEETS_TIMEOUT_SECONDS` set the
+  ceilings; Sheets gets the larger one because it runs after the mail is away.
+- **The sheet append is one server-side call, not read-then-write.** Picking a
+  row with a `values.get` and writing it with a `values.update` left a window
+  where two simultaneous submissions chose the same row and the second erased
+  the first, invisibly — both returned 200 and both submitters got a
+  confirmation. `values.append` with `insertDataOption=INSERT_ROWS` resolves
+  placement inside the write, and inserts rather than overwrites, so a row can
+  land in an unexpected position but never on top of an existing one. The range
+  is scoped to just the submission's columns so unrelated ones (a checkbox
+  column defaults every cell to `FALSE`) stay out of the API's table detection.
 
 ## Environments
 
@@ -203,20 +219,21 @@ than by discipline.
 
 ## Decision records
 
-| #                                               | Decision                                                        | Status                                            |
-| ----------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
-| [0001](adr/0001-shared-hosting-over-aws.md)     | Shared LiteSpeed hosting instead of AWS S3 + ECS Fargate        | Accepted                                          |
-| [0002](adr/0002-static-site-generation.md)      | Prerender the frontend with vite-ssg                            | Accepted                                          |
-| [0003](adr/0003-separate-api-subdomain.md)      | Run the API on its own subdomain, cross-origin                  | Accepted                                          |
-| [0004](adr/0004-no-database.md)                 | No database — email plus a Google Sheet is the system of record | Accepted                                          |
-| [0005](adr/0005-outsource-donations.md)         | Outsource donations to Donorbox/Stripe                          | Accepted                                          |
-| [0006](adr/0006-scp-deploy-with-atomic-swap.md) | Deploy by scp from GitHub Actions with an atomic directory swap | Accepted                                          |
-| [0007](adr/0007-shared-test-environment.md)     | One shared test environment on the same host                    | Accepted                                          |
-| [0008](adr/0008-pin-python-to-host.md)          | Pin Python to the host's interpreter                            | Accepted                                          |
-| [0009](adr/0009-in-process-rate-limiting.md)    | Rate-limit in process memory                                    | Accepted                                          |
-| [0010](adr/0010-edge-policy-in-htaccess.md)     | Keep security, caching, and URL policy in `.htaccess`           | Accepted                                          |
-| [0011](adr/0011-browser-side-observability.md)  | Browser-side observability only                                 | Superseded by [0013](adr/0013-server-side-apm.md) |
-| [0012](adr/0012-imagekit-for-images.md)         | Serve images from ImageKit rather than the host                 | Accepted                                          |
-| [0013](adr/0013-server-side-apm.md)             | Instrument the API server-side, and alert on it                 | Accepted                                          |
+| #                                                   | Decision                                                        | Status                                                            |
+| --------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [0001](adr/0001-shared-hosting-over-aws.md)         | Shared LiteSpeed hosting instead of AWS S3 + ECS Fargate        | Accepted                                                          |
+| [0002](adr/0002-static-site-generation.md)          | Prerender the frontend with vite-ssg                            | Accepted                                                          |
+| [0003](adr/0003-separate-api-subdomain.md)          | Run the API on its own subdomain, cross-origin                  | Accepted                                                          |
+| [0004](adr/0004-no-database.md)                     | No database — email plus a Google Sheet is the system of record | Accepted                                                          |
+| [0005](adr/0005-outsource-donations.md)             | Outsource donations to Donorbox/Stripe                          | Accepted                                                          |
+| [0006](adr/0006-scp-deploy-with-atomic-swap.md)     | Deploy by scp from GitHub Actions with an atomic directory swap | Accepted                                                          |
+| [0007](adr/0007-shared-test-environment.md)         | One shared test environment on the same host                    | Accepted                                                          |
+| [0008](adr/0008-pin-python-to-host.md)              | Pin Python to the host's interpreter                            | Accepted                                                          |
+| [0009](adr/0009-in-process-rate-limiting.md)        | Rate-limit in process memory                                    | Superseded by [0014](adr/0014-do-not-trust-forwarding-headers.md) |
+| [0010](adr/0010-edge-policy-in-htaccess.md)         | Keep security, caching, and URL policy in `.htaccess`           | Accepted                                                          |
+| [0011](adr/0011-browser-side-observability.md)      | Browser-side observability only                                 | Superseded by [0013](adr/0013-server-side-apm.md)                 |
+| [0012](adr/0012-imagekit-for-images.md)             | Serve images from ImageKit rather than the host                 | Accepted                                                          |
+| [0013](adr/0013-server-side-apm.md)                 | Instrument the API server-side, and alert on it                 | Accepted                                                          |
+| [0014](adr/0014-do-not-trust-forwarding-headers.md) | Trust a forwarding header only when one is configured           | Accepted                                                          |
 
 New ADRs: see [adr/README.md](adr/README.md).
