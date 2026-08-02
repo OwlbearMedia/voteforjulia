@@ -22,7 +22,6 @@ from api.config import (
     DEFAULT_YARDSIGN_SHEETS_WORKSHEET,
     EmailConfig,
     env,
-    env_positive_number,
     load_email_config,
     load_sheets_config,
 )
@@ -59,12 +58,26 @@ def _int_setting(name: str, default: int) -> int:
 
     Contrast `load_email_config`, which does raise on a bad timeout: that runs
     per request, where app.py already renders a ValueError as a JSON 500.
+
+    Parsed as an int rather than via `env_positive_number`, whose float return
+    made a fractional value the one input class that mutated silently instead
+    of degrading -- "2.5" became 2, and "0.5" became 1 via a clamp.
     """
-    try:
-        return max(int(env_positive_number(name, default)), 1)
-    except ValueError:
-        logger.error("%s is not a valid positive number; falling back to %s", name, default)
+    raw = env(name)
+    if not raw:
         return default
+
+    try:
+        value = int(raw)
+        if value < 1:
+            raise ValueError
+    except ValueError:
+        logger.error(
+            "%s must be a positive integer, got %r; falling back to %s", name, raw, default
+        )
+        return default
+
+    return value
 
 
 # Without this, `MAX_CONTENT_LENGTH` is None and a JSON body of any size is read

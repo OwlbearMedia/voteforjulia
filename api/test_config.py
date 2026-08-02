@@ -102,6 +102,20 @@ class IntSettingTests(unittest.TestCase):
         self.assertEqual(value, 5)
         self.assertIn("SOME_LIMIT", logs.output[0])
 
+    def test_falls_back_on_a_fractional_value(self) -> None:
+        # These settings are counts and byte limits, so a fraction is a typo,
+        # not a request. Parsing through a float previously truncated it
+        # silently -- "2.5" became 2 -- which is the one misconfiguration that
+        # changed behaviour without saying so.
+        with (
+            mock.patch.dict(os.environ, {"SOME_LIMIT": "2.5"}, clear=False),
+            self.assertLogs("api.app", level="ERROR") as logs,
+        ):
+            value = app_module._int_setting("SOME_LIMIT", 5)
+
+        self.assertEqual(value, 5)
+        self.assertIn("'2.5'", logs.output[0])
+
     def test_falls_back_on_a_non_positive_value(self) -> None:
         # A limit of 0 previously clamped silently to 1, which is neither what
         # was asked for nor obviously wrong from the outside.
