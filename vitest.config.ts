@@ -1,11 +1,11 @@
 import { defineConfig } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
-import { vueCompilerOptions } from './vue-compiler-options';
 
 export default defineConfig({
-  // Same compiler options as the real build so templates behave identically
-  // under test — see vue-compiler-options.ts.
-  plugins: [vue({ template: { compilerOptions: vueCompilerOptions } })],
+  // No template compilerOptions, matching vite.config.ts — templates have to
+  // compile identically here and in the real build, so any option added there
+  // has to be added here too.
+  plugins: [vue()],
   test: {
     environment: 'jsdom',
     globals: true,

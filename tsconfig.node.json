@@ -20,11 +20,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": [
-    "vite.config.ts",
-    "vitest.config.ts",
-    "cypress.config.ts",
-    "sitemap.build.ts",
-    "vue-compiler-options.ts"
-  ]
+  "include": ["vite.config.ts", "vitest.config.ts", "cypress.config.ts", "sitemap.build.ts"]
 }

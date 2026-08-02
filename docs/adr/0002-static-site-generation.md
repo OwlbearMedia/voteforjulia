@@ -45,9 +45,8 @@ per page, and the sitemap is generated from the same route list during the build
   is a commit, a PR, and a deploy. Acceptable for one developer; it would not be
   for a campaign staffer who wanted to edit events.
 - **Anything the prerenderer cannot render is invisible to crawlers.** This is
-  not theoretical — an undeclared custom element renders as `<!---->` in the
-  static HTML and only appears after hydration, which is why `isCustomElement`
-  exists in [vue-compiler-options.ts](../../vue-compiler-options.ts) and why
+  not theoretical — a custom element the compiler does not recognise renders as
+  `<!---->` in the static HTML and only appears after hydration, which is why
   `grep dbox-widget dist/donate.html` is a real verification step
   ([../conventions.md](../conventions.md#custom-elements)).
 - **Adding a page is a multi-file checklist**, because the route list drives the

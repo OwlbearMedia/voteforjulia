@@ -31,17 +31,19 @@ voteforjulia.com  ──(script)──>  donorbox.org/widgets.js   (renders in-p
 Not `voteforjulia.com → donorbox iframe → stripe iframe`. Assuming the latter
 leads to allowlisting the wrong origins.
 
-## What that costs us in the compiler
+## What that costs us in the build
 
-`dbox-widget` must be declared in `isCustomElement` in
-[vue-compiler-options.ts](../vue-compiler-options.ts) — the single source shared
-by `vite.config.ts` and `vitest.config.ts`, so add the tag there once, never to a
-config directly. Otherwise Vue compiles it as a component lookup, which fails.
+Nothing now — but it used to. While `<dbox-widget>` was a tag in the template it
+had to be declared in `isCustomElement`, or Vue compiled it as a _component_
+lookup and SSG emitted `<!---->` in its place: the element missing from the
+prerendered HTML, appearing only after hydration, and no test catching it.
 
-The failure mode is quiet. Vitest and the dev server still render the tag (the
-client falls back to the raw element), but SSG emits `<!---->` in its place, so
-the element is missing from the prerendered HTML and only appears after
-hydration — a mismatch that no test catches. Verify after a build with:
+The tag now lives in a `v-html` string (see "What we do instead" below), so the
+compiler never sees it. That option — and the `vue-compiler-options.ts` module
+that shared it between `vite.config.ts` and `vitest.config.ts` — is gone.
+
+What survives is the check, because a string is just as easy to typo as a tag
+was to forget, and just as quiet when wrong:
 
 ```
 grep dbox-widget dist/donate.html
@@ -117,10 +119,11 @@ module graph imports version-pinned internal paths that move.
 
 ## Their constructor throws when Vue creates the element
 
-The page is prerendered, so `<dbox-widget>` normally arrives in the HTML and
-Vue only hydrates it. When Vue instead _creates_ the element client-side and
-`widgets.js` has already run `customElements.define`, the vendor constructor
-blows up, twice:
+Donorbox's constructor sets attributes on itself. That is legal when the browser
+_upgrades_ an element that already exists, and illegal on
+`document.createElement`, which the custom-elements spec requires to reject a
+constructor that gave itself attributes. So the same element boots fine one way
+and blows up the other, twice:
 
 ```
 TypeError: Cannot convert undefined or null to object
@@ -131,21 +134,55 @@ TypeError: Cannot convert undefined or null to object
 NotSupportedError: Failed to execute 'createElement' on 'Document': The result must not have attributes
 ```
 
-The second error is the browser rejecting the element because their
-constructor sets attributes on itself, which the custom-element spec forbids.
-Both come from Donorbox's code — there is no version to pin (see the hashed
-module above) and nothing in this repo to fix.
+Both come from Donorbox's code, and there is no version to pin (see the hashed
+module above). What this repo controls is which path the element is created on,
+and whether the widget can boot before Vue has finished hydrating.
 
-It is a load-order race, so it is intermittent, and the cost when it fires is
-real: Vue's render of that subtree dies, and **the visitor sees the donate page
-without a donation form**. New Relic is where to check how often real traffic
-hits it — search the two messages above.
+### How it used to fire
 
-Where it shows up first is CI: an uncaught app exception fails a Cypress test,
-so `cypress/e2e/donate.cy.ts` loses its first attempt on most runs. That is
-invisible in the summary, because `retries.runMode: 1` passes the test on the
-retry (a cold cache is what makes attempt 1 lose the race). The tell is a run
-that reports `1 passing` and still writes a `(failed).png` screenshot. Do not
-read that as flaky infrastructure — and do not paper over it by widening
-retries or by suppressing the error in `uncaught:exception`, which would hide
-the visitor-facing half.
+`widgets.js` was loaded as `async type="module"` from `<head>`, so it raced
+hydration on an ordinary page load:
+
+1. The script won the race and ran `customElements.define('dbox-widget', …)`.
+2. That upgraded the prerendered element in place — shadow root attached,
+   attributes rewritten.
+3. Vue then hydrated, found DOM it had not rendered, discarded the element and
+   mounted a fresh one via `document.createElement`.
+4. The tag was defined by now, so the constructor ran on the forbidden path and
+   the visitor got the donate page **with no donation form**.
+
+Lose the race the other way and everything worked, which is what made it
+intermittent, and why a cold cache — CI, or a first visit on mobile data — made
+it more likely. The same crash hit a second SPA visit to `/donate`, where
+`define` had already run and Vue mounted the tag from scratch.
+
+### What we do instead
+
+Two changes in [JuliaDonate.vue](../src/pages/JuliaDonate.vue), both load-bearing:
+
+- **The markup is a string rendered with `v-html`**, not a tag in the template.
+  Assigning `innerHTML` parses a fragment, and fragment parsing always defers
+  custom elements to the upgrade path, so the vendor constructor never runs
+  under `createElement`'s no-attributes rule. It also puts the widget outside
+  Vue's vdom, so the shadow root and the Stripe scripts it injects cannot
+  register as a hydration mismatch. This is the half that covers SPA
+  navigation.
+- **The loader is appended in `onMounted`**, not emitted into `<head>`. The
+  prerendered element stays a plain, un-upgraded tag until Vue is done with it.
+  A `modulepreload` link keeps the download early, so only execution moved.
+
+The invariant to preserve: **nothing may define `dbox-widget` before hydration
+finishes, and Vue must never render the tag itself.** New Relic is where to
+check whether real traffic still hits it — search the two messages above.
+
+### Where it showed up in CI
+
+An uncaught app exception fails a Cypress test, so `cypress/e2e/donate.cy.ts`
+used to lose its first attempt on most runs. That was invisible in the summary,
+because `retries.runMode: 1` passes the test on the retry. The tell was a run
+that reported `1 passing` and still wrote a `(failed).png` screenshot.
+
+That should be gone now. If it returns, do not read it as flaky infrastructure,
+and do not paper over it by widening retries or by suppressing the error in
+`uncaught:exception` — that would hide the visitor-facing half. Check the
+invariant above instead.

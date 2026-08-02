@@ -46,6 +46,14 @@ endpoint at all; the donate page is otherwise a normal prerendered page.
 - **The donation experience is theirs to change.** Styling is limited to what
   the widget exposes, and a vendor change can alter the page without a deploy.
 
+> **Amended 2026-08-02.** The third and fourth consequences above no longer hold
+> as written. The widget is now rendered as raw markup through `v-html` and its
+> loader runs from `onMounted`, so Vue never constructs the element: the vendor
+> crash is fixed for visitors as well as for CI, and `isCustomElement` has been
+> removed along with the `vue-compiler-options.ts` module. The decision to
+> outsource donations is unchanged — see
+> [../donate-integration.md](../donate-integration.md).
+
 ## Alternatives considered
 
 - **Stripe Checkout directly, plus our own contributor fields.** Fewer vendors

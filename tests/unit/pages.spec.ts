@@ -16,9 +16,15 @@ vi.mock('@unhead/vue', () => ({
 
 const useHeadMock = vi.mocked(useHead);
 
+// JuliaDonate appends this to <head> on mount, and the shared jsdom cleanup in
+// vitest.setup.ts only resets <body> — so without an explicit reset it leaks
+// into every later test in the file.
+const DONORBOX_LOADER = 'script[src="https://donorbox.org/widgets.js"]';
+
 describe('Page components', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    document.head.querySelectorAll(DONORBOX_LOADER).forEach((el) => el.remove());
   });
 
   it('JuliaHome renders key content and configures home SEO metadata', () => {
@@ -157,13 +163,23 @@ describe('Page components', () => {
     );
   });
 
+  // The page links to /yard-signs, so RouterLink needs stubbing or every mount
+  // logs a resolution warning.
+  const mountDonate = () =>
+    mount(JuliaDonate, { global: { stubs: { RouterLink: RouterLinkStub } } });
+
   it('JuliaDonate renders donation content and configures page SEO metadata', () => {
-    const wrapper = mount(JuliaDonate);
+    const wrapper = mountDonate();
 
     expect(wrapper.text()).toContain('Donate now to help elect Julia as Mayor of Mankato!');
-    // Compiled as a native custom element (see vue-compiler-options.ts), not
-    // resolved as a Vue component — the latter renders it away to a comment.
-    expect(wrapper.find('dbox-widget').exists()).toBe(true);
+    // Written as raw markup so the browser parses it, rather than compiled into
+    // the render function — Vue's createElement trips Donorbox's constructor.
+    // See the comment on donorboxWidget in JuliaDonate.vue.
+    const widget = wrapper.find('dbox-widget');
+    expect(widget.exists()).toBe(true);
+    expect(widget.attributes('campaign')).toBe('julia-hamann-for-mankato-mayor');
+    expect(widget.attributes('type')).toBe('donation_form');
+    expect(widget.attributes('enable-auto-scroll')).toBe('true');
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Donate | Julia Hamann for Mankato Mayor',
@@ -175,6 +191,43 @@ describe('Page components', () => {
         ])
       })
     );
+  });
+
+  describe('JuliaDonate Donorbox loader', () => {
+    // The loader must not sit in <head> at page-load time: when it beat
+    // hydration it upgraded <dbox-widget> early, Vue saw a mismatch, re-created
+    // the element, and the vendor constructor threw. Preload without executing.
+    it('preloads the loader from <head> but never executes it there', () => {
+      mountDonate();
+
+      const head = useHeadMock.mock.calls[0][0] as {
+        link: { rel: string; href: string }[];
+        script: { src?: string }[];
+      };
+
+      expect(head.link).toContainEqual({
+        rel: 'modulepreload',
+        href: 'https://donorbox.org/widgets.js'
+      });
+      expect(head.script.some((entry) => entry.src === 'https://donorbox.org/widgets.js')).toBe(
+        false
+      );
+    });
+
+    it('appends the loader on mount, once', () => {
+      expect(document.head.querySelectorAll(DONORBOX_LOADER)).toHaveLength(0);
+
+      mountDonate();
+
+      const loader = document.head.querySelector<HTMLScriptElement>(DONORBOX_LOADER);
+      expect(loader).not.toBeNull();
+      expect(loader?.type).toBe('module');
+      expect(loader?.async).toBe(true);
+
+      // Remounting (a second SPA visit to /donate) must not stack loaders.
+      mountDonate();
+      expect(document.head.querySelectorAll(DONORBOX_LOADER)).toHaveLength(1);
+    });
   });
 
   it('JuliaSecretRecipe renders recipe content and configures page SEO metadata', () => {

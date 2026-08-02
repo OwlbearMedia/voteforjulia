@@ -66,6 +66,12 @@ export interface PageHeadOptions {
   schemaGraph?: JsonLdNode[];
   /** Extra <script> entries (e.g. a third-party widget loader). */
   scripts?: HeadScript[];
+  /**
+   * Extra <link> entries appended after the canonical link — e.g. a
+   * `modulepreload` that warms a third-party script the page executes itself
+   * after hydration.
+   */
+  extraLinks?: HeadLink[];
   /** Extra <meta> entries appended after the standard block. */
   extraMeta?: HeadMeta[];
 }
@@ -117,6 +123,7 @@ export function buildPageHead(options: PageHeadOptions) {
     schemaNodes = [],
     schemaGraph,
     scripts = [],
+    extraLinks = [],
     extraMeta = []
   } = options;
 
@@ -152,7 +159,7 @@ export function buildPageHead(options: PageHeadOptions) {
     ...extraMeta
   ];
 
-  const link: HeadLink[] = [{ rel: 'canonical', href: url }];
+  const link: HeadLink[] = [{ rel: 'canonical', href: url }, ...extraLinks];
 
   return {
     title,
