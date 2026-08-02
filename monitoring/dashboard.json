@@ -144,7 +144,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [8127277],
-                "query": "SELECT count(*) FROM AjaxRequest WHERE requestUrl LIKE '%api.voteforjulia.com%' FACET requestUrl, httpResponseCode"
+                "query": "SELECT count(*) AS 'Requests', average(duration) * 1000 AS 'Avg ms' FROM Transaction WHERE appName = 'voteforjulia-api' FACET request.uri, http.statusCode"
               }
             ],
             "platformOptions": { "ignoreTimeRange": false }
@@ -159,7 +159,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [8127277],
-                "query": "SELECT percentage(count(*), WHERE httpResponseCode != '200') AS 'Error %' FROM AjaxRequest WHERE requestUrl LIKE '%api.voteforjulia.com%'"
+                "query": "SELECT percentage(count(*), WHERE http.statusCode >= 400) AS 'Error %' FROM Transaction WHERE appName = 'voteforjulia-api'"
               }
             ],
             "platformOptions": { "ignoreTimeRange": false },
@@ -178,7 +178,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [8127277],
-                "query": "SELECT count(*) FROM AjaxRequest WHERE requestUrl LIKE '%api.voteforjulia.com%' AND httpResponseCode != '200' TIMESERIES"
+                "query": "SELECT count(*) FROM Transaction WHERE appName = 'voteforjulia-api' AND http.statusCode >= 400 TIMESERIES"
               }
             ],
             "platformOptions": { "ignoreTimeRange": false },

@@ -1,3 +1,5 @@
+import http.client
+import ssl
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -453,6 +455,130 @@ class VerifySheetsAccessTests(unittest.TestCase):
             verify_sheets_access(_config(service_account_file="", service_account_json=""))
 
         self.assertIn("credentials are not configured", str(raised.exception))
+
+
+class StaleConnectionTests(unittest.TestCase):
+    """A cached client whose keep-alive socket the far end already closed.
+
+    Seen in production as nine `BrokenPipeError` failures from `/health/deep`
+    in a day. Reads recover by rebuilding the client; the write deliberately
+    does not, because a retry could duplicate a supporter's row.
+    """
+
+    def setUp(self) -> None:
+        reset_sheets_service_cache()
+
+    def tearDown(self) -> None:
+        reset_sheets_service_cache()
+
+    @staticmethod
+    def _reader(execute_side_effect) -> MagicMock:
+        service = MagicMock()
+        service.spreadsheets.return_value.get.return_value.execute.side_effect = execute_side_effect
+        return service
+
+    @staticmethod
+    def _writer(execute_side_effect=None) -> MagicMock:
+        service = MagicMock()
+        append = service.spreadsheets.return_value.values.return_value.append
+        if execute_side_effect is not None:
+            append.return_value.execute.side_effect = execute_side_effect
+        return service
+
+    def test_read_rebuilds_the_client_and_retries_once(self) -> None:
+        dead = self._reader(BrokenPipeError(32, "Broken pipe"))
+        fresh = self._reader([{"spreadsheetId": "sheet-123"}])
+
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", side_effect=[dead, fresh]) as build,
+        ):
+            verify_sheets_access(_config())
+
+        # Two clients built: the poisoned one was discarded, not reused.
+        self.assertEqual(build.call_count, 2)
+        fresh.spreadsheets.return_value.get.return_value.execute.assert_called_once()
+
+    def test_read_gives_up_after_one_retry(self) -> None:
+        dead = self._reader(BrokenPipeError(32, "Broken pipe"))
+        also_dead = self._reader(BrokenPipeError(32, "Broken pipe"))
+
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", side_effect=[dead, also_dead]) as build,
+            self.assertRaises(BrokenPipeError),
+        ):
+            verify_sheets_access(_config())
+
+        self.assertEqual(build.call_count, 2)
+
+    def test_read_does_not_retry_a_real_api_refusal(self) -> None:
+        # A 403 or a missing sheet is the API answering. Rebuilding the client
+        # cannot change the answer, and retrying doubles the latency.
+        from googleapiclient.errors import HttpError
+
+        refused = self._reader(HttpError(MagicMock(status=403), b"forbidden"))
+
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", side_effect=[refused]) as build,
+            self.assertRaises(HttpError),
+        ):
+            verify_sheets_access(_config())
+
+        self.assertEqual(build.call_count, 1)
+
+    def test_append_does_not_retry(self) -> None:
+        # The critical one. A connection error surfaces while reading the
+        # response, so the server may already have inserted the row — retrying
+        # would silently duplicate a supporter's submission.
+        dead = self._writer(BrokenPipeError(32, "Broken pipe"))
+
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", side_effect=[dead]) as build,
+            self.assertRaises(BrokenPipeError),
+        ):
+            append_row(_config(), ["a", "b"])
+
+        self.assertEqual(build.call_count, 1)
+        dead.spreadsheets.return_value.values.return_value.append.assert_called_once()
+
+    def test_append_discards_the_poisoned_client(self) -> None:
+        # Without this the same dead socket fails every submission until the
+        # Passenger worker recycles.
+        dead = self._writer(BrokenPipeError(32, "Broken pipe"))
+        fresh = self._writer()
+
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", side_effect=[dead, fresh]),
+        ):
+            with self.assertRaises(BrokenPipeError):
+                append_row(_config(), ["a", "b"])
+
+            # The next submission gets a new client rather than the dead one.
+            append_row(_config(), ["c", "d"])
+
+        fresh.spreadsheets.return_value.values.return_value.append.assert_called_once()
+
+    def test_ssl_and_protocol_errors_count_as_stale(self) -> None:
+        for error in (
+            ssl.SSLEOFError("EOF occurred in violation of protocol"),
+            http.client.RemoteDisconnected("Remote end closed connection"),
+        ):
+            with self.subTest(error=type(error).__name__):
+                reset_sheets_service_cache()
+                dead = self._reader(error)
+                fresh = self._reader([{"spreadsheetId": "sheet-123"}])
+
+                with (
+                    patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+                    patch("googleapiclient.discovery.build", side_effect=[dead, fresh]) as build,
+                ):
+                    verify_sheets_access(_config())
+
+                self.assertEqual(build.call_count, 2)
 
 
 if __name__ == "__main__":

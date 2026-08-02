@@ -41,6 +41,11 @@ from api.services.email_service import (
 )
 from api.services.sheets_service import append_row, verify_sheets_access
 
+try:
+    import newrelic.agent as _newrelic_agent
+except Exception:  # pragma: no cover - the agent is absent locally and in CI
+    _newrelic_agent = None
+
 app = Flask(__name__)
 
 logging.basicConfig(level=logging.INFO)
@@ -523,6 +528,32 @@ def health_check():
     ), 200
 
 
+def _report_probe_failure(name: str) -> None:
+    """Attach the failed dependency to the current New Relic transaction.
+
+    Swallowing the exception keeps credentials out of an unauthenticated
+    response, but it also hides the failure from the agent: the transaction
+    records a 503 and nothing about why. That gap cost an SSH session into
+    `stderr.log` to find out that nine production 503s were all
+    `BrokenPipeError` from Sheets. `notice_error` puts the traceback in the
+    errors inbox and the attributes make it queryable:
+
+        SELECT count(*) FROM TransactionError
+        WHERE health.dependency IS NOT NULL FACET health.dependency
+
+    Best-effort by design — the agent is absent locally and in CI, and
+    monitoring must never be the thing that breaks a health check.
+    """
+    if _newrelic_agent is None:
+        return
+
+    try:
+        _newrelic_agent.add_custom_attribute("health.dependency", name)
+        _newrelic_agent.notice_error()
+    except Exception:  # pragma: no cover - never let reporting break the probe
+        logger.debug("Could not report the %s probe failure to New Relic", name, exc_info=True)
+
+
 def _probe(name: str, check) -> tuple[str, bool]:
     """Run one dependency check, reducing any failure to "fail"."""
     try:
@@ -533,6 +564,7 @@ def _probe(name: str, check) -> tuple[str, bool]:
         # text from smtplib and googleapiclient quotes the credentials and
         # spreadsheet IDs it was given, and this endpoint is unauthenticated.
         logger.exception("Deep health check failed for %s", name)
+        _report_probe_failure(name)
         return "fail", False
 
 

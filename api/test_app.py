@@ -1,8 +1,10 @@
 import json
 import smtplib
+import types
 import unittest
 from collections import deque
 from time import monotonic
+from unittest import mock
 
 import api.app as app_module
 from api.config import EmailConfig, SheetsConfig
@@ -874,6 +876,62 @@ class AppDeepHealthTests(unittest.TestCase):
             "/api/send-email", headers={"X-Forwarded-For": "203.0.113.92"}
         ):
             self.assertIsNone(app_module._consume_rate_limit("send-email"))
+
+    def test_failure_is_reported_to_the_new_relic_agent(self) -> None:
+        # Swallowing the exception keeps credentials out of the response, but
+        # it also hid the reason from the agent: nine production 503s recorded
+        # a status code and nothing else, and diagnosing them needed SSH.
+        agent = types.SimpleNamespace(
+            attributes=[],
+            errors=0,
+            add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
+            notice_error=lambda: setattr(agent, "errors", agent.errors + 1),
+        )
+        app_module.verify_sheets_access = self._raise(BrokenPipeError(32, "Broken pipe"))
+
+        with mock.patch.object(app_module, "_newrelic_agent", agent):
+            response = self._get()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn(("health.dependency", "sheets"), agent.attributes)
+        self.assertEqual(agent.errors, 1)
+
+    def test_healthy_probe_reports_nothing(self) -> None:
+        agent = types.SimpleNamespace(
+            attributes=[],
+            errors=0,
+            add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
+            notice_error=lambda: setattr(agent, "errors", agent.errors + 1),
+        )
+
+        with mock.patch.object(app_module, "_newrelic_agent", agent):
+            self.assertEqual(self._get().status_code, 200)
+
+        self.assertEqual(agent.attributes, [])
+        self.assertEqual(agent.errors, 0)
+
+    def test_probe_survives_a_broken_agent(self) -> None:
+        # Monitoring may never be the thing that breaks the health check.
+        def explode(*args, **kwargs):
+            raise RuntimeError("agent is unwell")
+
+        agent = types.SimpleNamespace(add_custom_attribute=explode, notice_error=explode)
+        app_module.verify_smtp_credentials = self._raise(OSError("connection refused"))
+
+        with mock.patch.object(app_module, "_newrelic_agent", agent):
+            response = self._get()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["smtp"], "fail")
+
+    def test_probe_works_without_the_agent_installed(self) -> None:
+        app_module.verify_sheets_access = self._raise(OSError("connection refused"))
+
+        with mock.patch.object(app_module, "_newrelic_agent", None):
+            response = self._get()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["sheets"], "fail")
 
     def test_shallow_health_is_unchanged(self) -> None:
         # The deploy pipeline curls /health. It must not gain a dependency on

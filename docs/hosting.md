@@ -71,13 +71,27 @@ A local Apache run is still useful for catching outright syntax errors before
 you push, and it will confirm the _intended_ value, but it cannot tell you what
 LiteSpeed will emit.
 
-## An Imunify360 WAF sits in front of LiteSpeed
+## Imunify360 WAF (disabled)
+
+**The host disabled Imunify360 for the whole site on 2026-08-01**, at our
+request, after it made the Cypress suite unrunnable. Nothing should challenge
+requests now.
+
+Kept here because it is not gone, only switched off — a host-side setting we do
+not control, on an account where it was on by default. If the symptoms below
+reappear, this is the cause, and the remedy is another support request rather
+than a code change. It also explains a long run of "impossible" intermittent CI
+failures in the history.
+
+Everything from here down describes how it behaved **while it was on**.
+
+---
 
 The host runs CloudLinux (the API deploy drives `cloudlinux-selector`), and with
-it Imunify360, as an **openresty reverse proxy in front of LiteSpeed**. It is
-invisible until it decides to challenge a visitor: normally it passes requests
-through untouched, `Server: LiteSpeed` and all. When it does challenge, it
-answers **every URL on the domain** itself, and the response looks nothing like
+it Imunify360, as an **openresty reverse proxy in front of LiteSpeed**. It was
+invisible until it decided to challenge a visitor: normally it passed requests
+through untouched, `Server: LiteSpeed` and all. When it did challenge, it
+answered **every URL on the domain** itself, and the response looked nothing like
 ours:
 
 | Signal    | Normal           | Challenged                    |
@@ -109,11 +123,27 @@ broken from over there":
   what breaks the Cypress suite; see
   [conventions.md](conventions.md#testing).
 
-The remedy is host-side — the account's Imunify360 settings, or a support
-request to exclude the domain. Runner or visitor IPs cannot be whitelisted:
-GitHub's are dynamic Azure ranges, and real visitors on VPNs and mobile CGNAT
-get flagged the same way. Note that the same WAF fronts the production domain,
-where an unresolvable loop lands on `/donate`.
+The remedy was host-side — the account's Imunify360 settings, or a support
+request to exclude the domain, which is what was eventually done. Runner or
+visitor IPs could not be whitelisted: GitHub's are dynamic Azure ranges, and
+real visitors on VPNs and mobile CGNAT get flagged the same way. The same WAF
+fronted the production domain, where an unresolvable loop landed on `/donate`.
+
+### Checking whether it is back
+
+`Server: LiteSpeed` on a normal request proves nothing — it said that while the
+WAF was on too, right up until it decided to challenge. The tells are
+`server: openresty`, a ~12 kB body where a ~40 kB prerender belongs, or
+`One moment, please...` as the title:
+
+```
+curl -sI https://voteforjulia.com/ | grep -i '^server:'
+```
+
+The reliable signal is a **failure that varies by source IP** — one CI runner or
+one synthetic location failing while others pass. See
+[monitoring.md](monitoring.md#is-it-real), which uses exactly that split to tell
+a WAF challenge from a real outage.
 
 ## Deploy workflow changes cannot be tested from a PR
 
