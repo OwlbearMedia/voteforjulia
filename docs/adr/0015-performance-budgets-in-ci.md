@@ -75,11 +75,16 @@ Headroom that is never tightened after an improvement turns a ratchet into a
 rubber stamp. This is written into `performance.md` and the config comments
 because it is the only part of the design that depends on a human.
 
-**The baseline pins two known defects rather than hiding them.** Accessibility
-sits at 0.90 — failing contrast on shared links and a skipped heading level —
-and the assertion is set to 0.90, not 1. The gate stops it getting worse and is
-honest that it is not currently green. Both are documented with the fix that
-should raise the threshold.
+**Setting the baseline immediately found real defects.** Calibrating the
+accessibility threshold surfaced three: link contrast failing on every tinted
+surface, links distinguished by colour alone, and a skipped heading level — all
+inside `JuliaModal`, which opens on first visit to every route. Two were
+properties of the palette (`--color-link` cleared AA on white by 0.05 and failed
+everywhere else), not of one component. They were fixed and the threshold raised
+to 1.00 in the same commit, which is the ratchet working as intended.
+[performance.md](../performance.md#why-the-link-colour-is-what-it-is) records the
+reasoning, and the caveat that an open `aria-modal` dialog masks most of the page
+from these audits — so even 1.00 is not yet a whole-page measurement.
 
 **CI gets slower.** Twenty-four Lighthouse runs plus a full build add several
 minutes. The job runs in parallel with the existing two, so wall-clock cost is

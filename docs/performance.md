@@ -117,12 +117,12 @@ for the state already shipped. Baseline medians across all eight routes:
 
 | Metric         | Observed      | Threshold |
 | -------------- | ------------- | --------- |
-| Performance    | 0.93 – 0.95   | ≥ 0.92    |
-| Accessibility  | 0.90          | ≥ 0.90    |
+| Performance    | 0.91 – 0.95   | ≥ 0.90    |
+| Accessibility  | 1.00          | ≥ 1.00    |
 | SEO            | 1.00          | ≥ 1.00    |
 | Best practices | 1.00          | ≥ 1.00    |
 | FCP            | 1.75 – 1.90 s | ≤ 2.2 s   |
-| LCP            | 2.75 – 3.03 s | ≤ 3.4 s   |
+| LCP            | 2.75 – 3.26 s | ≤ 3.6 s   |
 | TBT            | 11 – 13 ms    | ≤ 200 ms  |
 | CLS            | 0             | ≤ 0.05    |
 
@@ -135,21 +135,58 @@ how loaded the runner is. The rest are stable under simulated throttling, which
 normalises the network and is why a laptop and a CI runner produce comparable
 numbers at all.
 
-### Known failures pinned by the baseline
+The exception is **LCP, and therefore the performance score**. LCP is the header
+logo fetched from ImageKit ([ADR-0012](adr/0012-imagekit-for-images.md)) — a live
+third-party request, so simulated throttling does not normalise it. The same
+commit measured 2.97 s and 3.25 s in two sessions, and `/` sits about 0.03 below
+every other route purely because of it. Hence 0.90 rather than a number pinned
+just under the best session: a threshold that fails on someone else's CDN
+teaches people to ignore the job. Tightening it means removing the dependency
+— a `preconnect` to `ik.imagekit.io`, or serving the logo from the origin — not
+just lowering the number.
 
-The accessibility floor is **0.90, and that is not a passing grade** — it is
-where the site is. Three real defects hold it there, all in shared markup so
-they appear on every route:
+### Why the link colour is what it is
 
-- **Contrast.** Link text `#0070f3` on the `#eff9eb` background is 4.21:1, under
-  the 4.5:1 WCAG AA needs at 16px.
-- **Links identified by colour alone.** The same links sit at 2.06:1 against
-  surrounding body text, under the 3:1 minimum, with no underline to fall back on.
-- **Heading order.** The events widget emits an `<h3>` with no `<h2>` above it.
+Accessibility is 1.00, but it started at 0.90, and the three defects that held it
+there are worth recording because two of them are properties of the palette
+rather than of any one component.
 
-Fixing these should come with raising `categories:accessibility` to `1` in the
-same commit. Until then the floor stops it getting worse, which is the most a
-newly-added gate can honestly claim.
+Every flagged node was inside [JuliaModal.vue](../src/components/JuliaModal.vue)
+— the primary-election modal opens on first visit to any route and is dismissed
+via `sessionStorage`, so Lighthouse, arriving with empty storage every time,
+always audits it.
+
+- **Contrast.** `--color-link` was `#0070f3`, which is **4.55:1 on white** — it
+  cleared AA by 0.05. On the modal body's `bg-mint/60` (`#eff9eb`) that fell to
+  **4.21:1**, and on the page background (`#e5f4de`, from `body`'s
+  `sprout/20%`) to **3.97:1**. The modal was not an outlier; it was the first
+  tinted surface to expose a token with no margin.
+
+  It is now `#407628` — the same value as `--color-fern`, kept as its own
+  semantic token — which clears **5.47 / 5.06 / 4.77** on those three
+  backgrounds. `--color-sprout` and `--color-lime` were considered and are far
+  too light to be link text at all (2.01:1 and 1.41:1 on white).
+
+- **Links identified by colour alone.** No link colour can satisfy both
+  constraints at once: contrast against a light background pulls the colour
+  darker, and the 3:1 required against surrounding body text pulls it lighter.
+  Fern is 1.72:1 against the modal's `text-ink/80` (`#454744`). So prose links
+  carry an underline at rest — `p a { text-decoration: underline }` — and the
+  distinction stops depending on colour. Scoped to `p a` rather than `a` because
+  nav and footer links are not children of a `<p>` and keep their plain look.
+
+- **Heading order.** `JuliaModal`'s own title bar emitted an `<h3>` under the
+  page's visually-hidden `<h1>`. It is now an `<h2>` with `mt-0` to cancel the
+  base `h2` prose margin, and
+  [tests/unit/JuliaModal.spec.ts](../../tests/unit/JuliaModal.spec.ts) asserts
+  the level so a change back fails a unit test rather than only Lighthouse.
+
+**A caveat that still applies at 1.00.** Nothing in page content was ever
+flagged, before or after. The modal sets `aria-modal="true"` and covers the
+viewport, so content behind it is largely excluded from these audits — a perfect
+score here is close to a statement about the modal, not the whole page. Auditing
+page content properly would mean seeding `sessionStorage` so the modal stays
+shut, which Lighthouse's static-server run does not currently do.
 
 Separately, LCP is dominated by the header logo fetched from ImageKit
 ([ADR-0012](adr/0012-imagekit-for-images.md)). It already has `fetchpriority="high"`

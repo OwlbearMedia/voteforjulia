@@ -37,12 +37,17 @@
                   <IconWarning class="text-2xl" />
                 </slot>
               </div>
-              <h3
+              <!-- h2, not h3: the only heading above this is the page's
+                   visually-hidden h1 in App.vue, and skipping a level fails
+                   axe's heading-order. `mt-0` cancels the 3rem top margin the
+                   base h2 rule adds for prose; text-event already overrides
+                   its font-size. -->
+              <h2
                 :id="titleId"
-                class="mb-0 flex-1 pt-1 text-event leading-none font-display text-lime"
+                class="mt-0 mb-0 flex-1 pt-1 text-event leading-none font-display text-lime"
               >
                 {{ title }}
-              </h3>
+              </h2>
               <button
                 type="button"
                 aria-label="Close"

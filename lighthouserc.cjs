@@ -63,12 +63,16 @@ module.exports = {
       // When a fix improves one of these, tighten the number in the same
       // commit — otherwise the headroom quietly becomes the new normal.
       assertions: {
-        'categories:performance': ['error', { minScore: 0.92 }],
-        // 0.90, not 1, because 0.90 is where the site is: shared links fail
-        // WCAG AA contrast and the events widget skips a heading level. This
-        // pins the regression floor; it is not an endorsement of the score.
-        // Raise it to 1 with the fix — see docs/performance.md.
-        'categories:accessibility': ['error', { minScore: 0.9 }],
+        // 0.90, not 0.93-ish. The score is dominated by LCP, which is the header
+        // logo fetched from ImageKit — a live third-party request whose timing
+        // moves between sessions (2.97s and 3.25s on the same commit, and
+        // `/` sits ~0.03 below every other route because of it). A threshold
+        // pinned just under one session's minimum fails on someone else's CDN,
+        // which is the fastest way to teach people to ignore this job.
+        // Earning a tighter number back means making LCP not depend on that
+        // fetch — a preconnect, or serving the logo from the origin.
+        'categories:performance': ['error', { minScore: 0.9 }],
+        'categories:accessibility': ['error', { minScore: 1 }],
         'categories:seo': ['error', { minScore: 1 }],
         'categories:best-practices': ['error', { minScore: 1 }],
 
@@ -77,7 +81,7 @@ module.exports = {
         // Headroom is widest on TBT, which is the metric most sensitive to how
         // loaded the runner is.
         'first-contentful-paint': ['error', { maxNumericValue: 2200 }],
-        'largest-contentful-paint': ['error', { maxNumericValue: 3400 }],
+        'largest-contentful-paint': ['error', { maxNumericValue: 3600 }],
         'total-blocking-time': ['error', { maxNumericValue: 200 }],
         'cumulative-layout-shift': ['error', { maxNumericValue: 0.05 }],
 
