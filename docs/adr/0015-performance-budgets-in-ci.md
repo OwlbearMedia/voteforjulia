@@ -40,7 +40,7 @@ unguarded.
 ## Decision
 
 Add a `perf-frontend` job to CI that builds the site and runs two checks
-against the real output, both able to fail the build.
+against the real output.
 
 **A bundle size budget** ([`perf-budgets.json`](../../perf-budgets.json),
 checked by [`scripts/check-bundle-budget.mjs`](../../scripts/check-bundle-budget.mjs)).
@@ -50,13 +50,20 @@ inlined into it, plus the entry module and its preloaded chunks. Every route in
 Third-party scripts in the initial load are reported but not counted.
 
 **Lighthouse CI** ([`lighthouserc.cjs`](../../lighthouserc.cjs)) over `dist/`
-served directly, three runs per route, asserting on category scores and the four
-lab metrics. Audits that would grade the local static server rather than the
-site — cache headers, CSP, HTTP/2, canonical URLs — are switched off, and
-third-party weight is a warning rather than an error.
+served directly, three runs per route. Audits that would grade the local static
+server rather than the site — cache headers, CSP, HTTP/2, canonical URLs — are
+switched off.
 
-Every threshold is set just past what `main` measured on the day this landed, so
-the checks fail on regression and never on the status quo. The full numbers and
+**What Lighthouse is allowed to fail the build on is decided by measured
+stability on the runner, not by importance.** The accessibility, SEO and
+best-practices scores and CLS were bit-identical across all 24 runs of the first
+CI execution and are enforced. Every timing metric — the performance score, FCP,
+LCP, TBT — ran past its threshold on at least one of those runs and is a warning
+instead. The gap is the environment, not the site: TBT measured 11–13 ms on a
+laptop and 132–566 ms in CI on identical bytes.
+
+Enforced thresholds sit just past what `main` measures, so they fail on
+regression and never on the status quo. The numbers, the observed spreads, and
 the rules for moving one are in [performance.md](../performance.md).
 
 Bundle analysis is opt-in on the same build: `pnpm analyze` sets `ANALYZE=1`,
@@ -86,9 +93,18 @@ to 1.00 in the same commit, which is the ratchet working as intended.
 reasoning, and the caveat that an open `aria-modal` dialog masks most of the page
 from these audits — so even 1.00 is not yet a whole-page measurement.
 
+**The performance score itself is not gated, which is not what the title
+promises.** The check named after performance enforces accessibility, SEO,
+best-practices and CLS; the timing metrics only warn. Anyone reading this ADR
+expecting Lighthouse to block a slow commit should read
+[performance.md](../performance.md#what-fails-the-build-and-why-it-is-not-everything)
+for what is and is not guaranteed. The bundle budget is what carries the
+regression-catching load, and it is deterministic — which is also the honest
+answer to why this trade was acceptable.
+
 **CI gets slower.** Twenty-four Lighthouse runs plus a full build add several
-minutes. The job runs in parallel with the existing two, so wall-clock cost is
-bounded by this job rather than added to the others.
+minutes (5m46s on the first run). The job runs in parallel with the existing
+two, so wall-clock cost is bounded by this job rather than added to the others.
 
 **Lighthouse in CI is not a substitute for field data.** It is emulated mobile
 on a runner, with simulated throttling and real third-party requests. It answers
@@ -100,8 +116,16 @@ that stays New Relic's job ([monitoring.md](../monitoring.md)).
 **Report the numbers without failing the build.** Rejected as the primary
 mechanism for the reason the checks exist at all: everything being guarded here
 degrades silently, and a summary nobody is required to read is exactly as good
-as no check. The compromise kept is narrower — metrics we do not control
-(third-party weight, unused JS) warn, everything we own errors.
+as no check. It is, however, what the timing metrics ended up doing — see the
+consequence above. The line drawn is measured determinism: a check that can
+distinguish a regression from runner noise errors, and one that cannot warns.
+
+**Widen the timing thresholds until they stop flaking instead of demoting
+them.** The straightforward alternative once CI showed the real spreads. It
+would need TBT ≤ ~600 ms and performance ≥ ~0.80 to be safe, by which point a
+change that doubled JS execution time would still pass. A threshold loose enough
+never to be wrong is not measuring anything; a warning at least reports the
+number honestly.
 
 **Compare each PR against a stored baseline from `main` and fail on any delta.**
 Better signal in principle, and rejected on cost: it needs baseline storage,

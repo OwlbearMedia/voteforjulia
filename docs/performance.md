@@ -109,41 +109,57 @@ would grade the test harness rather than the site:
 GA4, the New Relic browser agent and Donorbox, which change size without any
 commit here — worth seeing in the log, wrong to fail a build on.
 
-### The thresholds are a ratchet, not a target
+### What fails the build, and why it is not everything
 
-Every number in `lighthouserc.cjs` is set just past what `main` measured on
-2026-08-02, so the build fails when a change makes things worse and never fails
-for the state already shipped. Baseline medians across all eight routes:
+**What fails is decided by measured stability on the CI runner, not by
+importance.** These were bit-identical across all 24 runs of the first CI
+execution (8 routes × 3), so any change in them is a change we made:
 
-| Metric         | Observed      | Threshold |
-| -------------- | ------------- | --------- |
-| Performance    | 0.91 – 0.95   | ≥ 0.90    |
-| Accessibility  | 1.00          | ≥ 1.00    |
-| SEO            | 1.00          | ≥ 1.00    |
-| Best practices | 1.00          | ≥ 1.00    |
-| FCP            | 1.75 – 1.90 s | ≤ 2.2 s   |
-| LCP            | 2.75 – 3.26 s | ≤ 3.6 s   |
-| TBT            | 11 – 13 ms    | ≤ 200 ms  |
-| CLS            | 0             | ≤ 0.05    |
+| Enforced       | Observed in CI | Threshold |
+| -------------- | -------------- | --------- |
+| Accessibility  | 1.00 – 1.00    | ≥ 1.00    |
+| SEO            | 1.00 – 1.00    | ≥ 1.00    |
+| Best practices | 1.00 – 1.00    | ≥ 1.00    |
+| CLS            | 0.000 – 0.000  | ≤ 0.05    |
 
-**When a fix improves one of these, tighten the number in the same commit.**
+Every timing metric, by contrast, ran past its threshold on at least one of
+those 24 runs. These **warn**, and do not fail the build:
+
+| Advisory    | Observed in CI | Warns above |
+| ----------- | -------------- | ----------- |
+| Performance | 0.49 – 0.96    | < 0.90      |
+| FCP         | 1362 – 3951 ms | > 2200 ms   |
+| LCP         | 2579 – 7530 ms | > 3600 ms   |
+| TBT         | 132 – 566 ms   | > 400 ms    |
+
+Those spreads are the runner, not the site. **TBT measured 11–13 ms on a laptop
+and 132–566 ms in CI on identical bytes** — the numbers in this table replaced
+a set calibrated locally, which is the mistake worth not repeating: a threshold
+is only meaningful in the environment that will enforce it. LHCI asserts on the
+median of three, so the first CI run passed with a 0.49 outlier and a 566 ms
+outlier both outvoted; a threshold that survives on that is not a gate.
+
+A job that fails randomly gets re-run until it is green. That is worse than one
+that warns, because it looks like enforcement while training everyone to bypass
+it. So the timing metrics stay visible in the summary and the artifact, and the
+deterministic half of this gate does the actual gating.
+
+**Promoting an advisory metric to enforced means removing its variance, not
+widening its number.** For LCP that is the ImageKit logo fetch
+([ADR-0012](adr/0012-imagekit-for-images.md)) — a `preconnect` to
+`ik.imagekit.io`, or serving the logo from the origin. For TBT and the
+performance score it is CPU contention on a shared runner, which is harder; more
+runs would buy a sturdier median at roughly 13 minutes per PR.
+
+**The bundle budget is the check that carries the weight here.** It is
+byte-exact and showed zero variance between laptop and runner, and it is what
+actually guards the chunking and CSS-inlining work
+([ADR-0015](adr/0015-performance-budgets-in-ci.md)). When something in this doc
+has to be trusted, trust that one.
+
+**When a fix improves an enforced number, tighten it in the same commit.**
 Otherwise the headroom silently becomes the new normal, which is how a ratchet
 turns into a rubber stamp.
-
-TBT has the widest headroom by far because it is the metric most sensitive to
-how loaded the runner is. The rest are stable under simulated throttling, which
-normalises the network and is why a laptop and a CI runner produce comparable
-numbers at all.
-
-The exception is **LCP, and therefore the performance score**. LCP is the header
-logo fetched from ImageKit ([ADR-0012](adr/0012-imagekit-for-images.md)) — a live
-third-party request, so simulated throttling does not normalise it. The same
-commit measured 2.97 s and 3.25 s in two sessions, and `/` sits about 0.03 below
-every other route purely because of it. Hence 0.90 rather than a number pinned
-just under the best session: a threshold that fails on someone else's CDN
-teaches people to ignore the job. Tightening it means removing the dependency
-— a `preconnect` to `ik.imagekit.io`, or serving the logo from the origin — not
-just lowering the number.
 
 ### Why the link colour is what it is
 

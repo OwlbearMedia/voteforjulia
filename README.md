@@ -316,7 +316,9 @@ fails the check, so adding a page means adding its budget.
 
 `pnpm perf:lighthouse` runs Lighthouse three times per route against the built
 `dist/`, asserting the thresholds in [`lighthouserc.cjs`](lighthouserc.cjs). It
-needs a Chrome installation to drive.
+needs a Chrome installation to drive. Only the assertions that proved stable in
+CI fail the run — accessibility, SEO, best practices and CLS; the timing metrics
+warn, because they swing far too widely on a shared runner to gate on.
 
 To see where the bytes actually are, build with the bundle analyzer and open the
 treemap:
@@ -326,11 +328,12 @@ pnpm analyze
 open bundle-analysis/stats.html
 ```
 
-Thresholds are deliberately set just above what `main` currently measures, so
-they fail on regressions rather than on the status quo — which also means they
-need raising in the same commit as any change that legitimately needs more room.
-**[docs/performance.md](docs/performance.md) covers the rules, the current
-baseline numbers, and the known issues the baseline pins.**
+Enforced thresholds are deliberately set just above what `main` currently
+measures, so they fail on regressions rather than on the status quo — which also
+means they need raising in the same commit as any change that legitimately needs
+more room. **[docs/performance.md](docs/performance.md) covers the rules, which
+checks are enforced versus advisory and why, and the measured CI spreads behind
+that split.**
 
 ## CI and Deployment (GitHub Actions)
 
@@ -347,7 +350,7 @@ feature branches that are merged directly to `main`. There are three workflow fi
 - File: `.github/workflows/ci.yml`
 - Jobs — **Typecheck and frontend tests**, **Frontend performance budgets**, and **Python API lint and tests** run in parallel:
   - **Typecheck and frontend tests** — type-check, Prettier format check (`pnpm format:check`), ESLint, Vitest with coverage. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) under the `frontend` flag. Codecov uploads are skipped for Dependabot PRs, which do not have access to repository secrets, and never fail the build.
-  - **Frontend performance budgets** — builds the site with the bundle analyzer, checks per-route first-load size against [`perf-budgets.json`](perf-budgets.json), then runs Lighthouse over `dist/` against the thresholds in [`lighthouserc.cjs`](lighthouserc.cjs). The size table is posted to the job summary; the treemap and Lighthouse reports are uploaded as the `performance-reports` artifact, including on failure. Both checks fail the build, so **a size or metric regression blocks the production deploy** until the change is fixed or the budget is raised deliberately — see [docs/performance.md](docs/performance.md).
+  - **Frontend performance budgets** — builds the site with the bundle analyzer, checks per-route first-load size against [`perf-budgets.json`](perf-budgets.json), then runs Lighthouse over `dist/` against the thresholds in [`lighthouserc.cjs`](lighthouserc.cjs). The size table is posted to the job summary; the treemap and Lighthouse reports are uploaded as the `performance-reports` artifact, including on failure. **The bundle budget and the accessibility, SEO, best-practices and CLS assertions fail the build**, so a size or accessibility regression blocks the production deploy until it is fixed or the budget is raised deliberately. The timing metrics (performance score, FCP, LCP, TBT) only warn — they vary too much on a shared CI runner to gate on. [docs/performance.md](docs/performance.md) has the measured spreads and the reasoning.
   - **Python API lint and tests** — `ruff check`, `ruff format --check`, then `pytest` across every `api/test_*.py` with coverage. Totals are posted to the job summary and the report is uploaded to Codecov under the `backend` flag. The interpreter comes from [`.python-version`](.python-version) so it can't drift from the host's.
 
 The CI badge and Codecov coverage reflect the latest run on `main`.

@@ -53,39 +53,58 @@ module.exports = {
       }
     },
     assert: {
-      // Every threshold below is a ratchet, not a target: it sits just past what
-      // main measures, so the build fails when a change makes things worse and
-      // never fails for the state we already shipped. When a fix improves one,
-      // tighten the number in the same commit — otherwise the headroom quietly
+      // Enforced thresholds are a ratchet, not a target: each sits just past
+      // what main measures, so the build fails when a change makes things worse
+      // and never fails for the state we already shipped. When a fix improves
+      // one, tighten it in the same commit — otherwise the headroom quietly
       // becomes the new normal.
       //
-      // The observed baseline the thresholds were calibrated from lives in
+      // The observed baseline these were calibrated from lives in
       // docs/performance.md and is deliberately NOT repeated here. It was, and
       // it drifted within a day: accessibility was fixed from 0.90 to 1.00 and
       // performance re-calibrated, and the copy here still claimed the old
       // numbers. One table, in the doc that explains it.
+      // What fails the build is decided by measured stability on the CI runner,
+      // not by importance. Across the 24 runs of the first CI execution
+      // (8 routes x 3), these were bit-identical every single time — so a change
+      // in them is a change we made:
+      //
+      //   accessibility 1.00-1.00   seo 1.00-1.00
+      //   best-practices 1.00-1.00  CLS 0.000-0.000
+      //
+      // ...while every timing metric ranged far past its threshold on at least
+      // one run:
+      //
+      //   performance 0.49-0.96   FCP 1362-3951ms
+      //   LCP 2579-7530ms         TBT 132-566ms
+      //
+      // Those spreads are the runner, not the site: TBT measured 11-13ms on a
+      // laptop against 132-566ms here, on identical bytes. Asserting on them
+      // would produce a job that fails randomly, and a job that fails randomly
+      // gets re-run until green — which is worse than one that only warns,
+      // because it looks like enforcement while teaching people to bypass it.
+      //
+      // The deterministic half of this gate is the bundle budget
+      // (scripts/check-bundle-budget.mjs): byte-exact, zero variance between
+      // laptop and runner. That is what actually guards the chunking and
+      // CSS-inlining work ADR-0015 was written about.
       assertions: {
-        // 0.90, not 0.93-ish. The score is dominated by LCP, which is the header
-        // logo fetched from ImageKit — a live third-party request whose timing
-        // moves between sessions (2.97s and 3.25s on the same commit, and
-        // `/` sits ~0.03 below every other route because of it). A threshold
-        // pinned just under one session's minimum fails on someone else's CDN,
-        // which is the fastest way to teach people to ignore this job.
-        // Earning a tighter number back means making LCP not depend on that
-        // fetch — a preconnect, or serving the logo from the origin.
-        'categories:performance': ['error', { minScore: 0.9 }],
+        // Enforced — zero observed variance.
         'categories:accessibility': ['error', { minScore: 1 }],
         'categories:seo': ['error', { minScore: 1 }],
         'categories:best-practices': ['error', { minScore: 1 }],
-
-        // Lab metrics, as a backstop under the category score — the score is a
-        // weighted blend and can stay green while one metric quietly doubles.
-        // Headroom is widest on TBT, which is the metric most sensitive to how
-        // loaded the runner is.
-        'first-contentful-paint': ['error', { maxNumericValue: 2200 }],
-        'largest-contentful-paint': ['error', { maxNumericValue: 3600 }],
-        'total-blocking-time': ['error', { maxNumericValue: 200 }],
         'cumulative-layout-shift': ['error', { maxNumericValue: 0.05 }],
+
+        // Advisory — real signal, unreliable as a gate. The numbers are set
+        // around the CI medians so a warning means "drifted", not "unlucky".
+        // Promoting any of these to `error` requires removing the variance
+        // first, not just widening the number: LCP is the ImageKit logo fetch
+        // (a preconnect, or serving it from the origin), and TBT/performance
+        // are CPU contention on a shared runner.
+        'categories:performance': ['warn', { minScore: 0.9 }],
+        'first-contentful-paint': ['warn', { maxNumericValue: 2200 }],
+        'largest-contentful-paint': ['warn', { maxNumericValue: 3600 }],
+        'total-blocking-time': ['warn', { maxNumericValue: 400 }],
 
         // Third-party weight is reported, not enforced: Donorbox, GA4 and the
         // New Relic browser agent all change size without us doing anything,
