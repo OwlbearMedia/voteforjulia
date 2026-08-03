@@ -177,8 +177,25 @@ describe('formatSummary', () => {
     const results = evaluateBudgets(routes, { routes: { 'donate.html': 78 } });
     const summary = formatSummary(routes, results);
     expect(summary).toContain('| donate.html |');
-    expect(summary).toContain('70.0 KiB');
-    expect(summary).toContain('78.0 KiB');
+    expect(summary).toContain('70.00 KiB');
+    expect(summary).toContain('78.00 KiB');
+  });
+
+  // The comparison runs on exact fractional KiB, so the table has to be precise
+  // enough to show the difference it acted on. At one decimal, a route 0.04 KiB
+  // over budget printed "78.0 KiB" against a budget of "78.0 KiB" and still
+  // failed — two identical-looking numbers on a row marked over budget.
+  it('does not print a failing route as equal to its budget', () => {
+    const justOver = [{ ...routes[0], firstLoadBytes: Math.round(78.04 * 1024), external: [] }];
+    const results = evaluateBudgets(justOver, { routes: { 'donate.html': 78 } });
+    expect(results[0].status).toBe('over');
+
+    const row = formatSummary(justOver, results)
+      .split('\n')
+      .find((line) => line.includes('donate.html'));
+    const sizes = row?.match(/\d+\.\d+ KiB/g) ?? [];
+    // Last two cells on the row are first-load and budget; they must differ.
+    expect(sizes.at(-1)).not.toBe(sizes.at(-2));
   });
 
   it('lists third-party scripts so their cost stays visible', () => {

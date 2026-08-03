@@ -53,15 +53,17 @@ module.exports = {
       }
     },
     assert: {
-      // Every threshold below is a ratchet, not a target: it is set just past
-      // what main measured on 2026-08-02, so the build fails when a change
-      // makes things worse and never fails for the state we already shipped.
-      // Observed medians across all 8 routes were performance 0.93–0.95,
-      // accessibility 0.90, SEO and best-practices 1.00, FCP 1.75–1.90s,
-      // LCP 2.75–3.03s, TBT 11–13ms, CLS 0.
+      // Every threshold below is a ratchet, not a target: it sits just past what
+      // main measures, so the build fails when a change makes things worse and
+      // never fails for the state we already shipped. When a fix improves one,
+      // tighten the number in the same commit — otherwise the headroom quietly
+      // becomes the new normal.
       //
-      // When a fix improves one of these, tighten the number in the same
-      // commit — otherwise the headroom quietly becomes the new normal.
+      // The observed baseline the thresholds were calibrated from lives in
+      // docs/performance.md and is deliberately NOT repeated here. It was, and
+      // it drifted within a day: accessibility was fixed from 0.90 to 1.00 and
+      // performance re-calibrated, and the copy here still claimed the old
+      // numbers. One table, in the doc that explains it.
       assertions: {
         // 0.90, not 0.93-ish. The score is dominated by LCP, which is the header
         // logo fetched from ImageKit — a live third-party request whose timing

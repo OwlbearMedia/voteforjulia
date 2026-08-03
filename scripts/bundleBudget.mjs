@@ -191,9 +191,18 @@ const STATUS_LABEL = {
   'stale-budget': '❌ stale budget'
 };
 
-/** GitHub-flavoured markdown for the CI job summary. */
+/**
+ * GitHub-flavoured markdown for the CI job summary.
+ *
+ * Two decimals, not one, and the budget column is formatted the same way as the
+ * measured columns. The comparison in `evaluateBudgets` runs on exact
+ * fractional KiB, so at one decimal a route 0.04 KiB over its budget rendered
+ * as "78.0 KiB" against a budget of "78.0 KiB" — a row marked over budget with
+ * two identical-looking numbers on it. Display precision has to be fine enough
+ * to show the difference the check acted on.
+ */
 export function formatSummary(routes, results) {
-  const kb = (bytes) => (bytes / KIB).toFixed(1);
+  const kb = (bytes) => (bytes / KIB).toFixed(2);
   const lines = [
     '### Bundle size — first load, gzipped',
     '',
@@ -211,7 +220,7 @@ export function formatSummary(routes, results) {
         route ? `${kb(route.documentBytes)} KiB` : '—',
         route ? `${kb(route.javascriptBytes)} KiB` : '—',
         route ? `${kb(route.firstLoadBytes)} KiB` : '—',
-        result.budgetKb === null ? '—' : `${result.budgetKb.toFixed(1)} KiB`,
+        result.budgetKb === null ? '—' : `${result.budgetKb.toFixed(2)} KiB`,
         `${STATUS_LABEL[result.status]}${result.detail ? ` — ${result.detail}` : ''}`,
         ''
       ].join(' | ')
