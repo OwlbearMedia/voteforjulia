@@ -1,0 +1,13 @@
+{
+  "_readme": "First-load budgets in KiB, gzipped: the prerendered document (CSS is inlined into it) plus the entry module and its preloaded chunks. Checked by `pnpm perf:budget`. Every route in dist/ needs an entry here or the check fails. See docs/performance.md before changing a number.",
+  "routes": {
+    "donate.html": 78,
+    "endorsements.html": 78,
+    "events.html": 82,
+    "index.html": 86,
+    "meet-julia.html": 80,
+    "secret-recipe.html": 78,
+    "volunteer.html": 80,
+    "yard-signs.html": 80
+  }
+}

@@ -1,9 +1,10 @@
 import 'vite-ssg';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, type PluginOption } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
+import { visualizer } from 'rollup-plugin-visualizer';
 import { buildSitemapXml, resolveSitemapRoutes } from './sitemap.build';
 
 // Source map mode. Defaults to 'hidden': maps are generated without a
@@ -23,6 +24,37 @@ function resolveSourcemapMode(): 'hidden' | boolean {
 
 const SOURCEMAP_MODE = resolveSourcemapMode();
 
+/**
+ * Treemap of what ended up in each chunk, written by `pnpm analyze` (ANALYZE=1).
+ * Off by default for two reasons: it needs source maps to attribute bytes back
+ * to modules, and it must not write into dist/ — anything in dist/ is deployed
+ * verbatim, and a stats page listing every module path is not something to
+ * publish. It goes to bundle-analysis/ (gitignored) instead.
+ */
+function analyzePlugins(): PluginOption[] {
+  if (process.env.ANALYZE !== '1') return [];
+
+  const plugin = visualizer({
+    filename: 'bundle-analysis/stats.html',
+    template: 'treemap',
+    gzipSize: true,
+    brotliSize: true,
+    // Write to the path above rather than emitting the report as a build asset,
+    // which would land it in dist/ and ship it.
+    emitFile: false
+  });
+
+  return [
+    {
+      ...plugin,
+      // vite-ssg runs a second, server-side build over the same config. It has
+      // its own chunk graph and is never sent to a browser, and it would
+      // overwrite the client report at the fixed filename above — so skip it.
+      apply: (_config, env) => !env.isSsrBuild
+    }
+  ];
+}
+
 let builtRoutePaths: string[] = [];
 
 // https://vite.dev/config/
@@ -31,7 +63,7 @@ export default defineConfig({
   // markup via v-html rather than as template tags (see docs/conventions.md),
   // so the compiler never sees a tag it would have to be told about. Anything
   // added here must be mirrored in vitest.config.ts.
-  plugins: [vue(), tailwindcss()],
+  plugins: [vue(), tailwindcss(), ...analyzePlugins()],
   build: {
     // Generate source maps but omit the sourceMappingURL comment so browsers
     // don't advertise/fetch them. Maps are uploaded to New Relic for

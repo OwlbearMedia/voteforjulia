@@ -87,6 +87,71 @@ jobs:
           flags: frontend
           fail_ci_if_error: false
 
+  perf-frontend:
+    name: Frontend performance budgets
+    runs-on: ubuntu-latest
+    # Runs alongside the other two jobs rather than after them. It builds from
+    # scratch anyway, so gating it on the test job would only add wall-clock
+    # time without changing what it can catch.
+    #
+    # Note this job gates deploys. deploy-production.yml keys off the whole CI
+    # workflow concluding successfully, so a blown budget stops the deploy the
+    # same way a failing test does — which is the intent, but it does mean a
+    # genuine, accepted size increase has to land with its budget bump in the
+    # same commit rather than after it.
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build with bundle analysis
+        # ANALYZE=1 adds the treemap report, uploaded below. It writes to
+        # bundle-analysis/, never into dist/, so the built output is identical
+        # to a plain `pnpm build` and Lighthouse measures the real thing.
+        run: pnpm run analyze
+
+      - name: Check bundle budgets
+        # Writes the per-route table to the job summary either way; exits
+        # non-zero only when a route is over budget or unbudgeted.
+        run: pnpm run perf:budget
+
+      - name: Run Lighthouse CI
+        # Chrome is preinstalled on the ubuntu-latest runner image and found by
+        # chrome-launcher; no browser setup step is needed. Thresholds are in
+        # lighthouserc.cjs — see docs/performance.md.
+        run: pnpm run perf:lighthouse
+
+      - name: Upload performance reports
+        # `always()` so a failed budget or assertion still produces the reports
+        # that explain it — without them the failure message is all you get.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-reports
+          path: |
+            bundle-analysis/
+            .lighthouseci/
+          # .lighthouseci is a dotfile directory, and upload-artifact skips
+          # hidden paths by default — without this the artifact silently
+          # contains only the treemap.
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: warn
+
   test-api:
     name: Python API lint and tests
     runs-on: ubuntu-latest
