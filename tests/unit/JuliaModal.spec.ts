@@ -58,11 +58,17 @@ describe('JuliaModal', () => {
     expect(dialog?.textContent).toContain('Action Needed');
     expect(dialog?.textContent).toContain('Modal body');
 
-    // aria-labelledby points at the rendered <h3>.
+    // aria-labelledby points at the rendered title heading.
     const labelledBy = dialog?.getAttribute('aria-labelledby');
-    const heading = dialog?.querySelector('h3');
+    const heading = dialog?.querySelector('h2');
     expect(labelledBy).toBeTruthy();
     expect(heading?.id).toBe(labelledBy);
+
+    // The level is asserted, not incidental: the only heading above a modal is
+    // App.vue's visually-hidden h1, so anything below h2 skips a level and
+    // fails axe's heading-order. Dropping back to h3 must fail here rather
+    // than only showing up as a Lighthouse regression.
+    expect(dialog?.querySelector('h3')).toBeNull();
   });
 
   it('hides the icon on the default variant and shows it on danger/warning', () => {

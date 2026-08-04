@@ -83,7 +83,10 @@ but every route is also a complete HTML document a crawler can read without
 running JavaScript ([ADR-0002](adr/0002-static-site-generation.md)). Two build
 steps exist purely to protect that first paint: CSS is inlined into each HTML
 file by an `onFinished` hook in [vite.config.ts](../vite.config.ts), and vendor
-and `gtag` code are split into separate chunks.
+and `gtag` code are split into separate chunks. Both degrade silently if they
+stop working, so CI budgets the resulting first-load weight and runs Lighthouse
+over `dist/` ([performance.md](performance.md),
+[ADR-0015](adr/0015-performance-budgets-in-ci.md)).
 
 ### API
 
@@ -235,5 +238,6 @@ than by discipline.
 | [0012](adr/0012-imagekit-for-images.md)             | Serve images from ImageKit rather than the host                 | Accepted                                                          |
 | [0013](adr/0013-server-side-apm.md)                 | Instrument the API server-side, and alert on it                 | Accepted                                                          |
 | [0014](adr/0014-do-not-trust-forwarding-headers.md) | Trust a forwarding header only when one is configured           | Accepted                                                          |
+| [0015](adr/0015-performance-budgets-in-ci.md)       | Gate CI on performance budgets                                  | Accepted                                                          |
 
 New ADRs: see [adr/README.md](adr/README.md).

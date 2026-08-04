@@ -38,6 +38,11 @@ area:
   pipelines: LiteSpeed rather than Apache (its `.htaccess` parser differs from
   Apache's in silent ways), the atomic production swap and rollback, and how
   deploys install Python dependencies into the host's cPanel virtualenv.
+- **[docs/performance.md](docs/performance.md)** — the performance budgets CI
+  enforces on every build: what "first load" is measured as, why Lighthouse runs
+  against `dist/` rather than a dev server, and the rule for raising a threshold
+  (same commit as the change, with a reason). Read it before a size increase
+  turns CI red.
 - **[docs/monitoring.md](docs/monitoring.md)** — what watches the site, which
   alerts will fire, and how to tell a genuine outage from a WAF false positive.
   The New Relic dashboard and alert definitions are version-controlled in
@@ -225,6 +230,7 @@ Tests are organized in a dedicated directory:
 - tests/unit/analytics.spec.ts
 - tests/unit/api.spec.ts
 - tests/unit/newrelic.spec.ts
+- tests/unit/bundleBudget.spec.ts — first-load measurement and budget evaluation (see [Performance Checks](#performance-checks))
 
 ### E2E Tests (Cypress)
 
@@ -284,6 +290,51 @@ What gets measured is set by [`.coveragerc`](.coveragerc).
 Older test files are `unittest.TestCase` classes and newer ones are plain pytest
 functions; pytest collects both.
 
+## Performance Checks
+
+CI enforces two performance budgets on every build, and both can fail it. Run
+them locally the same way CI does — build first, since neither command builds
+for you:
+
+```bash
+pnpm build
+pnpm perf                 # both checks
+```
+
+Or individually:
+
+```bash
+pnpm perf:budget          # bundle sizes — seconds
+pnpm perf:lighthouse      # Lighthouse over dist/ — a few minutes
+```
+
+`pnpm perf:budget` checks the gzipped weight of a cold visit to each route —
+the prerendered HTML (which has the CSS inlined into it) plus the JavaScript
+needed before hydration — against the per-route numbers in
+[`perf-budgets.json`](perf-budgets.json). A route with no entry in that file
+fails the check, so adding a page means adding its budget.
+
+`pnpm perf:lighthouse` runs Lighthouse three times per route against the built
+`dist/`, asserting the thresholds in [`lighthouserc.cjs`](lighthouserc.cjs). It
+needs a Chrome installation to drive. Only the assertions that proved stable in
+CI fail the run — accessibility, SEO, best practices and CLS; the timing metrics
+warn, because they swing far too widely on a shared runner to gate on.
+
+To see where the bytes actually are, build with the bundle analyzer and open the
+treemap:
+
+```bash
+pnpm analyze
+open bundle-analysis/stats.html
+```
+
+Enforced thresholds are deliberately set just above what `main` currently
+measures, so they fail on regressions rather than on the status quo — which also
+means they need raising in the same commit as any change that legitimately needs
+more room. **[docs/performance.md](docs/performance.md) covers the rules, which
+checks are enforced versus advisory and why, and the measured CI spreads behind
+that split.**
+
 ## CI and Deployment (GitHub Actions)
 
 This repository uses a trunk-based workflow. All development happens on short-lived
@@ -297,8 +348,9 @@ feature branches that are merged directly to `main`. There are three workflow fi
 
 - Triggers: pull request events (`opened`, `synchronize`, `reopened`) and pushes to `main`. Runs tests only in both cases — deploys are handled by separate workflows triggered via `workflow_run`.
 - File: `.github/workflows/ci.yml`
-- Jobs — **Typecheck and frontend tests** and **Python API lint and tests** run in parallel:
+- Jobs — **Typecheck and frontend tests**, **Frontend performance budgets**, and **Python API lint and tests** run in parallel:
   - **Typecheck and frontend tests** — type-check, Prettier format check (`pnpm format:check`), ESLint, Vitest with coverage. The frontend coverage totals are posted to the workflow run's job summary, and the full report is uploaded to [Codecov](https://codecov.io/gh/OwlbearMedia/voteforjulia) under the `frontend` flag. Codecov uploads are skipped for Dependabot PRs, which do not have access to repository secrets, and never fail the build.
+  - **Frontend performance budgets** — builds the site with the bundle analyzer, checks per-route first-load size against [`perf-budgets.json`](perf-budgets.json), then runs Lighthouse over `dist/` against the thresholds in [`lighthouserc.cjs`](lighthouserc.cjs). The size table is posted to the job summary; the treemap and Lighthouse reports are uploaded as the `performance-reports` artifact, including on failure. **The bundle budget and the accessibility, SEO, best-practices and CLS assertions fail the build**, so a size or accessibility regression blocks the production deploy until it is fixed or the budget is raised deliberately. The timing metrics (performance score, FCP, LCP, TBT) only warn — they vary too much on a shared CI runner to gate on. [docs/performance.md](docs/performance.md) has the measured spreads and the reasoning.
   - **Python API lint and tests** — `ruff check`, `ruff format --check`, then `pytest` across every `api/test_*.py` with coverage. Totals are posted to the job summary and the report is uploaded to Codecov under the `backend` flag. The interpreter comes from [`.python-version`](.python-version) so it can't drift from the host's.
 
 The CI badge and Codecov coverage reflect the latest run on `main`.
@@ -387,8 +439,10 @@ Until the first upload completes, the coverage badge reads `unknown`.
 - src/lib/: Framework-agnostic utilities (routing, analytics, API client, route paths)
 - tests/unit/: Frontend Vitest specs
 - api/: Flask API and Python tests
-- docs/: Conventions, hosting/deploys, and the donate integration
+- docs/: Conventions, hosting/deploys, performance budgets, and the donate integration
+- scripts/: Build-adjacent Node tooling (source map upload, bundle budget check)
 - dist/: Build output generated by pnpm run build
-- .github/workflows/ci.yml: typecheck, lint, and tests — runs on PRs and pushes to `main`
+- perf-budgets.json / lighthouserc.cjs: Performance thresholds enforced by CI
+- .github/workflows/ci.yml: typecheck, lint, tests, and performance budgets — runs on PRs and pushes to `main`
 - .github/workflows/deploy-test.yml: test environment deploy, triggered when CI passes on a PR
 - .github/workflows/deploy-production.yml: production deploy, triggered when CI passes on `main`

@@ -34,6 +34,12 @@ a worked example):
    - `tests/unit/pages.spec.ts` (a render + SEO assertion for the new page)
    - `tests/unit/routes.spec.ts` passes automatically (it derives from
      `appRoutePaths`), as does the sitemap and `App.spec.ts`'s router setup.
+7. **[perf-budgets.json](../perf-budgets.json)** — add a first-load budget for
+   the new route's `.html`. CI fails on a route with no entry rather than
+   skipping it, so this is not optional; the point is that a new page cannot
+   opt itself out of the budget by existing. Build, run `pnpm perf:budget` to
+   read the route's actual size off the table, and set the budget a little above
+   it. See [performance.md](performance.md#moving-a-budget).
 
 The one file that looks like a page but deliberately skips all of this is
 `api-docs.html` at the repo root — the local Swagger UI viewer (see the

@@ -41,8 +41,11 @@ export default tseslint.config(
     }
   },
   {
-    // Build/test config and deploy scripts run in Node.
-    files: ['*.config.{ts,js,mjs}', 'scripts/**/*.mjs', 'vitest.setup.ts'],
+    // Build/test config and deploy scripts run in Node. lighthouserc.cjs is
+    // named by hand rather than covered by the glob above: @lhci/cli requires
+    // its config file, so it has to be CommonJS in a "type": "module" package,
+    // and it does not follow the *.config.* naming.
+    files: ['*.config.{ts,js,mjs}', 'lighthouserc.cjs', 'scripts/**/*.mjs', 'vitest.setup.ts'],
     languageOptions: {
       globals: {
         ...globals.node

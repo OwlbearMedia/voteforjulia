@@ -27,7 +27,14 @@
   --color-lime: #92f06c;
   --color-mint: #e5f5de;
   --color-mist: #b7c4d1;
-  --color-link: #0070f3;
+  /* Same value as --color-fern, kept as its own semantic token so link colour
+     can move without dragging every fern-coloured surface with it.
+     The old #0070f3 cleared 4.5:1 on white by 0.05 and failed on every tinted
+     background the site actually uses — 4.21:1 in the modal body, 3.97:1 on the
+     page background. Fern clears all three (5.47 / 5.06 / 4.77). It cannot also
+     clear 3:1 against body text, which is why prose links are underlined below
+     rather than distinguished by colour alone. See docs/performance.md. */
+  --color-link: #407628;
   --color-error: #c62828;
   --color-warning: #eab308;
 
@@ -169,6 +176,18 @@
   }
 
   a:hover {
+    text-decoration: underline;
+  }
+
+  /* Links sitting inside prose carry an underline at rest, not just on hover.
+     No single link colour can clear both 4.5:1 against the tinted backgrounds
+     this site uses and 3:1 against the body text it sits in — the two pull in
+     opposite directions — so the underline carries the distinction instead
+     (WCAG 1.4.1, axe's link-in-text-block).
+
+     Scoped to `p a` rather than `a` on purpose: nav and footer links are
+     siblings of their <p>, not children, so they keep their unadorned look. */
+  p a {
     text-decoration: underline;
   }
 

@@ -45,3 +45,8 @@ __pycache__
 *.njsproj
 *.sln
 *.sw?
+
+# Performance tooling output. The treemap is written by `pnpm analyze`, the
+# Lighthouse reports by `pnpm perf:lighthouse`; CI uploads both as artifacts.
+bundle-analysis
+.lighthouseci
