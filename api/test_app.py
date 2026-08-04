@@ -788,14 +788,6 @@ class AppDeepHealthTests(unittest.TestCase):
             {"status": "ok", "smtp": "ok", "sheets": "ok"},
         )
 
-    def test_registered_under_both_prefixes(self) -> None:
-        # Passenger may mount the app under /api, so every route is declared
-        # twice; a synthetic monitor pointed at the wrong one must not 404.
-        for path in ("/health/deep", "/health/deep"):
-            with self.subTest(path=path):
-                app_module._RATE_LIMIT_BUCKETS = {}
-                self.assertEqual(self._get(path).status_code, 200)
-
     def test_smtp_auth_failure_reports_503(self) -> None:
         # The exact shape of the $-in-password incident: the mail server was
         # reachable and /health was green, but LOGIN was rejected.

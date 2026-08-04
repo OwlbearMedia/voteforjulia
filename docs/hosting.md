@@ -240,9 +240,14 @@ the test suite and `requirements-dev.txt`), uploads it with everything else, and
 afterwards deletes anything present on the host that the manifest does not list:
 
 ```
-find . -type f ! -path './tmp/*' ! -name deploy-manifest.txt | sed 's|^\./||' | LC_ALL=C sort > deployed
-LC_ALL=C comm -23 deployed deploy-manifest.txt | xargs -r rm -f --
+find . -type f ! -path './tmp/*' ! -name deploy-manifest.txt | sed 's|^\./||' | LC_ALL=C sort > /tmp/deployed
+LC_ALL=C comm -23 /tmp/deployed deploy-manifest.txt | tr '\n' '\0' | xargs -0 -r rm -f --
 ```
+
+That is the shape of it; the workflows are the source of truth, and add the
+guard below plus cleanup of the temporary file. Note the `tr`/`xargs -0` pair —
+`comm` emits newline-separated paths, and feeding those to a bare `xargs` would
+split any path containing whitespace into two arguments and delete neither.
 
 Consequences worth knowing:
 
