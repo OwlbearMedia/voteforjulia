@@ -94,9 +94,18 @@ afterEach(function () {
     { log: false }
   );
 
+  const url = autLoads.at(-1)?.href ?? Cypress.config('baseUrl');
+
+  // Then the API origin. The page probe below only ever covers the host the
+  // browser navigated to, and the form specs fail on a cross-origin POST to a
+  // *different* host (ADR-0003) — where the browser reports nothing but
+  // `Failed to fetch`. Without this the two are indistinguishable in the log:
+  // a healthy site serving a page whose submit button quietly cannot reach the
+  // API looks exactly like a site that is fine.
+  cy.task('probeApi', { origin: url ? new URL(url).origin : '' }, { log: false });
+
   // Ask for the same URL again, straight from the Cypress proxy, so the log
   // shows the status, headers and body the runner is being served right now.
-  const url = autLoads.at(-1)?.href ?? Cypress.config('baseUrl');
   if (!url) {
     return;
   }

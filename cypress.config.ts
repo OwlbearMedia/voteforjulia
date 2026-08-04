@@ -51,6 +51,36 @@ function quoteSheetTitle(title: string): string {
   return `'${title.replace(/'/g, "''")}'`;
 }
 
+// The origin the forms actually post to. Declared rather than derived from
+// `baseUrl`, because the relationship between the two is a hosting decision
+// (ADR-0003), not a naming rule — and a wrong guess here would misreport the
+// one thing this is meant to diagnose.
+const DEFAULT_API_BASE_URL = 'https://test-api.voteforjulia.com';
+
+function resolveApiBaseUrl(env: CypressEnv): string {
+  const configured =
+    (env.apiBaseUrl as string | undefined) ?? process.env.CYPRESS_API_BASE_URL ?? undefined;
+
+  return (configured ?? DEFAULT_API_BASE_URL).replace(/\/+$/, '');
+}
+
+/** One line per signal that distinguishes a real response from a WAF challenge. */
+function summarizeProbe(label: string, status: number, headers: Headers, body: string): string {
+  const server = headers.get('server') ?? '(none)';
+  const allowOrigin = headers.get('access-control-allow-origin') ?? '(none)';
+  // The tells are documented in docs/hosting.md#imunify360-waf-disabled: the
+  // challenge answers 200 from openresty with a ~12 kB splash, so neither the
+  // status code nor `server: LiteSpeed` on a good day proves anything.
+  const challenged = /openresty/i.test(server) || /One moment, please/i.test(body);
+
+  return [
+    `  ${label} -> ${status}`,
+    `    server: ${server}`,
+    `    access-control-allow-origin: ${allowOrigin}`,
+    `    WAF challenge: ${challenged ? 'YES — see docs/hosting.md#imunify360-waf-disabled' : 'no'}`
+  ].join('\n');
+}
+
 export default defineConfig({
   e2e: {
     // Default to the staging site. Override with CYPRESS_BASE_URL for local dev:
@@ -86,6 +116,81 @@ export default defineConfig({
         // the support file's failure diagnostics come back through here.
         log(message: string): null {
           console.log(message);
+
+          return null;
+        },
+
+        /**
+         * On a failed test, report what the *API* origin returns to this runner.
+         *
+         * The existing diagnostics re-probe the page URL, which is the wrong
+         * host: both form specs submit cross-origin to the API (ADR-0003), so a
+         * failure there shows up in the browser only as `Failed to fetch` — a
+         * bare TypeError with no status, no headers and no body. Diagnosing one
+         * previously meant pulling the screenshot artifact and reading the red
+         * text under the submit button.
+         *
+         * Runs in Node, not as `cy.request`, for two reasons. Node does not
+         * enforce CORS, so the preflight's response headers can be *inspected*
+         * rather than acted on — the browser's whole problem is that a missing
+         * `Access-Control-Allow-Origin` is unreadable from script. And a
+         * rejected fetch is caught here, whereas a `cy.request` network error
+         * would fail the afterEach hook and bury the failure it came to explain.
+         *
+         * Same process as the browser, so same source IP — which is what makes
+         * this able to see an IP-reputation challenge at all.
+         */
+        async probeApi({ origin }: { origin: string }): Promise<null> {
+          const apiBaseUrl = resolveApiBaseUrl(env);
+          const lines = [`[diagnostics] API origin ${apiBaseUrl}, probed from the runner:`];
+
+          const probes: { label: string; url: string; init: RequestInit }[] = [
+            {
+              label: 'GET /health',
+              url: `${apiBaseUrl}/health`,
+              // Origin is sent even though a health check does not need it:
+              // `add_cors_headers` only emits Access-Control-Allow-Origin when
+              // it is present, so without it every probe would report the
+              // header as missing and the one line that matters would be noise.
+              init: { method: 'GET', headers: { Origin: origin } }
+            },
+            {
+              // The preflight is the request that actually breaks: the browser
+              // sends it before any JSON POST, and a challenge or a missing
+              // allowlist entry stops the submission before it is ever made.
+              label: `OPTIONS /send-email (preflight for Origin: ${origin})`,
+              url: `${apiBaseUrl}/send-email`,
+              init: {
+                method: 'OPTIONS',
+                headers: {
+                  Origin: origin,
+                  'Access-Control-Request-Method': 'POST',
+                  'Access-Control-Request-Headers': 'content-type'
+                }
+              }
+            }
+          ];
+
+          for (const { label, url, init } of probes) {
+            try {
+              const response = await fetch(url, { ...init, redirect: 'manual' });
+              const body = await response.text().catch(() => '');
+              lines.push(summarizeProbe(label, response.status, response.headers, body));
+            } catch (error) {
+              // A rejection here is the interesting case, not an error to raise:
+              // it means the runner cannot reach the API at all, which is the
+              // same thing the browser reports as `Failed to fetch`.
+              //
+              // The cause is unwrapped because Node's own message is always the
+              // useless "fetch failed"; the reason that tells a DNS failure from
+              // a refused connection from a TLS error is one level down.
+              const { message, cause } = error as Error & { cause?: Error };
+              const reason = cause?.message ? `${message} (${cause.message})` : message;
+              lines.push(`  ${label} -> request failed: ${reason}`);
+            }
+          }
+
+          console.log(lines.join('\n'));
 
           return null;
         },
