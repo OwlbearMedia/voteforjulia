@@ -50,8 +50,6 @@ export function useYardSignForm() {
     `${firstNameField.value.value.trim()} ${lastNameField.value.value.trim()}`.trim()
   );
 
-  const hasValidationError = computed(() => fields.some((field) => field.error.value));
-
   const { submitError, isSubmitted, isSubmitting, handleSubmit } = useFormSubmission({
     fields,
     buildFormData: () => ({
@@ -90,7 +88,6 @@ export function useYardSignForm() {
     isSubmitted,
     isSubmitting,
     fullName,
-    hasValidationError,
     handleSubmit
   };
 }

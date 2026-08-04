@@ -17,8 +17,11 @@ info:
     (`application/json`) **or** an HTML form post
     (`application/x-www-form-urlencoded` / `multipart/form-data`). Field names
     are identical in both encodings; the form encoding exists so the site's
-    `<form action="/api/…">` still works with JavaScript disabled. If the body
-    is neither valid JSON nor form data, the request fails with `400`.
+    `<form>` elements still submit with JavaScript disabled, in which case the
+    browser posts them here directly — their `action` is an absolute URL to
+    this origin, because the site is served from a different host that proxies
+    nothing. If the body is neither valid JSON nor form data, the request fails
+    with `400`.
 
     ### Text normalization
 
@@ -40,11 +43,6 @@ servers:
     description: Production
   - url: https://test-api.voteforjulia.com
     description: Test/staging
-  - url: https://voteforjulia.com/api
-    description: |
-      Production, same-origin path prefix. Every route is registered twice —
-      bare (`/send-email`) and `/api`-prefixed (`/api/send-email`) — so the
-      no-JavaScript form fallback can post to the site's own origin.
   - url: http://localhost:5000
     description: Local development (`python -m api.app`; override with `PORT`)
 
@@ -240,15 +238,15 @@ components:
           const: ok
         path:
           type: string
-          description: The path Flask matched, i.e. `/health` or `/api/health`.
-          examples: ['/api/health']
+          description: The path Flask matched.
+          examples: ['/health']
         script_root:
           type: string
           description: WSGI `SCRIPT_ROOT` — the prefix the app is mounted under.
           examples: ['']
       examples:
         - status: ok
-          path: /api/health
+          path: /health
           script_root: ''
 
     DeepHealthStatus:

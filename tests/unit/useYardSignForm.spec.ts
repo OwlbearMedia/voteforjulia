@@ -121,19 +121,6 @@ describe('useYardSignForm', () => {
     });
   });
 
-  describe('hasValidationError', () => {
-    it('is false initially', () => {
-      const { hasValidationError } = useYardSignForm();
-      expect(hasValidationError.value).toBe(false);
-    });
-
-    it('is true when any field has an error', () => {
-      const { firstNameError, hasValidationError } = useYardSignForm();
-      firstNameError.value = 'Please enter your first name.';
-      expect(hasValidationError.value).toBe(true);
-    });
-  });
-
   // ─── handleSubmit ───────────────────────────────────────────────────────────
 
   describe('handleSubmit', () => {

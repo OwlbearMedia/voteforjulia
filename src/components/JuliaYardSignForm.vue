@@ -3,6 +3,7 @@ import { useTemplateRef } from 'vue';
 import { RouterLink } from 'vue-router';
 import sprout from '../assets/sprout.png';
 import IconSpinner from './icons/IconSpinner.vue';
+import { API_BASE_URL } from '../lib/api';
 import { useYardSignForm } from '../composables/useYardSignForm';
 import { useScrollToSuccess } from '../composables/useScrollToSuccess';
 
@@ -31,9 +32,15 @@ const {
   isSubmitted,
   isSubmitting,
   fullName,
-  hasValidationError,
   handleSubmit
 } = useYardSignForm();
+
+// Where the browser posts this form when it submits it natively — i.e. when
+// JavaScript is unavailable and `handleSubmit` never runs to preventDefault.
+// Absolute, not `/api/yard-sign`: the API is a different host (ADR-0003) and
+// the static document root proxies nothing, so a same-origin action 404s and
+// the submission is lost.
+const submitUrl = `${API_BASE_URL}/yard-sign`;
 
 // View-only concern: scroll the success message into view once it renders.
 const successMessageRef = useTemplateRef<HTMLElement>('successMessageRef');
@@ -70,7 +77,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       v-else
       key="form"
       class="contact-form mt-4 max-w-[640px] grid gap-2.5"
-      action="/api/yard-sign"
+      :action="submitUrl"
       method="POST"
       @submit="handleSubmit"
     >
@@ -263,7 +270,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <button
         type="submit"
         class="w-fit max-md:w-full mt-1 border-0 rounded-pill pt-3 pb-2 px-6 bg-forest text-white text-sm leading-[1.6] font-action font-semibold tracking-[0.05em] text-center justify-self-start cursor-pointer hover:bg-forest/70 disabled:opacity-60 disabled:cursor-not-allowed"
-        :disabled="hasValidationError || isSubmitting"
+        :disabled="isSubmitting"
       >
         Request a Yard Sign <IconSpinner v-if="isSubmitting" />
       </button>

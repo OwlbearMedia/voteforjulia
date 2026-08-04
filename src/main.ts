@@ -57,10 +57,12 @@ export const createApp = ViteSSG(
     // Defer the New Relic agent so it never blocks the initial render.
     initNewRelicWhenReady();
 
-    router.isReady().then(() => {
-      trackPageView(router.currentRoute.value.fullPath);
-    });
-
+    // `afterEach` alone covers every navigation *including the first*. vite-ssg
+    // invokes this callback before `app.use(router)`, so the hook is registered
+    // before the initial navigation starts and therefore fires for it. Pairing
+    // it with a `router.isReady()` handler — the obvious-looking way to catch
+    // the entry page — sent two identical page_view events for every cold load
+    // and double-counted every entry page in GA4.
     router.afterEach((to) => {
       trackPageView(to.fullPath);
     });

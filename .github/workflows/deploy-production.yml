@@ -57,7 +57,15 @@ jobs:
         with:
           # Pin to the exact commit CI verified, not just the branch HEAD.
           ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 1
+          # Full history, not a shallow clone: the sitemap dates each page from
+          # the last commit that touched it (sitemap.build.ts). At depth 1 that
+          # cannot work, and it fails silently in the worst way — `git log -1 --
+          # <file>` reports the tip commit for *every* path, so all eight pages
+          # get one identical date, which is the uniform lastmod this replaced.
+          # `resolveSitemapEntries` detects the shallow clone and omits lastmod
+          # rather than lying, so getting this wrong costs the dates, not the
+          # deploy. Only this job needs it; the API deploy does no build.
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -198,6 +206,31 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 1
 
+      # The scp below only adds and overwrites — it never deletes, so a module
+      # that was renamed or removed in the repo lingers on the host forever and
+      # stays importable. This manifest is what lets the prune step afterwards
+      # tell "belongs here" from "left over from an older deploy". It ships as
+      # part of the upload rather than being interpolated into a shell script,
+      # so no file name ever reaches the server as `${{ }}`-expanded text.
+      #
+      # Runtime files only: the test suite and dev requirements are excluded, so
+      # the prune removes them from the host too. They are uploaded and then
+      # deleted, which is mildly wasteful and much simpler than teaching
+      # scp-action to filter — one mechanism decides what production contains.
+      - name: Write deploy manifest
+        run: |
+          set -euo pipefail
+          # LC_ALL=C here and in the prune step: `comm` compares the two lists
+          # byte-for-byte and they are sorted on different machines, so a
+          # collation difference between the runner and the host would make it
+          # report files as stale that are not.
+          git ls-files api \
+            | sed 's|^api/||' \
+            | grep -v -E '(^|/)test_[^/]+\.py$' \
+            | grep -v -E '^requirements-dev\.txt$' \
+            | LC_ALL=C sort > api/deploy-manifest.txt
+          echo "Manifest lists $(wc -l < api/deploy-manifest.txt) runtime file(s)."
+
       - name: Upload api contents to server api directory
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -239,6 +272,54 @@ jobs:
               echo "Dependency install failed; aborting before restart." >&2
               exit 1
             fi
+
+      # Deletes files the upload did not put there — a renamed module, a service
+      # that was split up, the test suite. Runs after the install (a failed
+      # install must abort before anything else changes) and before the restart,
+      # so the worker that boots next sees a directory matching the commit
+      # exactly rather than the union of every deploy since the app was created.
+      #
+      # `tmp/` is excluded because it is Passenger's, not ours — restart.txt
+      # lives there. The virtualenvs are not at risk either way: they live in
+      # ~/virtualenv/api/3.11, outside the app root (docs/hosting.md).
+      - name: Prune files left behind by earlier deploys
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+            cd ./api
+
+            # Refuse to prune against a manifest that is missing or implausibly
+            # short. Without this guard a truncated upload would read as "none of
+            # these files belong here" and delete the entire application.
+            if [ ! -s deploy-manifest.txt ] || [ "$(wc -l < deploy-manifest.txt)" -lt 10 ]; then
+              echo "deploy-manifest.txt missing or too short; refusing to prune." >&2
+              exit 1
+            fi
+
+            # `sed` rather than find's `-printf '%P\n'`, which is GNU-only —
+            # this way the script is portable enough to run and verify locally.
+            find . -type f ! -path './tmp/*' ! -name deploy-manifest.txt \
+              | sed 's|^\./||' \
+              | LC_ALL=C sort > /tmp/deployed-files.$$
+            LC_ALL=C comm -23 /tmp/deployed-files.$$ deploy-manifest.txt > /tmp/stale-files.$$
+
+            if [ -s /tmp/stale-files.$$ ]; then
+              echo "Removing $(wc -l < /tmp/stale-files.$$) stale file(s):"
+              cat /tmp/stale-files.$$
+              # -r so an empty list is a no-op, -- so a leading dash is a path.
+              tr '\n' '\0' < /tmp/stale-files.$$ | xargs -0 -r rm -f --
+              find . -mindepth 1 -type d -empty ! -path './tmp*' -delete
+            else
+              echo "No stale files."
+            fi
+
+            rm -f /tmp/deployed-files.$$ /tmp/stale-files.$$
 
       - name: Restart Python app (Passenger)
         uses: appleboy/ssh-action@v1.2.5

@@ -33,7 +33,7 @@ class AppCorsTests(unittest.TestCase):
 
     def test_preflight_includes_cors_headers_for_allowed_origin(self) -> None:
         response = self.client.options(
-            "/api/send-email",
+            "/send-email",
             headers={
                 "Origin": "https://test.voteforjulia.com",
                 "Access-Control-Request-Method": "POST",
@@ -57,7 +57,7 @@ class AppCorsTests(unittest.TestCase):
 
     def test_preflight_omits_cors_headers_for_disallowed_origin(self) -> None:
         response = self.client.options(
-            "/api/send-email",
+            "/send-email",
             headers={
                 "Origin": "https://example.com",
                 "Access-Control-Request-Method": "POST",
@@ -71,7 +71,7 @@ class AppCorsTests(unittest.TestCase):
         self.assertEqual(response.headers.get("Vary"), "Origin")
 
     def test_vary_origin_is_set_when_no_origin_header_is_sent(self) -> None:
-        response = self.client.get("/api/health")
+        response = self.client.get("/health")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers.get("Vary"), "Origin")
@@ -84,7 +84,7 @@ class AppErrorShapeTests(unittest.TestCase):
         self.client = app_module.app.test_client()
 
     def test_unknown_route_returns_json(self) -> None:
-        response = self.client.get("/api/does-not-exist")
+        response = self.client.get("/does-not-exist")
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.mimetype, "application/json")
@@ -94,7 +94,7 @@ class AppErrorShapeTests(unittest.TestCase):
         # `Allow` is the reason the handler rebuilds Werkzeug's own response
         # instead of calling jsonify: a 405 without it is a less useful 405, and
         # a jsonify-based handler would silently drop it.
-        response = self.client.get("/api/send-email")
+        response = self.client.get("/send-email")
 
         self.assertEqual(response.status_code, 405)
         self.assertEqual(response.mimetype, "application/json")
@@ -107,7 +107,7 @@ class AppErrorShapeTests(unittest.TestCase):
         # it. Without CORS headers the browser reports a generic network error
         # instead of surfacing the status the form could act on.
         response = self.client.get(
-            "/api/does-not-exist", headers={"Origin": "https://voteforjulia.com"}
+            "/does-not-exist", headers={"Origin": "https://voteforjulia.com"}
         )
 
         self.assertEqual(
@@ -129,7 +129,7 @@ class AppRequestSizeTests(unittest.TestCase):
         # which is what the site actually posts. Before the cap this was read
         # and parsed in full, then rejected on a 500-character field limit.
         response = self.client.post(
-            "/api/send-email",
+            "/send-email",
             data=json.dumps(
                 {"firstName": "A", "email": "a@example.com", "message": self.oversized}
             ),
@@ -142,7 +142,7 @@ class AppRequestSizeTests(unittest.TestCase):
 
     def test_oversized_form_body_is_rejected(self) -> None:
         response = self.client.post(
-            "/api/send-email",
+            "/send-email",
             data={"firstName": "A", "email": "a@example.com", "message": self.oversized},
             content_type="application/x-www-form-urlencoded",
         )
@@ -257,8 +257,8 @@ class AppRateLimitTests(unittest.TestCase):
             "message": "Count me in",
         }
 
-        first_response = self.client.post("/api/send-email", json=payload)
-        second_response = self.client.post("/api/send-email", json=payload)
+        first_response = self.client.post("/send-email", json=payload)
+        second_response = self.client.post("/send-email", json=payload)
 
         self.assertEqual(first_response.status_code, 200)
         self.assertEqual(second_response.status_code, 429)
@@ -283,13 +283,13 @@ class AppRateLimitTests(unittest.TestCase):
         payload = {"firstName": "Julia", "email": "julia@example.com"}
 
         first = self.client.post(
-            "/api/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.1"}
+            "/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.1"}
         )
         second = self.client.post(
-            "/api/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.2"}
+            "/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.2"}
         )
         third = self.client.post(
-            "/api/send-email", json=payload, headers={"X-Forwarded-For": "203.0.113.3"}
+            "/send-email", json=payload, headers={"X-Forwarded-For": "203.0.113.3"}
         )
 
         self.assertEqual(first.status_code, 200)
@@ -306,10 +306,10 @@ class AppRateLimitTests(unittest.TestCase):
         payload = {"firstName": "Julia", "email": "julia@example.com"}
 
         first = self.client.post(
-            "/api/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.1"}
+            "/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.1"}
         )
         second = self.client.post(
-            "/api/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.2"}
+            "/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.2"}
         )
 
         self.assertEqual(first.status_code, 200)
@@ -327,12 +327,12 @@ class AppRateLimitTests(unittest.TestCase):
         payload = {"firstName": "Julia", "email": "julia@example.com"}
 
         first_response = self.client.post(
-            "/api/send-email",
+            "/send-email",
             json=payload,
             headers={"CF-Connecting-IP": "203.0.113.7", "X-Forwarded-For": "198.51.100.30"},
         )
         second_response = self.client.post(
-            "/api/send-email",
+            "/send-email",
             json=payload,
             headers={"CF-Connecting-IP": "203.0.113.7", "X-Forwarded-For": "198.51.100.31"},
         )
@@ -347,12 +347,12 @@ class AppRateLimitTests(unittest.TestCase):
         payload = {"firstName": "Julia", "email": "julia@example.com"}
 
         first_response = self.client.post(
-            "/api/send-email",
+            "/send-email",
             json=payload,
             headers={"X-Forwarded-For": "spoofed-one, 203.0.113.5"},
         )
         second_response = self.client.post(
-            "/api/send-email",
+            "/send-email",
             json=payload,
             headers={"X-Forwarded-For": "spoofed-two, 203.0.113.5"},
         )
@@ -365,9 +365,9 @@ class AppRateLimitTests(unittest.TestCase):
         # honouring Retry-After exactly earned a second 429 for doing the right
         # thing. Rounding up is what makes the header safe to obey literally.
         payload = {"firstName": "Julia", "email": "julia@example.com"}
-        self.client.post("/api/send-email", json=payload)
+        self.client.post("/send-email", json=payload)
 
-        blocked = self.client.post("/api/send-email", json=payload)
+        blocked = self.client.post("/send-email", json=payload)
         retry_after = int(blocked.headers["Retry-After"])
 
         bucket = app_module._RATE_LIMIT_BUCKETS["send-email:127.0.0.1"]
@@ -381,7 +381,7 @@ class AppRateLimitTests(unittest.TestCase):
         )
 
         response = self.client.post(
-            "/api/send-email",
+            "/send-email",
             json={"firstName": "Julia", "email": "julia@example.com"},
             headers={"X-Forwarded-For": "198.51.100.40"},
         )
@@ -398,9 +398,7 @@ class AppRateLimitTests(unittest.TestCase):
         stale_key = "send-email:198.51.100.99"
         app_module._RATE_LIMIT_BUCKETS[stale_key] = deque([monotonic() - 10_000])
 
-        self.client.post(
-            "/api/send-email", json={"firstName": "Julia", "email": "julia@example.com"}
-        )
+        self.client.post("/send-email", json={"firstName": "Julia", "email": "julia@example.com"})
 
         self.assertIn(stale_key, app_module._RATE_LIMIT_BUCKETS)
 
@@ -412,7 +410,7 @@ class AppRateLimitTests(unittest.TestCase):
         app_module._RATE_LIMIT_BUCKETS["send-email:127.0.0.1"] = deque([expired])
 
         response = self.client.post(
-            "/api/send-email", json={"firstName": "Julia", "email": "julia@example.com"}
+            "/send-email", json={"firstName": "Julia", "email": "julia@example.com"}
         )
 
         self.assertEqual(response.status_code, 200)
@@ -428,9 +426,7 @@ class AppRateLimitTests(unittest.TestCase):
         for index in range(50):
             app_module._RATE_LIMIT_BUCKETS[f"send-email:198.51.100.{index}"] = deque([now - index])
 
-        self.client.post(
-            "/api/send-email", json={"firstName": "Julia", "email": "julia@example.com"}
-        )
+        self.client.post("/send-email", json={"firstName": "Julia", "email": "julia@example.com"})
 
         self.assertLessEqual(len(app_module._RATE_LIMIT_BUCKETS), 20)
         # Least-recently-active go first, so the freshest keys survive.
@@ -455,7 +451,7 @@ class AppRateLimitTests(unittest.TestCase):
         try:
             for _ in range(5):
                 self.client.post(
-                    "/api/send-email", json={"firstName": "Julia", "email": "j@example.com"}
+                    "/send-email", json={"firstName": "Julia", "email": "j@example.com"}
                 )
         finally:
             app_module._sweep_expired_buckets = real_sweep
@@ -469,7 +465,7 @@ class AppRateLimitTests(unittest.TestCase):
         app_module.load_email_config = raise_config_error
 
         response = self.client.post(
-            "/api/send-email",
+            "/send-email",
             json={"firstName": "Julia", "email": "julia@example.com"},
             headers={"X-Forwarded-For": "198.51.100.41"},
         )
@@ -487,7 +483,7 @@ class AppRateLimitTests(unittest.TestCase):
         }
 
         response = self.client.post(
-            "/api/send-email",
+            "/send-email",
             json=payload,
             headers={"X-Forwarded-For": "198.51.100.10"},
         )
@@ -507,7 +503,7 @@ class AppRateLimitTests(unittest.TestCase):
         }
 
         response = self.client.post(
-            "/api/send-email",
+            "/send-email",
             json=payload,
             headers={"X-Forwarded-For": "198.51.100.11"},
         )
@@ -529,7 +525,7 @@ class AppRateLimitTests(unittest.TestCase):
 
         with self.assertLogs(app_module.logger, level="INFO") as captured:
             response = self.client.post(
-                "/api/send-email",
+                "/send-email",
                 json=payload,
                 headers={"X-Forwarded-For": "198.51.100.12"},
             )
@@ -553,7 +549,7 @@ class AppRateLimitTests(unittest.TestCase):
 
         with self.assertLogs(app_module.logger, level="INFO") as captured:
             response = self.client.post(
-                "/api/send-email",
+                "/send-email",
                 json=payload,
                 headers={"X-Forwarded-For": "198.51.100.13"},
             )
@@ -571,7 +567,7 @@ class AppRateLimitTests(unittest.TestCase):
 
         with self.assertLogs(app_module.logger, level="INFO") as captured:
             response = self.client.post(
-                "/api/send-email",
+                "/send-email",
                 json={"firstName": "Julia", "email": "julia@example.com"},
                 headers={"X-Forwarded-For": "198.51.100.14"},
             )
@@ -593,7 +589,7 @@ class AppRateLimitTests(unittest.TestCase):
 
         with self.assertLogs(app_module.logger, level="INFO") as captured:
             self.client.post(
-                "/api/send-email",
+                "/send-email",
                 json={"firstName": "Julia", "email": "julia@example.com", "padding": oversized},
                 headers={"X-Forwarded-For": "198.51.100.15"},
             )
@@ -692,7 +688,7 @@ class AppYardSignTests(unittest.TestCase):
         }
 
         response = self.client.post(
-            "/api/yard-sign",
+            "/yard-sign",
             json=payload,
             headers={"X-Forwarded-For": "198.51.100.20"},
         )
@@ -715,7 +711,7 @@ class AppYardSignTests(unittest.TestCase):
         }
 
         response = self.client.post(
-            "/api/yard-sign",
+            "/yard-sign",
             json=payload,
             headers={"X-Forwarded-For": "198.51.100.21"},
         )
@@ -732,7 +728,7 @@ class AppYardSignTests(unittest.TestCase):
         }
 
         response = self.client.post(
-            "/api/yard-sign",
+            "/yard-sign",
             json=payload,
             headers={"X-Forwarded-For": "198.51.100.22"},
         )
@@ -780,7 +776,7 @@ class AppDeepHealthTests(unittest.TestCase):
 
         return _check
 
-    def _get(self, path: str = "/api/health/deep", ip: str = "203.0.113.90"):
+    def _get(self, path: str = "/health/deep", ip: str = "203.0.113.90"):
         return self.client.get(path, headers={"X-Forwarded-For": ip})
 
     def test_reports_ok_when_both_dependencies_pass(self) -> None:
@@ -791,14 +787,6 @@ class AppDeepHealthTests(unittest.TestCase):
             response.get_json(),
             {"status": "ok", "smtp": "ok", "sheets": "ok"},
         )
-
-    def test_registered_under_both_prefixes(self) -> None:
-        # Passenger may mount the app under /api, so every route is declared
-        # twice; a synthetic monitor pointed at the wrong one must not 404.
-        for path in ("/health/deep", "/api/health/deep"):
-            with self.subTest(path=path):
-                app_module._RATE_LIMIT_BUCKETS = {}
-                self.assertEqual(self._get(path).status_code, 200)
 
     def test_smtp_auth_failure_reports_503(self) -> None:
         # The exact shape of the $-in-password incident: the mail server was
@@ -873,7 +861,7 @@ class AppDeepHealthTests(unittest.TestCase):
 
         # Same client, different scope — still has its full budget.
         with app_module.app.test_request_context(
-            "/api/send-email", headers={"X-Forwarded-For": "203.0.113.92"}
+            "/send-email", headers={"X-Forwarded-For": "203.0.113.92"}
         ):
             self.assertIsNone(app_module._consume_rate_limit("send-email"))
 
@@ -939,7 +927,7 @@ class AppDeepHealthTests(unittest.TestCase):
         app_module.verify_smtp_credentials = self._raise(OSError("connection refused"))
         app_module.verify_sheets_access = self._raise(OSError("connection refused"))
 
-        response = self.client.get("/api/health")
+        response = self.client.get("/health")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["status"], "ok")

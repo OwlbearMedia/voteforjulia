@@ -65,15 +65,12 @@ def _spec_operations() -> set[tuple[str, str]]:
 
 
 def _app_routes() -> dict[str, set[str]]:
-    """Documented-path -> methods, collapsing the /api alias onto the bare path."""
+    """Registered path -> methods."""
     routes: dict[str, set[str]] = {}
     for rule in app_module.app.url_map.iter_rules():
         if rule.endpoint == "static":
             continue
-        path = rule.rule
-        if path.startswith("/api/"):
-            path = path[len("/api") :]
-        routes.setdefault(path, set()).update(rule.methods or set())
+        routes.setdefault(rule.rule, set()).update(rule.methods or set())
     return routes
 
 
@@ -187,13 +184,28 @@ def test_spec_is_valid_openapi():
 
 
 @pytest.mark.parametrize("path", sorted(SPEC["paths"]))
-def test_documented_paths_are_registered_under_both_prefixes(path):
-    # Every route is registered twice so the no-JS form fallback can post to
-    # the site's own origin; the spec models that with a /api server entry
-    # rather than duplicate path items, so both aliases must actually exist.
+def test_documented_paths_are_registered(path):
     registered = {rule.rule for rule in app_module.app.url_map.iter_rules()}
     assert path in registered
-    assert f"/api{path}" in registered
+
+
+@pytest.mark.parametrize("path", sorted(SPEC["paths"]))
+def test_no_same_origin_api_prefix_alias_exists(path):
+    """Guard the removal of the `/api/*` aliases against a well-meaning revival.
+
+    Every route used to be registered twice, the second under `/api/`, so the
+    forms could post to the site's own origin with JavaScript disabled. That
+    never worked: [ADR-0003](../docs/adr/0003-separate-api-subdomain.md) puts
+    the API on its own host and rejects both a path mount and an `.htaccess`
+    proxy, so `voteforjulia.com/api/send-email` reached the static document
+    root and 404'd — losing the submission it was meant to save. The forms now
+    carry an absolute action pointing here (src/lib/api.ts), which is the only
+    thing that can work across origins.
+
+    Re-adding the alias would not break a test without this one, and it would
+    read as support for a same-origin fallback that the hosting cannot provide.
+    """
+    assert f"/api{path}" not in {rule.rule for rule in app_module.app.url_map.iter_rules()}
 
 
 def test_documented_operations_match_the_app():
@@ -211,17 +223,13 @@ def test_documented_preflight_returns_the_documented_status(path):
     # from Flask's default OPTIONS response (200 with an Allow header). So make
     # the request and compare against the status the spec documents.
     #
-    # Both prefixes are exercised because the aliases are separate decorators on
-    # one view: dropping OPTIONS from just the /api one would otherwise pass,
-    # and /api is the prefix the no-JavaScript form fallback posts to.
+    # The preflight matters more than it looks: every form post is cross-origin
+    # by construction (ADR-0003), so a browser will not send one without it.
     documented = set(SPEC["paths"][path]["options"]["responses"])
-    client = app_module.app.test_client()
-    for candidate in (path, f"/api{path}"):
-        response = client.options(candidate)
-        assert str(response.status_code) in documented, (
-            f"OPTIONS {candidate} returned {response.status_code}, "
-            f"spec documents {sorted(documented)}"
-        )
+    response = app_module.app.test_client().options(path)
+    assert str(response.status_code) in documented, (
+        f"OPTIONS {path} returned {response.status_code}, spec documents {sorted(documented)}"
+    )
 
 
 @pytest.mark.parametrize(
