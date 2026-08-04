@@ -133,7 +133,7 @@ class PassengerWsgiTests(unittest.TestCase):
             os.environ.pop("NEW_RELIC_LICENSE_KEY", None)
             module = _load_passenger_wsgi()
 
-        response = module.application.test_client().get("/api/health")
+        response = module.application.test_client().get("/health")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["status"], "ok")

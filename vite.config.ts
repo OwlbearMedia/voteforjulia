@@ -5,7 +5,7 @@ import { defineConfig, type PluginOption } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
 import { visualizer } from 'rollup-plugin-visualizer';
-import { buildSitemapXml, resolveSitemapRoutes } from './sitemap.build';
+import { buildSitemapXml, resolveSitemapEntries, resolveSitemapRoutes } from './sitemap.build';
 
 // Source map mode. Defaults to 'hidden': maps are generated without a
 // sourceMappingURL comment (prod uploads them to New Relic, then strips them).
@@ -131,7 +131,9 @@ export default defineConfig({
         })
       );
 
-      const sitemapXml = buildSitemapXml(resolveSitemapRoutes(builtRoutePaths));
+      const sitemapXml = buildSitemapXml(
+        resolveSitemapEntries(resolveSitemapRoutes(builtRoutePaths))
+      );
       await writeFile(resolve(distDir, 'sitemap.xml'), sitemapXml, 'utf8');
     }
   }

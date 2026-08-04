@@ -3,9 +3,9 @@
 [api/test_app.py](test_app.py) covers the happy paths, CORS, rate limiting, and
 input validation. This module covers what those left untested:
 
-- the **form-encoded** submission path — the site's `<form action="/api/…">`
-  posts `application/x-www-form-urlencoded` when JavaScript is unavailable, and
-  nothing exercised that branch;
+- the **form-encoded** submission path — the site's `<form>` elements post
+  `application/x-www-form-urlencoded` directly to this API's origin when
+  JavaScript is unavailable, and nothing exercised that branch;
 - every failure branch of `_handle_form_submission` — misconfiguration, SMTP
   refusal and errors, confirmation-email failure, and Google Sheets failure.
 
@@ -38,10 +38,10 @@ VALID_EMAIL_CONFIG = EmailConfig(
     plain_text_confirmation_only=False,
 )
 
-CONTACT_PATH = "/api/send-email"
+CONTACT_PATH = "/send-email"
 CONTACT_PAYLOAD = {"firstName": "Julia", "email": "julia@example.com"}
 
-YARD_SIGN_PATH = "/api/yard-sign"
+YARD_SIGN_PATH = "/yard-sign"
 YARD_SIGN_PAYLOAD = {
     "firstName": "Julia",
     "email": "julia@example.com",

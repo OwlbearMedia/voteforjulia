@@ -9,7 +9,11 @@ import {
 } from '../../src/lib/analytics';
 
 vi.mock('../../src/lib/api', () => ({
-  submitContactForm: vi.fn()
+  submitContactForm: vi.fn(),
+  // The component reads this to build its `action`. Stubbed to something that is
+  // clearly not the site's own origin, so the assertion below fails loudly if
+  // the action ever goes relative again.
+  API_BASE_URL: 'https://api.example.test'
 }));
 
 vi.mock('../../src/lib/analytics', () => ({
@@ -21,6 +25,16 @@ vi.mock('../../src/lib/analytics', () => ({
 describe('JuliaContactForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  // The action is the submit path with JavaScript disabled, where `handleSubmit`
+  // never runs to preventDefault. It has to be absolute: the site is served from
+  // a different host than the API and proxies nothing (ADR-0003), so a relative
+  // action posts into the static document root and 404s, losing the submission.
+  it('posts to an absolute API URL when submitted natively', () => {
+    const wrapper = mount(JuliaContactForm);
+
+    expect(wrapper.find('form').attributes('action')).toBe('https://api.example.test/send-email');
   });
 
   it('shows validation errors and does not submit when required fields are invalid', async () => {
@@ -225,18 +239,45 @@ describe('JuliaContactForm', () => {
   // ─── Submit button state ──────────────────────────────────────────────────────
 
   describe('submit button disabled state', () => {
-    it('disables the submit button while validation errors are present', async () => {
+    // The button stays clickable while errors are showing. Disabling it on a
+    // validation error made the *first* click after fixing one do nothing: the
+    // click lands on a still-disabled button, and only the blur it causes clears
+    // the error and re-enables it, so the user has to click a second time to
+    // submit. `handleSubmit` re-validates every field anyway, so the disabled
+    // state bought nothing it does not already enforce.
+    it('stays enabled while validation errors are present', async () => {
       const wrapper = mount(JuliaContactForm);
+
       await wrapper.find('#contact-first-name').trigger('blur');
-      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined();
+
+      expect(wrapper.text()).toContain('Please enter your first name.');
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined();
     });
 
-    it('re-enables the submit button once all errors are resolved', async () => {
+    it('submits on the first click after the error is corrected', async () => {
+      vi.mocked(submitContactForm).mockResolvedValueOnce();
       const wrapper = mount(JuliaContactForm);
+
+      // Surface an error, then fix the field without blurring it again — the
+      // state a user is in when they reach straight for the submit button.
       await wrapper.find('#contact-first-name').trigger('blur');
       await wrapper.find('#contact-first-name').setValue('Julia');
-      await wrapper.find('#contact-first-name').trigger('blur');
-      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined();
+      await wrapper.find('#contact-email').setValue('julia@example.com');
+
+      await wrapper.find('form').trigger('submit');
+      await flushPromises();
+
+      expect(submitContactForm).toHaveBeenCalledTimes(1);
+    });
+
+    it('still refuses to submit while a field is genuinely invalid', async () => {
+      const wrapper = mount(JuliaContactForm);
+
+      await wrapper.find('#contact-email').setValue('not-an-email');
+      await wrapper.find('form').trigger('submit');
+
+      expect(submitContactForm).not.toHaveBeenCalled();
+      expect(wrapper.text()).toContain('Please enter a valid email address.');
     });
   });
 

@@ -224,11 +224,39 @@ Flask under **Passenger**. Production lives in `./api`, test in `./api_test`;
 [api/passenger_wsgi.py](../api/passenger_wsgi.py) aliases the package name so
 `from api.… import` resolves against whichever directory it was deployed into.
 
-Deploys scp `api/**` and then restart the app by touching a file:
+Deploys scp `api/**`, install dependencies, prune, and then restart the app by
+touching a file:
 
 ```
 touch ./api/tmp/restart.txt
 ```
+
+Unlike the frontend, the API is **not** swapped in atomically — Passenger's app
+root is host configuration, so the directory has to stay put and is updated in
+place. scp only adds and overwrites, which used to mean a module deleted or
+renamed in the repo stayed on the host forever and stayed importable. So the
+deploy writes `api/deploy-manifest.txt` (every tracked file under `api/`, minus
+the test suite and `requirements-dev.txt`), uploads it with everything else, and
+afterwards deletes anything present on the host that the manifest does not list:
+
+```
+find . -type f ! -path './tmp/*' ! -name deploy-manifest.txt | sed 's|^\./||' | LC_ALL=C sort > deployed
+LC_ALL=C comm -23 deployed deploy-manifest.txt | xargs -r rm -f --
+```
+
+Consequences worth knowing:
+
+- **`tmp/` is excluded** — it is Passenger's, and `restart.txt` lives there. The
+  virtualenvs are never at risk; they sit in `~/virtualenv/`, outside the app
+  root.
+- **The test files are uploaded and then deleted.** One mechanism decides what
+  production contains, which is simpler than teaching scp-action to filter.
+- **The prune refuses to run** against a manifest that is missing or under ten
+  lines. Without that guard a truncated upload reads as "nothing here belongs"
+  and would delete the whole application.
+- **Both lists are sorted with `LC_ALL=C`.** They are produced on different
+  machines and `comm` compares bytes, so a collation mismatch between the runner
+  and the host would report live files as stale.
 
 ### Dependencies: installed by the deploy, pinned in the repo
 

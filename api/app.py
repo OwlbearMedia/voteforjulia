@@ -517,7 +517,6 @@ def _handle_form_submission(
 
 
 @app.route("/health", methods=["GET"])
-@app.route("/api/health", methods=["GET"])
 def health_check():
     return jsonify(
         {
@@ -569,7 +568,6 @@ def _probe(name: str, check) -> tuple[str, bool]:
 
 
 @app.route("/health/deep", methods=["GET"])
-@app.route("/api/health/deep", methods=["GET"])
 def deep_health_check():
     retry_after = _consume_rate_limit("health-deep")
     if retry_after is not None:
@@ -589,7 +587,6 @@ def deep_health_check():
 
 
 @app.route("/send-email", methods=["POST", "OPTIONS"])
-@app.route("/api/send-email", methods=["POST", "OPTIONS"])
 def send_email():
     if request.method == "OPTIONS":
         return ("", 204)
@@ -612,7 +609,6 @@ def send_email():
 
 
 @app.route("/yard-sign", methods=["POST", "OPTIONS"])
-@app.route("/api/yard-sign", methods=["POST", "OPTIONS"])
 def yard_sign():
     if request.method == "OPTIONS":
         return ("", 204)

@@ -50,3 +50,7 @@ __pycache__
 # Lighthouse reports by `pnpm perf:lighthouse`; CI uploads both as artifacts.
 bundle-analysis
 .lighthouseci
+
+# Written by the deploy workflows immediately before the API upload; it tells
+# the prune step which files belong on the host. Generated, never committed.
+api/deploy-manifest.txt

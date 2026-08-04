@@ -68,7 +68,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 1
+          # Full history so the sitemap can date each page from its own last
+          # commit — see the matching comment in deploy-production.yml.
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -204,6 +206,18 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 1
 
+      # Runtime files only — the prune step below deletes anything on the host
+      # that this does not list. See deploy-production.yml for the reasoning.
+      - name: Write deploy manifest
+        run: |
+          set -euo pipefail
+          git ls-files api \
+            | sed 's|^api/||' \
+            | grep -v -E '(^|/)test_[^/]+\.py$' \
+            | grep -v -E '^requirements-dev\.txt$' \
+            | LC_ALL=C sort > api/deploy-manifest.txt
+          echo "Manifest lists $(wc -l < api/deploy-manifest.txt) runtime file(s)."
+
       - name: Upload api contents to test api directory
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -245,6 +259,44 @@ jobs:
               echo "Dependency install failed; aborting before restart." >&2
               exit 1
             fi
+
+      # Deletes files the upload did not put there, so the directory matches the
+      # commit instead of the union of every deploy. See deploy-production.yml.
+      - name: Prune files left behind by earlier deploys
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+            cd ./api_test
+
+            # Refuse to prune against a manifest that is missing or implausibly
+            # short: a truncated upload would otherwise read as "none of these
+            # files belong here" and delete the entire application.
+            if [ ! -s deploy-manifest.txt ] || [ "$(wc -l < deploy-manifest.txt)" -lt 10 ]; then
+              echo "deploy-manifest.txt missing or too short; refusing to prune." >&2
+              exit 1
+            fi
+
+            find . -type f ! -path './tmp/*' ! -name deploy-manifest.txt \
+              | sed 's|^\./||' \
+              | LC_ALL=C sort > /tmp/deployed-files.$$
+            LC_ALL=C comm -23 /tmp/deployed-files.$$ deploy-manifest.txt > /tmp/stale-files.$$
+
+            if [ -s /tmp/stale-files.$$ ]; then
+              echo "Removing $(wc -l < /tmp/stale-files.$$) stale file(s):"
+              cat /tmp/stale-files.$$
+              tr '\n' '\0' < /tmp/stale-files.$$ | xargs -0 -r rm -f --
+              find . -mindepth 1 -type d -empty ! -path './tmp*' -delete
+            else
+              echo "No stale files."
+            fi
+
+            rm -f /tmp/deployed-files.$$ /tmp/stale-files.$$
 
       - name: Restart Python app (Passenger) in test
         uses: appleboy/ssh-action@v1.2.5
