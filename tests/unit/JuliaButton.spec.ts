@@ -1,5 +1,6 @@
 import { mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import JuliaButton from '../../src/components/JuliaButton.vue';
 
 const global = { stubs: { RouterLink: RouterLinkStub } };
@@ -86,13 +87,25 @@ describe('JuliaButton', () => {
   });
 
   it('forwards listeners and the disabled attribute to the underlying button', async () => {
-    const wrapper = mount(JuliaButton, { attrs: { disabled: true } });
+    const wrapper = mount(JuliaButton, { props: { disabled: true } });
 
     expect(wrapper.attributes('disabled')).toBeDefined();
 
     const clickable = mount(JuliaButton);
     await clickable.trigger('click');
     expect(clickable.emitted('click')).toHaveLength(1);
+  });
+
+  // `disabled` is meaningless on an anchor: the attribute does not exist there,
+  // so the link would still navigate and still take focus while wearing the
+  // disabled styling.
+  it('makes a disabled link genuinely inoperable, not just faded', () => {
+    const wrapper = mount(JuliaButton, { props: { href: '/donate', disabled: true } });
+
+    expect(wrapper.attributes('disabled')).toBeUndefined();
+    expect(wrapper.attributes('aria-disabled')).toBe('true');
+    expect(wrapper.attributes('tabindex')).toBe('-1');
+    expect(wrapper.classes()).toContain('pointer-events-none');
   });
 
   // JuliaModal focuses its confirm button on open through this method; a
@@ -105,5 +118,32 @@ describe('JuliaButton', () => {
     const asLink = mountAttached({ props: { href: '#somewhere' } });
     asLink.vm.focus();
     expect(document.activeElement).toBe(asLink.element);
+  });
+
+  // The case above only covers the branch where the root is already an element.
+  // With `to` the root is a RouterLink instance and focus() has to go through
+  // $el, which is the branch that comment exists for.
+  //
+  // A real router, not RouterLinkStub: the stub renders an anchor with no href,
+  // and an anchor without one is not focusable — so a stubbed version of this
+  // test fails while the component is working correctly.
+  it('exposes focus() on a routed button, through the component instance', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: { template: '<div />' } },
+        { path: '/donate', component: { template: '<div />' } }
+      ]
+    });
+    await router.push('/');
+    await router.isReady();
+
+    const wrapper = mountAttached({ props: { to: '/donate' }, global: { plugins: [router] } });
+
+    expect(wrapper.element.tagName).toBe('A');
+    expect(wrapper.attributes('href')).toBe('/donate');
+
+    wrapper.vm.focus();
+    expect(document.activeElement).toBe(wrapper.element);
   });
 });

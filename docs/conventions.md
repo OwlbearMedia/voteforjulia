@@ -106,7 +106,12 @@ There is no `tailwind.config.js`.
 - **Tailwind's scanner reads plain string literals**, so class names assembled in
   `.ts`/`.vue` script (e.g. the `BUTTON_BASE` / `BUTTON_VARIANTS` constants in
   `JuliaButton.vue`) are picked up — but only if the full class string appears
-  literally, not concatenated fragments.
+  literally, not concatenated fragments. **This includes comments**: the scanner
+  reads text, not code, so writing a utility's name in a comment about why the
+  code no longer uses it emits it into the stylesheet as dead CSS. Three of
+  those shipped from `JuliaButton.vue` before anyone noticed. Describe a class
+  you are not applying in prose ("sprout at 70% opacity"), not in its class
+  spelling.
 - **`prettier-plugin-tailwindcss` sorts class attributes**, so class order is not
   yours to choose and `pnpm format` will rewrite it. Two consequences. It only
   sorts _markup_ — a class string in script (the `JuliaButton.vue` constants) is
@@ -144,6 +149,17 @@ hand-roll another one; the classes drifted three ways before this existed.
 - The rendered tag follows the props: `to` → `RouterLink`, `href` → `<a>`,
   neither → `<button>` (always with an explicit `type`, so one inside a `<form>`
   never submits by accident).
+- **Hover darkens.** Primary goes leaf → fern. The obvious-looking lighter
+  hover is a trap: white on sprout at 70% is 1.69:1 against the page and 3.19:1
+  on the footer, against 4.52:1 at rest. Neither Lighthouse nor axe evaluates
+  hover state, so CI stays green through it — check any new hover colour by
+  hand. Forest is the other tempting choice and is wrong for a different
+  reason: it is the footer's own background, so the Donate button would vanish
+  into the bar.
+- **`disabled` is handled per tag, not passed through.** A `<button>` gets the
+  real attribute; a link gets `aria-disabled`, `tabindex="-1"` and
+  `pointer-events-none`, because `disabled` means nothing on an anchor and a
+  faded-but-live link is worse than no disabled state at all.
 - **Size and layout classes are the caller's**, passed through the fallthrough
   `class` attr and merged with the variant's — the base deliberately sets no
   font size, because the footer/header/hero buttons run at body size and the
@@ -152,7 +168,10 @@ hand-roll another one; the classes drifted three ways before this existed.
   order, not by which is written last, so it may silently do nothing.
 - Focus goes through the exposed `focus()`, not the element: a template ref on
   the component yields a component instance, and the root is a `RouterLink`
-  instance rather than an element whenever `to` is set.
+  instance rather than an element whenever `to` is set. Testing that branch
+  needs a **real** router — `RouterLinkStub` renders an anchor with no `href`,
+  and an anchor without one cannot take focus, so a stubbed test fails while
+  the component is working.
 - **The focus ring is two-tone and that is not decoration.** These buttons sit
   on the light page background, the forest footer, the leaf nav dropdown and the
   mint modal; no single colour clears 3:1 against all four. `focus-visible:ring-4`

@@ -6,23 +6,40 @@ defineOptions({
   name: 'JuliaButton'
 });
 
+/**
+ * `primary` is the filled leaf action; `secondary` is the white-on-dark one.
+ * `danger` is primary's destructive form — the modal's confirm button is the
+ * only caller.
+ */
+type Variant = 'primary' | 'secondary' | 'danger';
+
 const props = withDefaults(
   defineProps<{
-    /** `primary` is the filled leaf action; `secondary` is the white-on-dark
-     *  one. `danger` is primary's destructive form — the modal's confirm
-     *  button is the only caller. */
-    variant?: 'primary' | 'secondary' | 'danger';
+    variant?: Variant;
     /** Renders a <RouterLink> for an in-app route… */
     to?: RouteLocationRaw;
     /** …an <a> for an external URL, and a <button> when neither is set. */
     href?: string;
     type?: 'button' | 'submit' | 'reset';
+    /**
+     * Declared rather than left to fall through, because `disabled` means
+     * nothing to an anchor. `<JuliaButton to="/x" disabled>` used to render
+     * `<a disabled>` — an attribute anchors do not have — giving a link that
+     * looked disabled (the base carries `disabled:opacity-60`) while staying
+     * clickable and keyboard-reachable. A <button> gets the real attribute; a
+     * link gets the ARIA equivalent plus the two things that actually stop it
+     * being operated. Expressing this in the prop types instead (two shapes
+     * with `never`) does work, but a union defineProps drops the defineExpose
+     * types, and JuliaModal needs `focus()` to stay visible.
+     */
+    disabled?: boolean;
   }>(),
   {
     variant: 'primary',
     to: undefined,
     href: undefined,
-    type: 'button'
+    type: 'button',
+    disabled: false
   }
 );
 
@@ -37,35 +54,63 @@ const props = withDefaults(
 // with `shadow-soft` rather than replacing it — they are separate variables in
 // v4's box-shadow chain.
 //
+// `no-underline` is unconditional rather than hover-only, which is what it used
+// to be: style.css underlines `p a` at rest, so a link-form button dropped into
+// a paragraph came out underlined when idle and lost the underline on hover —
+// backwards. The plain utility covers both states, since the utilities layer
+// outranks the base-layer rule whatever the specificity.
+//
+// Naming a class in a comment is enough to emit it: the scanner reads comment
+// text like any other, so the three utilities this file discusses but no longer
+// applies were shipping as dead CSS until these comments were reworded.
+//
 // Ordered the way prettier-plugin-tailwindcss orders class attributes. The
 // plugin only sorts markup, so a string in script drifts from the house order
 // silently; to re-derive it, paste the string into a scratch `class=""` and
 // run prettier on it.
 const BUTTON_BASE =
-  'inline-flex cursor-pointer items-center justify-center gap-2 rounded-pill px-6 pt-3 pb-2 font-action font-semibold shadow-soft hover:no-underline focus-visible:ring-4 focus-visible:ring-ink/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex cursor-pointer items-center justify-center gap-2 rounded-pill px-6 pt-3 pb-2 font-action font-semibold no-underline shadow-soft focus-visible:ring-4 focus-visible:ring-ink/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60';
 
 const BUTTON_VARIANTS = {
-  primary: 'bg-leaf text-white hover:bg-sprout/70',
-  // text-fern, not text-leaf: leaf on white is 4.52:1, which clears AA for
-  // normal text by a hair. Fern is the same family at 5.47:1 — see the
+  // Hover goes *darker*, not lighter. Hovering to sprout at 70% opacity (what
+  // this used to do) dropped the white label to 1.69:1 against the page
+  // background and 3.19:1 on the footer, where the resting state is 4.52:1 —
+  // and nothing caught it, because Lighthouse and axe only ever evaluate the
+  // default state. Fern is 5.47:1. Forest would be 11.79:1 but is the footer's
+  // own background, so the Donate button there would dissolve into the bar.
+  primary: 'bg-leaf text-white hover:bg-fern',
+  // Fern for the label rather than leaf: leaf on white is 4.52:1, clearing AA
+  // for normal text by a hair, where fern is the same family at 5.47:1. See the
   // --color-link note in style.css.
   secondary: 'bg-white text-fern hover:bg-mint',
   danger: 'bg-error text-white hover:bg-error/85'
 } as const;
 
+const isLink = computed(() => Boolean(props.to || props.href));
+
 // Font size is deliberately not part of the base: the footer/header/home
 // buttons run at body size, the modal and form buttons at `text-sm`. Callers
 // pass that (and any layout classes) through the fallthrough `class` attr.
-const classes = computed(() => [BUTTON_BASE, BUTTON_VARIANTS[props.variant]]);
+const classes = computed(() => [
+  BUTTON_BASE,
+  BUTTON_VARIANTS[props.variant],
+  // `pointer-events-none` is what makes a disabled link unclickable; paired
+  // with tabindex="-1" below it is unreachable by keyboard too. Cancelling the
+  // caller's own @click instead would depend on handler ordering.
+  isLink.value && props.disabled ? 'pointer-events-none opacity-60' : ''
+]);
 
 const tag = computed(() => (props.to ? RouterLink : props.href ? 'a' : 'button'));
 
 // Built rather than spread from props so a <button> never receives a stray
 // `to`/`href` and a link never receives `type`.
 const tagProps = computed(() => {
-  if (props.to) return { to: props.to };
-  if (props.href) return { href: props.href };
-  return { type: props.type };
+  const disabledLink = props.disabled ? { 'aria-disabled': 'true', tabindex: -1 } : {};
+
+  if (props.to) return { to: props.to, ...disabledLink };
+  if (props.href) return { href: props.href, ...disabledLink };
+
+  return { type: props.type, disabled: props.disabled };
 });
 
 const root = ref<HTMLElement | ComponentPublicInstance | null>(null);
