@@ -248,6 +248,24 @@ conventions and the traps.
   in `tests/unit/pageHead.spec.ts`.
 - `routes.spec.ts` and `sitemap.spec.ts` both derive expectations from
   `appRoutePaths`, so keeping that list correct keeps them green.
+- **[vitest.setup.ts](../vitest.setup.ts) clears `document.body` after every
+  test**, so markup from an `attachTo: document.body` mount never reaches the
+  next one and `document.activeElement` resets with it. Two things follow. A
+  wrapper left unmounted is not a DOM leak here — but the global hook strips
+  nodes without running Vue's unmount lifecycle, so a component holding
+  listeners, observers or timers (`JuliaFooter`, `JuliaModal`) still has to be
+  unmounted explicitly or its teardown never runs. And a test asserting "the
+  previous test left nothing behind" is worthless: the setup file guarantees it
+  whether or not the spec's own cleanup works, so it passes with the cleanup
+  deleted.
+- **A test gated on git history does not run in CI.** `ci.yml` checks out with
+  `fetch-depth: 1`, so `canReadHistory()` is false there and anything behind it
+  returns early — the assertion only ever fires on a full local clone, where it
+  is also hostage to what the history happens to look like. `sitemap.build.ts`
+  takes its `GitRunner` as an argument for this reason; test the dating logic by
+  injecting one (`sitemapLastmod.spec.ts`) rather than against the live repo.
+  Only the deploy workflows use `fetch-depth: 0`, because that is where the
+  sitemap is actually built.
 - **Backend tests are split by what they cover.**
   [api/test_app.py](../api/test_app.py) has the happy paths, CORS, rate limiting,
   and input validation; [api/test_app_pipeline.py](../api/test_app_pipeline.py)

@@ -1,8 +1,31 @@
-import { mount, RouterLinkStub } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils';
+import { afterEach, describe, expect, it } from 'vitest';
 import JuliaButton from '../../src/components/JuliaButton.vue';
 
 const global = { stubs: { RouterLink: RouterLinkStub } };
+
+// The focus test is the only one that has to attach to document.body, and
+// leaked *markup* is not the reason it gets torn down — vitest.setup.ts already
+// clears document.body after every test, which also resets activeElement.
+// What that global hook cannot do is run Vue's unmount lifecycle: it strips the
+// nodes and leaves the component instance behind. JuliaButton has no teardown
+// to run today, so this is hygiene rather than a fix, and it matches how the
+// footer and modal specs (whose components do hold listeners and observers)
+// already clean up. Registering the wrapper here rather than calling unmount()
+// at the end of the test body means it still happens if an assertion throws.
+const attached: VueWrapper[] = [];
+
+function mountAttached(options: Parameters<typeof mount>[1] = {}) {
+  const wrapper = mount(JuliaButton, { ...options, attachTo: document.body });
+  attached.push(wrapper);
+  return wrapper;
+}
+
+afterEach(() => {
+  while (attached.length > 0) {
+    attached.pop()?.unmount();
+  }
+});
 
 describe('JuliaButton', () => {
   it('renders a real <button> with an explicit type by default', () => {
@@ -75,14 +98,11 @@ describe('JuliaButton', () => {
   // JuliaModal focuses its confirm button on open through this method; a
   // template ref alone would hand it a component instance, not an element.
   it('exposes focus() that reaches the rendered element in both forms', () => {
-    const asButton = mount(JuliaButton, { attachTo: document.body });
+    const asButton = mountAttached();
     asButton.vm.focus();
     expect(document.activeElement).toBe(asButton.element);
 
-    const asLink = mount(JuliaButton, {
-      props: { href: '#somewhere' },
-      attachTo: document.body
-    });
+    const asLink = mountAttached({ props: { href: '#somewhere' } });
     asLink.vm.focus();
     expect(document.activeElement).toBe(asLink.element);
   });

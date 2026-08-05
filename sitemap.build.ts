@@ -64,9 +64,18 @@ export function pageContentFiles(pageComponent: string): string[] {
   return files;
 }
 
-function git(args: string[]): string {
-  return execFileSync('git', args, { cwd: PROJECT_ROOT, encoding: 'utf8' }).trim();
-}
+/**
+ * How this module reaches git. Injectable for the same reason
+ * `readPageComponents` takes its routes module as an argument: the dating logic
+ * is otherwise only testable against whatever the working clone's history
+ * happens to look like, which makes the tests hostage to it. One repo-wide
+ * commit dates every page alike — a legitimate state that reads exactly like
+ * the build-date defect `resolveSitemapEntries` exists to prevent.
+ */
+export type GitRunner = (args: string[]) => string;
+
+const runGit: GitRunner = (args) =>
+  execFileSync('git', args, { cwd: PROJECT_ROOT, encoding: 'utf8' }).trim();
 
 /**
  * Whether git can answer "when did this file last change" truthfully here.
@@ -79,7 +88,7 @@ function git(args: string[]): string {
  * check is explicit and the caller omits `lastmod` rather than emitting a date
  * it cannot stand behind. Deploy builds check out full history for this reason.
  */
-export function canReadHistory(): boolean {
+export function canReadHistory(git: GitRunner = runGit): boolean {
   try {
     return git(['rev-parse', '--is-shallow-repository']) === 'false';
   } catch {
@@ -88,7 +97,7 @@ export function canReadHistory(): boolean {
 }
 
 /** ISO-8601 date (no time) of the last commit touching any of `files`. */
-function lastCommitDate(files: string[]): string | undefined {
+function lastCommitDate(files: string[], git: GitRunner): string | undefined {
   const paths = files.map((file) => relative(PROJECT_ROOT, file));
 
   return git(['log', '-1', '--format=%cs', '--', ...paths]) || undefined;
@@ -104,8 +113,11 @@ function lastCommitDate(files: string[]): string | undefined {
  * ignore an absent one, whereas a wrong one is worse than useless — a date that
  * moves on every deploy trains them to disregard the field entirely.
  */
-export function resolveSitemapEntries(routePaths: string[]): SitemapEntry[] {
-  if (!canReadHistory()) {
+export function resolveSitemapEntries(
+  routePaths: string[],
+  git: GitRunner = runGit
+): SitemapEntry[] {
+  if (!canReadHistory(git)) {
     console.warn(
       '[sitemap] Not a full git checkout — emitting the sitemap without <lastmod>. ' +
         'Deploy builds use fetch-depth: 0 so this does not affect the published site.'
@@ -124,7 +136,7 @@ export function resolveSitemapEntries(routePaths: string[]): SitemapEntry[] {
       return { path };
     }
 
-    return { path, lastmod: lastCommitDate(pageContentFiles(pageComponent)) };
+    return { path, lastmod: lastCommitDate(pageContentFiles(pageComponent), git) };
   });
 }
 
