@@ -2,6 +2,7 @@
 import { useTemplateRef } from 'vue';
 import { RouterLink } from 'vue-router';
 import sprout from '../assets/sprout.png';
+import JuliaButton from './JuliaButton.vue';
 import IconSpinner from './icons/IconSpinner.vue';
 import { API_BASE_URL } from '../lib/api';
 import { useYardSignForm } from '../composables/useYardSignForm';
@@ -57,11 +58,11 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       tabindex="-1"
     >
       <h3>Thanks so much for your support, {{ firstName.trim() || 'friend' }}!</h3>
-      <div class="bg-sprout/50 rounded-lg py-4 px-6">
+      <div class="rounded-lg bg-sprout/50 px-6 py-4">
         <p>
           Check your inbox to coordinate sign delivery. We will be in touch soon!
           <img
-            class="success-sprout inline w-[1.25em] h-[1.25em] align-text-bottom"
+            class="success-sprout inline h-[1.25em] w-[1.25em] align-text-bottom"
             :src="sprout"
             alt=""
             aria-hidden="true"
@@ -76,7 +77,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
     <form
       v-else
       key="form"
-      class="contact-form mt-4 max-w-[640px] grid gap-2.5"
+      class="contact-form mt-4 grid max-w-[640px] gap-2.5"
       :action="submitUrl"
       method="POST"
       @submit="handleSubmit"
@@ -85,7 +86,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p>* Fields marked with an asterisk are required.</p>
 
       <div class="flex gap-4">
-        <div class="flex-[1_1_50%] min-w-0 grid gap-2.5">
+        <div class="grid min-w-0 flex-1 basis-1/2 gap-2.5">
           <label for="yard-sign-first-name" class="sr-only">First Name *</label>
           <input
             id="yard-sign-first-name"
@@ -93,7 +94,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
             name="firstName"
             type="text"
             placeholder="First Name *"
-            class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
+            class="w-full rounded-md border border-mist bg-white/96 px-3 py-2.5 text-forest"
             :class="{ 'input-error border-error': firstNameError }"
             :aria-invalid="!!firstNameError || undefined"
             :aria-describedby="firstNameError ? 'yard-sign-first-name-error' : undefined"
@@ -104,7 +105,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           <p
             v-if="firstNameError"
             id="yard-sign-first-name-error"
-            class="mt-[-0.1rem] mb-1 text-error text-sm"
+            class="mt-[-0.1rem] mb-1 text-sm text-error"
             role="alert"
             aria-live="polite"
           >
@@ -112,7 +113,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           </p>
         </div>
 
-        <div class="flex-[1_1_50%] min-w-0 grid gap-2.5">
+        <div class="grid min-w-0 flex-1 basis-1/2 gap-2.5">
           <label for="yard-sign-last-name" class="sr-only">Last Name</label>
           <input
             id="yard-sign-last-name"
@@ -120,7 +121,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
             name="lastName"
             type="text"
             placeholder="Last Name"
-            class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
+            class="w-full rounded-md border border-mist bg-white/96 px-3 py-2.5 text-forest"
             :aria-invalid="!!lastNameError || undefined"
             :aria-describedby="lastNameError ? 'yard-sign-last-name-error' : undefined"
             autocomplete="family-name"
@@ -129,7 +130,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           <p
             v-if="lastNameError"
             id="yard-sign-last-name-error"
-            class="mt-[-0.1rem] mb-1 text-error text-sm"
+            class="mt-[-0.1rem] mb-1 text-sm text-error"
             role="alert"
             aria-live="polite"
           >
@@ -146,7 +147,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
         v-model="email"
         name="email"
         type="email"
-        class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
+        class="w-full rounded-md border border-mist bg-white/96 px-3 py-2.5 text-forest"
         :class="{ 'input-error border-error': emailError }"
         :aria-invalid="!!emailError || undefined"
         :aria-describedby="emailError ? 'yard-sign-email-error' : undefined"
@@ -158,7 +159,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p
         v-if="emailError"
         id="yard-sign-email-error"
-        class="mt-[-0.1rem] mb-1 text-error text-sm"
+        class="mt-[-0.1rem] mb-1 text-sm text-error"
         role="alert"
         aria-live="polite"
       >
@@ -169,7 +170,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <input
         id="yard-sign-phone"
         v-model="phone"
-        class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
+        class="w-full rounded-md border border-mist bg-white/96 px-3 py-2.5 text-forest"
         name="phone"
         type="tel"
         placeholder="Phone"
@@ -181,7 +182,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p
         v-if="phoneError"
         id="yard-sign-phone-error"
-        class="mt-[-0.1rem] mb-1 text-error text-sm"
+        class="mt-[-0.1rem] mb-1 text-sm text-error"
         role="alert"
         aria-live="polite"
       >
@@ -195,7 +196,7 @@ useScrollToSuccess(successMessageRef, isSubmitted);
         name="address"
         type="text"
         placeholder="Address *"
-        class="w-full border border-mist rounded-md py-2.5 px-3 text-forest bg-white/96"
+        class="w-full rounded-md border border-mist bg-white/96 px-3 py-2.5 text-forest"
         :class="{ 'input-error border-error': addressError }"
         :aria-invalid="!!addressError || undefined"
         :aria-describedby="addressError ? 'yard-sign-address-error' : undefined"
@@ -206,60 +207,60 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       <p
         v-if="addressError"
         id="yard-sign-address-error"
-        class="mt-[-0.1rem] mb-1 text-error text-sm"
+        class="mt-[-0.1rem] mb-1 text-sm text-error"
         role="alert"
         aria-live="polite"
       >
         {{ addressError }}
       </p>
 
-      <fieldset class="m-0 pb-1 border-none rounded-md flex flex-wrap gap-2">
-        <legend class="w-full p-0 mb-3 font-semibold text-forest">Preferred payment</legend>
+      <fieldset class="m-0 flex flex-wrap gap-2 rounded-md border-none pb-1">
+        <legend class="mb-3 w-full p-0 font-semibold text-forest">Preferred payment</legend>
         <label
-          class="inline-flex items-center gap-2 font-normal mr-2"
+          class="mr-2 inline-flex items-center gap-2 font-normal"
           for="yard-sign-payment-online"
         >
           <input
             id="yard-sign-payment-online"
             v-model="preferredPayment"
             name="preferredPayment[]"
-            class="w-auto m-0"
+            class="m-0 w-auto"
             type="checkbox"
             value="Online"
           />
           Online
         </label>
-        <label class="inline-flex items-center gap-2 font-normal mr-2" for="yard-sign-payment-cash">
+        <label class="mr-2 inline-flex items-center gap-2 font-normal" for="yard-sign-payment-cash">
           <input
             id="yard-sign-payment-cash"
             v-model="preferredPayment"
             name="preferredPayment[]"
-            class="w-auto m-0"
+            class="m-0 w-auto"
             type="checkbox"
             value="Cash"
           />
           Cash
         </label>
         <label
-          class="inline-flex items-center gap-2 font-normal mr-2"
+          class="mr-2 inline-flex items-center gap-2 font-normal"
           for="yard-sign-payment-check"
         >
           <input
             id="yard-sign-payment-check"
             v-model="preferredPayment"
             name="preferredPayment[]"
-            class="w-auto m-0"
+            class="m-0 w-auto"
             type="checkbox"
             value="Check"
           />
           Check
         </label>
-        <label class="inline-flex items-center gap-2 font-normal mr-2" for="yard-sign-payment-done">
+        <label class="mr-2 inline-flex items-center gap-2 font-normal" for="yard-sign-payment-done">
           <input
             id="yard-sign-payment-done"
             v-model="preferredPayment"
             name="preferredPayment[]"
-            class="w-auto m-0"
+            class="m-0 w-auto"
             type="checkbox"
             value="Already Donated"
           />
@@ -267,16 +268,16 @@ useScrollToSuccess(successMessageRef, isSubmitted);
         </label>
       </fieldset>
 
-      <button
+      <JuliaButton
         type="submit"
-        class="w-fit max-md:w-full mt-1 border-0 rounded-pill pt-3 pb-2 px-6 bg-forest text-white text-sm leading-[1.6] font-action font-semibold tracking-[0.05em] text-center justify-self-start cursor-pointer hover:bg-forest/70 disabled:opacity-60 disabled:cursor-not-allowed"
+        class="mt-1 w-fit justify-self-start text-sm max-md:w-full"
         :disabled="isSubmitting"
       >
         Request a Yard Sign <IconSpinner v-if="isSubmitting" />
-      </button>
+      </JuliaButton>
       <p
         v-if="submitError"
-        class="mt-[-0.1rem] mb-1 text-error text-sm"
+        class="mt-[-0.1rem] mb-1 text-sm text-error"
         role="alert"
         aria-live="assertive"
       >

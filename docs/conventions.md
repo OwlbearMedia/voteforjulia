@@ -104,15 +104,96 @@ There is no `tailwind.config.js`.
 - **The `md` breakpoint is Tailwind's default (48rem / 768px).** Mobile-specific
   overrides use `max-md:` throughout.
 - **Tailwind's scanner reads plain string literals**, so class names assembled in
-  `.ts`/`.vue` script (e.g. the `BTN` constants in `JuliaFooter.vue`) are picked
-  up — but only if the full class string appears literally, not concatenated
-  fragments.
+  `.ts`/`.vue` script (e.g. the `BUTTON_BASE` / `BUTTON_VARIANTS` constants in
+  `JuliaButton.vue`) are picked up — but only if the full class string appears
+  literally, not concatenated fragments. **This includes comments**: the scanner
+  reads text, not code, so naming a utility in a comment about why the code no
+  longer applies it emits it into the stylesheet as dead CSS.
+
+  Worth knowing, not worth contorting prose over — **plain English words are
+  utilities too**. `visible`, `static`, `outline` and `ring` are all real
+  classes, so a comment cannot reliably avoid them, and the whole set costs
+  **29 bytes gzipped**. Rewrite a distinctive token you are not applying
+  (`hover:bg-sprout/70` → "sprout at 70% opacity") and leave the English alone.
+  Tailwind's `blocklist` would fix it properly but lives in the JS-config
+  compatibility layer, which would mean reintroducing `tailwind.config.js` for
+  those 29 bytes — see the note above on not having one. To audit the current
+  set, list the class selectors in `dist/assets/*.css` and find the ones whose
+  only occurrence in `src/` is on a comment line.
+
+- **`prettier-plugin-tailwindcss` sorts class attributes**, so class order is not
+  yours to choose and `pnpm format` will rewrite it. Two consequences. It only
+  sorts _markup_ — a class string in script (the `JuliaButton.vue` constants) is
+  left alone and drifts from the house order silently, so re-derive it by pasting
+  the string into a scratch `class=""` and running Prettier on that. And the
+  plugin is configured with `tailwindStylesheet` in `.prettierrc`, which v4 needs
+  in place of the `tailwind.config.js` this project deliberately does not have —
+  without it the sort falls back to stock Tailwind and mis-orders the theme's
+  own utilities.
+- **Class order never decides which of two conflicting utilities wins — CSS
+  order does.** `px-4 px-6` on one element resolves to whichever Tailwind emits
+  later, regardless of how they are written, so an override can silently do
+  nothing. The flip side is useful: `flex-1 basis-1/2` works precisely because
+  `.basis-1\/2` is emitted after `.flex-1`, which is why the pages use it rather
+  than an arbitrary `flex-[1_1_50%]`. When leaning on that, check the built CSS.
 - Rules utilities can't express (the multi-image `hr`, `sprout-bullet`, Vue
   `<Transition>` classes) live in the `components` layer of `style.css`. A
   `<Transition name="foo">` is styled by hand-written `.foo-enter-active` /
   `.foo-enter-from` / `.foo-leave-active` / `.foo-leave-to` rules there — grep the
   name to find them. Every transition also gets a `prefers-reduced-motion: reduce`
   branch that zeroes it out; add new ones to that shared block.
+
+## Buttons
+
+Every pill-shaped action on the site — footer, header, hero, modal, both form
+submits — renders through
+[src/components/JuliaButton.vue](../src/components/JuliaButton.vue). Don't
+hand-roll another one; the classes drifted three ways before this existed.
+
+- `variant` is `primary` (filled leaf, white text), `secondary` (white, fern
+  text — for dark surfaces) or `danger` (the destructive form of primary; only
+  the modal's confirm button uses it). Secondary's text is **fern, not leaf**:
+  leaf on white is 4.52:1, clearing AA for normal text by a hair, where fern is
+  5.47:1. Same reasoning as `--color-link` in `style.css`.
+- The rendered tag follows the props: `to` → `RouterLink`, `href` → `<a>`,
+  neither → `<button>` (always with an explicit `type`, so one inside a `<form>`
+  never submits by accident).
+- **Hover darkens.** Primary goes leaf → fern. The obvious-looking lighter
+  hover is a trap: white on sprout at 70% is 1.69:1 against the page and 3.19:1
+  on the footer, against 4.52:1 at rest. Neither Lighthouse nor axe evaluates
+  hover state, so CI stays green through it — check any new hover colour by
+  hand. Forest is the other tempting choice and is wrong for a different
+  reason: it is the footer's own background, so the Donate button would vanish
+  into the bar.
+- **A disabled link is rendered as a disabled `<button>`, not a faded `<a>`.**
+  `disabled` is not an attribute anchors have, and the styling-only hardening
+  that looks sufficient is not: `pointer-events-none` only stops the mouse and
+  `tabindex="-1"` only stops tabbing, so `element.click()` — scripts, and some
+  assistive-tech activation paths — still navigated and still ran the caller's
+  `@click`. Swapping the tag closes it, because the platform will not dispatch
+  a click on a disabled form control at all. A unit test pins that.
+- **Size and layout classes are the caller's**, passed through the fallthrough
+  `class` attr and merged with the variant's — the base deliberately sets no
+  font size, because the footer/header/hero buttons run at body size and the
+  modal and form buttons at `text-sm`. Beware that a caller class overriding a
+  base one (`px-4` against the base `px-6`) is decided by Tailwind's own CSS
+  order, not by which is written last, so it may silently do nothing.
+- Focus goes through the exposed `focus()`, not the element: a template ref on
+  the component yields a component instance, and the root is a `RouterLink`
+  instance rather than an element whenever `to` is set. Testing that branch
+  needs a **real** router — `RouterLinkStub` renders an anchor with no `href`,
+  and an anchor without one cannot take focus, so a stubbed test fails while
+  the component is working.
+- **The focus ring is two-tone and that is not decoration.** These buttons sit
+  on the light page background, the forest footer, the leaf nav dropdown and the
+  mint modal; no single colour clears 3:1 against all four. `focus-visible:ring-4`
+  fills the 0–4px band with near-black and the offset outline paints white over
+  its outer half, so whichever band a background swallows, the other shows. It is
+  the only custom focus indicator on the site — everything else uses the UA
+  default — and a unit test pins it, because deleting it fails silently.
+
+The two icon-only controls — the header's hamburger and the modal's X — are
+plain `<button>`s on purpose; they share none of the pill styling.
 
 ## Icons
 
@@ -198,6 +279,24 @@ conventions and the traps.
   in `tests/unit/pageHead.spec.ts`.
 - `routes.spec.ts` and `sitemap.spec.ts` both derive expectations from
   `appRoutePaths`, so keeping that list correct keeps them green.
+- **[vitest.setup.ts](../vitest.setup.ts) clears `document.body` after every
+  test**, so markup from an `attachTo: document.body` mount never reaches the
+  next one and `document.activeElement` resets with it. Two things follow. A
+  wrapper left unmounted is not a DOM leak here — but the global hook strips
+  nodes without running Vue's unmount lifecycle, so a component holding
+  listeners, observers or timers (`JuliaFooter`, `JuliaModal`) still has to be
+  unmounted explicitly or its teardown never runs. And a test asserting "the
+  previous test left nothing behind" is worthless: the setup file guarantees it
+  whether or not the spec's own cleanup works, so it passes with the cleanup
+  deleted.
+- **A test gated on git history does not run in CI.** `ci.yml` checks out with
+  `fetch-depth: 1`, so `canReadHistory()` is false there and anything behind it
+  returns early — the assertion only ever fires on a full local clone, where it
+  is also hostage to what the history happens to look like. `sitemap.build.ts`
+  takes its `GitRunner` as an argument for this reason; test the dating logic by
+  injecting one (`sitemapLastmod.spec.ts`) rather than against the live repo.
+  Only the deploy workflows use `fetch-depth: 0`, because that is where the
+  sitemap is actually built.
 - **Backend tests are split by what they cover.**
   [api/test_app.py](../api/test_app.py) has the happy paths, CORS, rate limiting,
   and input validation; [api/test_app_pipeline.py](../api/test_app_pipeline.py)

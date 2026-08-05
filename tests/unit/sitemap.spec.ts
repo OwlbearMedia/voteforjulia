@@ -60,9 +60,18 @@ describe('sitemap', () => {
   });
 
   describe('resolveSitemapEntries', () => {
-    it('dates each route independently rather than stamping them all alike', () => {
-      // The defect this replaces: every page carried the build date, so all
-      // eight claimed to change on every deploy. Distinct dates are the point.
+    // Smoke test against the real repo: every route resolves and, when history
+    // is readable, comes back with a well-formed date.
+    //
+    // It used to also assert the dates were not all identical, as a proxy for
+    // "dated per page rather than stamped from the build". That proxy is
+    // unsound in both directions. It goes false legitimately — one repo-wide
+    // commit (the prettier-plugin-tailwindcss reformat did exactly this) dates
+    // every page alike, and the sitemap is right to say so — and it cannot go
+    // false at all in CI, where fetch-depth: 1 makes canReadHistory() bail
+    // before anything is dated. sitemapLastmod.spec.ts owns that property now,
+    // with git injected so it holds regardless of what the clone looks like.
+    it('resolves and dates every route against the real repository', () => {
       const entries = resolveSitemapEntries([...appRoutePaths]);
 
       expect(entries).toHaveLength(appRoutePaths.length);
@@ -71,7 +80,6 @@ describe('sitemap', () => {
 
       const dates = entries.map((entry) => entry.lastmod);
       expect(dates.every((date) => date && /^\d{4}-\d{2}-\d{2}$/.test(date))).toBe(true);
-      expect(new Set(dates).size).toBeGreaterThan(1);
     });
 
     it('omits lastmod for a route with no page component', () => {

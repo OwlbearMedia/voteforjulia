@@ -67,7 +67,7 @@ function dismissPrimaryModal() {
     cancel-label="Close"
     @cancel="dismissPrimaryModal"
   >
-    <p class="font-accent bg-sprout/50 p-4 mb-4 text-center rounded-lg text-xl">
+    <p class="mb-4 rounded-lg bg-sprout/50 p-4 text-center font-accent text-xl">
       {{ primaryCountdown }}
     </p>
 

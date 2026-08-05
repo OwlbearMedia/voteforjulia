@@ -2,7 +2,7 @@
   <Teleport to="body">
     <!-- Backdrop -->
     <Transition name="modal-backdrop">
-      <div v-if="open" class="fixed inset-0 bg-ink/60 z-floating" aria-hidden="true"></div>
+      <div v-if="open" class="fixed inset-0 z-floating bg-ink/60" aria-hidden="true"></div>
     </Transition>
 
     <!-- Panel -->
@@ -26,7 +26,7 @@
             @keydown="onKeydown"
           >
             <header
-              class="flex bg-forest items-center gap-3 border-b border-mist/60 px-4 py-4 sm:px-6"
+              class="flex items-center gap-3 border-b border-mist/60 bg-forest px-4 py-4 sm:px-6"
             >
               <div
                 v-if="props.variant !== 'default'"
@@ -44,7 +44,7 @@
                    its font-size. -->
               <h2
                 :id="titleId"
-                class="mt-0 mb-0 flex-1 pt-1 text-event leading-none font-display text-lime"
+                class="mt-0 mb-0 flex-1 pt-1 font-display text-event leading-none text-lime"
               >
                 {{ title }}
               </h2>
@@ -61,24 +61,25 @@
               <slot />
             </div>
             <div class="bg-mint/60 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
-              <button
+              <!-- Only the destructive variant recolors the confirm button;
+                   warning keeps the standard green action. -->
+              <JuliaButton
                 v-if="confirmLabel"
                 ref="confirmButton"
-                type="button"
-                class="inline-flex w-full justify-center rounded-pill pt-3 pb-2 px-6 font-action font-semibold text-sm text-white shadow-soft cursor-pointer sm:ml-3 sm:w-auto"
-                :class="confirmClasses"
+                :variant="props.variant === 'danger' ? 'danger' : 'primary'"
+                class="w-full text-sm sm:ml-3 sm:w-auto"
                 @click="confirm"
               >
                 {{ confirmLabel }}
-              </button>
-              <button
+              </JuliaButton>
+              <JuliaButton
                 v-if="cancelLabel"
-                type="button"
-                class="mt-3 inline-flex w-full justify-center rounded-pill pt-3 pb-2 px-6 font-action font-semibold text-sm text-forest bg-white shadow-soft cursor-pointer hover:bg-mint sm:mt-0 sm:w-auto"
+                variant="secondary"
+                class="mt-3 w-full text-sm sm:mt-0 sm:w-auto"
                 @click="close"
               >
                 {{ cancelLabel }}
-              </button>
+              </JuliaButton>
             </div>
           </div>
         </div>
@@ -89,6 +90,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
+import JuliaButton from './JuliaButton.vue';
 import IconWarning from './icons/IconWarning.vue';
 import IconXmark from './icons/IconXmark.vue';
 
@@ -120,15 +122,9 @@ const iconClasses = computed(
     })[props.variant]
 );
 
-// Only the destructive variant recolors the confirm button; warning keeps the
-// standard green action.
-const confirmClasses = computed(() =>
-  props.variant === 'danger' ? 'bg-error hover:bg-error/85' : 'bg-leaf hover:bg-sprout/70'
-);
-
 const titleId = useId();
 const panel = ref<HTMLElement>();
-const confirmButton = ref<HTMLButtonElement>();
+const confirmButton = ref<InstanceType<typeof JuliaButton>>();
 
 // Remember what was focused before opening so we can restore it on close.
 let previouslyFocused: HTMLElement | null = null;
