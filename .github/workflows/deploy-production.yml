@@ -302,19 +302,40 @@ jobs:
               exit 1
             fi
 
+            # Paths this deploy does not own, and must never delete. Kept in
+            # step with deploy-test.yml, where the same rule took the test API
+            # down for two days: there the app root doubles as the subdomain's
+            # document root, so `.htaccess` — the CloudLinux Passenger config
+            # and every SetEnv — sat in the directory being pruned and was
+            # removed as "stale", leaving LiteSpeed serving a directory listing.
+            #
+            # Production is currently spared because its document root
+            # (~/api-sub) is a different directory from this app root (~/api).
+            # That is cPanel configuration and could be changed from a web UI
+            # without anyone touching this repo, so the guard belongs here too:
+            # `stderr.log` is already being deleted on every deploy, which is
+            # why a crash here leaves no trace to read afterwards.
+            protected='^(deploy-manifest\.txt|\.htaccess|\.user\.ini|stderr\.log)$|^(\.well-known|cgi-bin)/'
+
             # `sed` rather than find's `-printf '%P\n'`, which is GNU-only —
             # this way the script is portable enough to run and verify locally.
-            find . -type f ! -path './tmp/*' ! -name deploy-manifest.txt \
+            find . -type f ! -path './tmp/*' \
               | sed 's|^\./||' \
               | LC_ALL=C sort > /tmp/deployed-files.$$
-            LC_ALL=C comm -23 /tmp/deployed-files.$$ deploy-manifest.txt > /tmp/stale-files.$$
+            # `|| true` because grep exits 1 when it filters everything out,
+            # which pipefail would otherwise treat as a failure.
+            LC_ALL=C comm -23 /tmp/deployed-files.$$ deploy-manifest.txt \
+              | grep -Ev "$protected" > /tmp/stale-files.$$ || true
 
             if [ -s /tmp/stale-files.$$ ]; then
               echo "Removing $(wc -l < /tmp/stale-files.$$) stale file(s):"
               cat /tmp/stale-files.$$
               # -r so an empty list is a no-op, -- so a leading dash is a path.
               tr '\n' '\0' < /tmp/stale-files.$$ | xargs -0 -r rm -f --
-              find . -mindepth 1 -type d -empty ! -path './tmp*' -delete
+              # cPanel creates .well-known (ACME renewal) and cgi-bin empty, and
+              # an empty directory is exactly what this sweep removes.
+              find . -mindepth 1 -type d -empty ! -path './tmp*' \
+                ! -name .well-known ! -name cgi-bin -delete
             else
               echo "No stale files."
             fi
