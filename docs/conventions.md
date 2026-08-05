@@ -311,6 +311,16 @@ conventions and the traps.
   green. Any test of the form "these requests should share a bucket" needs the
   matching "these requests should not" to actually pin the key. The same trap
   applies to anything keyed, cached, or deduplicated.
+- **A test that restates the diff is not a test**, and the trap is worst right
+  after fixing something, because listing what you just added _feels_ like
+  checking it. `JuliaButton`'s disabled-link test asserted the three things the
+  fix had added — `aria-disabled`, `tabindex="-1"`, `pointer-events-none` —
+  while `element.click()` still navigated and still ran the caller's handler,
+  which is exactly what "disabled" was claiming to prevent. Assert the property
+  being claimed (is it actually inoperable?), then **delete the fix locally and
+  watch the test fail**. If it stays green it is decorative. Cheap enough to do
+  every time; it is how the sitemap dating tests, the modal-cleanup test and
+  this one were each shown to be worth keeping or worth deleting.
 - **Cypress `cy.visit` is overridden** in [cypress/support/e2e.ts](../cypress/support/e2e.ts)
   to seed `sessionStorage` before the app mounts — it dismisses the primary-election
   modal (`JuliaPrimaryModal`, mounted by `App.vue`) whose full-viewport backdrop
