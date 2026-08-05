@@ -99,11 +99,11 @@ useHead(
   <section id="donate">
     <h2>Donate</h2>
 
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
+    <p class="my-4 rounded-lg bg-sprout/50 p-4 text-center font-accent text-xl">
       Donate now to help elect Julia as Mayor of Mankato!
     </p>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-md:gap-y-4">
+    <div class="grid grid-cols-1 gap-8 max-md:gap-y-4 md:grid-cols-2">
       <!-- `contents` keeps <dbox-widget> itself as the grid item. The markup is
            a module-level constant, never user input — see donorboxWidget. -->
       <!-- eslint-disable-next-line vue/no-v-html -->
@@ -126,7 +126,7 @@ useHead(
           url-endpoint="https://ik.imagekit.io/voteforjulia"
           src="/julia-rect.webp"
           alt="Julia Hamann, starting a new conversation as Mayor of Mankato"
-          class="w-full h-auto rounded-lg shadow-soft"
+          class="h-auto w-full rounded-lg shadow-soft"
           sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 6rem) / 2), 432px"
           :image-breakpoints="[240, 320, 420, 560, 600]"
           :device-breakpoints="[]"

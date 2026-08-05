@@ -103,11 +103,11 @@ useHead(
 
     <p>Check out upcoming events below:</p>
 
-    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-4xl mb-8">
+    <div class="mb-8 rounded-4xl bg-forest px-8 py-4 text-white shadow-strong">
       <div class="event-heading">
         <h3 class="text-event text-lime">Primary Election Day!</h3>
         <a
-          class="text-white inline-flex items-center gap-1.5 font-accent text-xl font-normal mb-2"
+          class="mb-2 inline-flex items-center gap-1.5 font-accent text-xl font-normal text-white"
           href="https://www.sos.mn.gov/elections-voting/election-day-voting"
           target="_blank"
           rel="noopener noreferrer"
@@ -139,12 +139,12 @@ useHead(
       </p>
     </div>
 
-    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-4xl mb-8">
+    <div class="mb-8 rounded-4xl bg-forest px-8 py-4 text-white shadow-strong">
       <div class="event-heading">
         <h3 class="text-event text-lime">Primary Win Party!</h3>
         <div>
           <a
-            class="text-white inline-flex items-center gap-1.5 font-accent text-xl font-normal mb-2"
+            class="mb-2 inline-flex items-center gap-1.5 font-accent text-xl font-normal text-white"
             href="https://www.facebook.com/events/2530643504031415/"
             target="_blank"
             rel="noopener noreferrer"
@@ -152,12 +152,12 @@ useHead(
           >
         </div>
         <a
-          class="inline-flex items-center text-lime gap-1.5 font-accent text-xl font-normal"
+          class="inline-flex items-center gap-1.5 font-accent text-xl font-normal text-lime"
           href="https://www.facebook.com/events/2530643504031415/"
           target="_blank"
           rel="noopener noreferrer"
         >
-          <IconLocation class="w-4 h-4 shrink-0" /> WineCafe Bar</a
+          <IconLocation class="h-4 w-4 shrink-0" /> WineCafe Bar</a
         >
       </div>
 
@@ -180,12 +180,12 @@ useHead(
   <section id="past-events">
     <h2>Past Events</h2>
 
-    <div class="bg-forest shadow-strong text-white py-4 px-8 rounded-4xl mb-8">
+    <div class="mb-8 rounded-4xl bg-forest px-8 py-4 text-white shadow-strong">
       <div class="event-heading">
         <h3 class="text-event text-lime">Campaign Launch Party!</h3>
         <div>
           <a
-            class="text-white inline-flex items-center gap-1.5 font-accent text-xl font-normal mb-2"
+            class="mb-2 inline-flex items-center gap-1.5 font-accent text-xl font-normal text-white"
             href="https://www.facebook.com/events/1000640362322768"
             target="_blank"
             rel="noopener noreferrer"
@@ -193,12 +193,12 @@ useHead(
           >
         </div>
         <a
-          class="inline-flex items-center text-lime gap-1.5 font-accent text-xl font-normal"
+          class="inline-flex items-center gap-1.5 font-accent text-xl font-normal text-lime"
           href="https://maps.app.goo.gl/bE9THdo92AbrKKeJ7"
           target="_blank"
           rel="noopener noreferrer"
         >
-          <IconLocation class="w-4 h-4 shrink-0" /> Mankato Makerspace, 1700 3rd Ave</a
+          <IconLocation class="h-4 w-4 shrink-0" /> Mankato Makerspace, 1700 3rd Ave</a
         >
       </div>
 
@@ -225,36 +225,36 @@ useHead(
           >
         </p>
 
-        <dl class="grid grid-cols-[100px_1fr] items-center my-8">
-          <dt class="font-semibold text-xl text-lime font-display">5:30PM</dt>
-          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-xl font-normal">
+        <dl class="my-8 grid grid-cols-[100px_1fr] items-center">
+          <dt class="font-display text-xl font-semibold text-lime">5:30PM</dt>
+          <dd class="my-2 rounded-lg bg-sprout/50 px-4 py-3 font-accent text-xl font-normal">
             Social hour - Mingle, snack, &amp; craft
           </dd>
 
-          <dt class="font-semibold text-xl text-lime font-display">6:45PM</dt>
-          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-xl font-normal">
+          <dt class="font-display text-xl font-semibold text-lime">6:45PM</dt>
+          <dd class="my-2 rounded-lg bg-sprout/50 px-4 py-3 font-accent text-xl font-normal">
             Candidate speeches
           </dd>
 
-          <dt class="font-semibold text-xl text-lime font-display">7:00PM</dt>
-          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-xl font-normal">
+          <dt class="font-display text-xl font-semibold text-lime">7:00PM</dt>
+          <dd class="my-2 rounded-lg bg-sprout/50 px-4 py-3 font-accent text-xl font-normal">
             Music by Ark &amp; Grum
           </dd>
 
-          <dt class="font-semibold text-xl text-lime font-display">8:00PM</dt>
-          <dd class="bg-sprout/50 rounded-lg my-2 py-3 px-4 font-accent text-xl font-normal">
+          <dt class="font-display text-xl font-semibold text-lime">8:00PM</dt>
+          <dd class="my-2 rounded-lg bg-sprout/50 px-4 py-3 font-accent text-xl font-normal">
             Music by Laura Schultz &amp; Colin Scharf
           </dd>
         </dl>
 
-        <ul class="list-none p-0 my-8">
-          <li class="sprout-bullet flex items-start gap-4 mb-3">
+        <ul class="my-8 list-none p-0">
+          <li class="sprout-bullet mb-3 flex items-start gap-4">
             <div>
               <span class="underline">Make your own campaign swag</span><br />
               Screen printing, button making, &amp; block printing
             </div>
           </li>
-          <li class="sprout-bullet flex items-start gap-4 mb-3">
+          <li class="sprout-bullet mb-3 flex items-start gap-4">
             <div>
               <span class="underline">Support the campaign</span><br />
               Donate, volunteer, yard signs, &amp; campaign lit

@@ -38,7 +38,9 @@ useHead(
 
     <h3>Early Life</h3>
 
-    <div class="flex max-md:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-md:*:basis-auto">
+    <div
+      class="mb-4 flex items-start gap-6 *:flex-1 *:basis-1/2 max-md:flex-col max-md:*:basis-auto"
+    >
       <div>
         <p>
           Julia’s sense of justice and passion for helping others was instilled in her from
@@ -64,7 +66,7 @@ useHead(
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia-maybe-idk.webp"
         alt="Julia Hamann"
-        class="w-full h-auto rounded-lg"
+        class="h-auto w-full rounded-lg"
         sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 5.5rem) / 2), 436px"
         :image-breakpoints="[240, 320, 420, 560, 690]"
         :device-breakpoints="[]"
@@ -107,12 +109,14 @@ useHead(
       impact.
     </p>
 
-    <div class="flex max-md:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-md:*:basis-auto">
+    <div
+      class="mb-4 flex items-start gap-6 *:flex-1 *:basis-1/2 max-md:flex-col max-md:*:basis-auto"
+    >
       <Image
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia.avif"
         alt="Julia Hamann"
-        class="w-full h-auto rounded-lg"
+        class="h-auto w-full rounded-lg"
         sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 5.5rem) / 2), 436px"
         :image-breakpoints="[240, 320, 420, 560, 727, 872, 1454]"
         :device-breakpoints="[]"
@@ -122,7 +126,7 @@ useHead(
         loading="lazy"
         decoding="async"
       />
-      <div class="self-stretch flex flex-col justify-center">
+      <div class="flex flex-col justify-center self-stretch">
         <blockquote>
           "I’ve heard a lot about what’s NOT possible and I’m ready to start a new conversation."<br />
           - Julia

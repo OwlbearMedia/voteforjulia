@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useHead } from '@unhead/vue';
-import { RouterLink } from 'vue-router';
 import { Image } from '@imagekit/vue';
+import JuliaButton from '../components/JuliaButton.vue';
 import JuliaContactForm from '../components/JuliaContactForm.vue';
 import { buildPageHead } from '../lib/pageHead';
 
@@ -25,11 +25,11 @@ useHead(
 
 <template>
   <section id="home">
-    <div class="text-center my-4">
+    <div class="my-4 text-center">
       <Image
         url-endpoint="https://ik.imagekit.io/voteforjulia"
         src="/julia-hero.webp"
-        class="w-full h-auto rounded-lg shadow-soft"
+        class="h-auto w-full rounded-lg shadow-soft"
         sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc(100vw - 4rem), 896px"
         :image-breakpoints="[320, 390, 430, 520, 640, 780, 960, 1440, 1920]"
         :device-breakpoints="[]"
@@ -71,12 +71,7 @@ useHead(
       growth, and community.
     </p>
     <div>
-      <RouterLink
-        class="inline-block pt-3 pb-2 px-6 font-action font-semibold rounded-pill shadow-soft hover:no-underline bg-leaf text-white hover:bg-sprout/70"
-        to="/meet-julia"
-      >
-        Learn more about Julia
-      </RouterLink>
+      <JuliaButton to="/meet-julia"> Learn more about Julia </JuliaButton>
     </div>
   </section>
 
@@ -84,16 +79,16 @@ useHead(
 
   <section id="issues">
     <div
-      class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_275px] gap-12 max-md:gap-6 items-center"
+      class="grid grid-cols-1 items-center gap-12 max-md:gap-6 md:grid-cols-[minmax(0,1fr)_275px]"
     >
-      <div class="md:self-stretch md:flex md:flex-col md:justify-between">
+      <div class="md:flex md:flex-col md:justify-between md:self-stretch">
         <h2 class="mt-4 mb-4">Issues</h2>
         <p>
           As mayor, Julia knows she can’t singlehandedly change city policy overnight, but she can
           promise to show up, ask hard questions, bring new ideas to the table, and challenge the
           status quo.
         </p>
-        <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
+        <p class="my-4 rounded-lg bg-sprout/50 p-4 text-center font-accent text-xl">
           Julia wants to start new conversations about issues our town cares about.
         </p>
       </div>
@@ -101,7 +96,7 @@ useHead(
         <Image
           url-endpoint="https://ik.imagekit.io/voteforjulia"
           src="/julia-blue-sky.webp"
-          class="h-auto rounded-lg md:w-[250px] md:max-w-[250px] max-md:w-full max-md:max-w-full max-md:justify-self-center"
+          class="h-auto rounded-lg max-md:w-full max-md:max-w-full max-md:justify-self-center md:w-[250px] md:max-w-[250px]"
           sizes="(max-width: 767px) calc(100vw - 2.5rem), 250px"
           :image-breakpoints="[180, 250, 320, 390, 500, 727, 1454]"
           :device-breakpoints="[]"
@@ -118,7 +113,7 @@ useHead(
     <hr />
 
     <h3>Community Input and Transparency</h3>
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
+    <p class="my-4 rounded-lg bg-sprout/50 p-4 text-center font-accent text-xl">
       Julia wants to ensure that citizens are listened to and that city government remains
       transparent and accountable to the community.
     </p>
@@ -133,7 +128,7 @@ useHead(
     <hr />
 
     <h3>Affordability and Tenants Rights</h3>
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
+    <p class="my-4 rounded-lg bg-sprout/50 p-4 text-center font-accent text-xl">
       Julia understands that Mankato citizens are experiencing serious financial strain and the gap
       between the richest and most impoverished individuals is growing.
     </p>
@@ -146,7 +141,7 @@ useHead(
     <hr />
 
     <h3>Reimagining Public Safety</h3>
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
+    <p class="my-4 rounded-lg bg-sprout/50 p-4 text-center font-accent text-xl">
       Julia believes that safety for citizens goes far beyond law enforcement and emergency
       services.
     </p>
@@ -161,7 +156,7 @@ useHead(
     <hr />
 
     <h3>Environmental Justice and Sustainability</h3>
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
+    <p class="my-4 rounded-lg bg-sprout/50 p-4 text-center font-accent text-xl">
       Julia wants to bring new conversations to the city council about how we can sustain a healthy
       future for Mankato by examining how proposed developments, like data centers, might impact our
       environment.
@@ -181,7 +176,9 @@ useHead(
   <section id="volunteer">
     <h2>Volunteer</h2>
 
-    <div class="flex max-md:flex-col items-start gap-6 mb-4 *:flex-[1_1_50%] max-md:*:basis-auto">
+    <div
+      class="mb-4 flex items-start gap-6 *:flex-1 *:basis-1/2 max-md:flex-col max-md:*:basis-auto"
+    >
       <div>
         <p>Join the campaign team to help with outreach, events, and voter engagement.</p>
         <JuliaContactForm />
@@ -191,7 +188,7 @@ useHead(
           url-endpoint="https://ik.imagekit.io/voteforjulia"
           src="/julia.avif"
           alt="Julia Hamann for Mankato Mayor"
-          class="w-full h-auto rounded-lg"
+          class="h-auto w-full rounded-lg"
           sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 5.5rem) / 2), 436px"
           :image-breakpoints="[240, 320, 420, 560, 727, 872, 1454]"
           :device-breakpoints="[]"

@@ -104,15 +104,65 @@ There is no `tailwind.config.js`.
 - **The `md` breakpoint is Tailwind's default (48rem / 768px).** Mobile-specific
   overrides use `max-md:` throughout.
 - **Tailwind's scanner reads plain string literals**, so class names assembled in
-  `.ts`/`.vue` script (e.g. the `BTN` constants in `JuliaFooter.vue`) are picked
-  up — but only if the full class string appears literally, not concatenated
-  fragments.
+  `.ts`/`.vue` script (e.g. the `BUTTON_BASE` / `BUTTON_VARIANTS` constants in
+  `JuliaButton.vue`) are picked up — but only if the full class string appears
+  literally, not concatenated fragments.
+- **`prettier-plugin-tailwindcss` sorts class attributes**, so class order is not
+  yours to choose and `pnpm format` will rewrite it. Two consequences. It only
+  sorts _markup_ — a class string in script (the `JuliaButton.vue` constants) is
+  left alone and drifts from the house order silently, so re-derive it by pasting
+  the string into a scratch `class=""` and running Prettier on that. And the
+  plugin is configured with `tailwindStylesheet` in `.prettierrc`, which v4 needs
+  in place of the `tailwind.config.js` this project deliberately does not have —
+  without it the sort falls back to stock Tailwind and mis-orders the theme's
+  own utilities.
+- **Class order never decides which of two conflicting utilities wins — CSS
+  order does.** `px-4 px-6` on one element resolves to whichever Tailwind emits
+  later, regardless of how they are written, so an override can silently do
+  nothing. The flip side is useful: `flex-1 basis-1/2` works precisely because
+  `.basis-1\/2` is emitted after `.flex-1`, which is why the pages use it rather
+  than an arbitrary `flex-[1_1_50%]`. When leaning on that, check the built CSS.
 - Rules utilities can't express (the multi-image `hr`, `sprout-bullet`, Vue
   `<Transition>` classes) live in the `components` layer of `style.css`. A
   `<Transition name="foo">` is styled by hand-written `.foo-enter-active` /
   `.foo-enter-from` / `.foo-leave-active` / `.foo-leave-to` rules there — grep the
   name to find them. Every transition also gets a `prefers-reduced-motion: reduce`
   branch that zeroes it out; add new ones to that shared block.
+
+## Buttons
+
+Every pill-shaped action on the site — footer, header, hero, modal, both form
+submits — renders through
+[src/components/JuliaButton.vue](../src/components/JuliaButton.vue). Don't
+hand-roll another one; the classes drifted three ways before this existed.
+
+- `variant` is `primary` (filled leaf, white text), `secondary` (white, fern
+  text — for dark surfaces) or `danger` (the destructive form of primary; only
+  the modal's confirm button uses it). Secondary's text is **fern, not leaf**:
+  leaf on white is 4.52:1, clearing AA for normal text by a hair, where fern is
+  5.47:1. Same reasoning as `--color-link` in `style.css`.
+- The rendered tag follows the props: `to` → `RouterLink`, `href` → `<a>`,
+  neither → `<button>` (always with an explicit `type`, so one inside a `<form>`
+  never submits by accident).
+- **Size and layout classes are the caller's**, passed through the fallthrough
+  `class` attr and merged with the variant's — the base deliberately sets no
+  font size, because the footer/header/hero buttons run at body size and the
+  modal and form buttons at `text-sm`. Beware that a caller class overriding a
+  base one (`px-4` against the base `px-6`) is decided by Tailwind's own CSS
+  order, not by which is written last, so it may silently do nothing.
+- Focus goes through the exposed `focus()`, not the element: a template ref on
+  the component yields a component instance, and the root is a `RouterLink`
+  instance rather than an element whenever `to` is set.
+- **The focus ring is two-tone and that is not decoration.** These buttons sit
+  on the light page background, the forest footer, the leaf nav dropdown and the
+  mint modal; no single colour clears 3:1 against all four. `focus-visible:ring-4`
+  fills the 0–4px band with near-black and the offset outline paints white over
+  its outer half, so whichever band a background swallows, the other shows. It is
+  the only custom focus indicator on the site — everything else uses the UA
+  default — and a unit test pins it, because deleting it fails silently.
+
+The two icon-only controls — the header's hamburger and the modal's X — are
+plain `<button>`s on purpose; they share none of the pill styling.
 
 ## Icons
 

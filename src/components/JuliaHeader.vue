@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { RouterLink, type RouteLocationRaw } from 'vue-router';
 import { Image } from '@imagekit/vue';
+import JuliaButton from './JuliaButton.vue';
 import IconInstagram from './icons/IconInstagram.vue';
 import IconFacebook from './icons/IconFacebook.vue';
 import { trackDonateClick } from '../lib/analytics';
@@ -41,8 +42,8 @@ function handleDonateClick() {
 </script>
 
 <template>
-  <header class="sticky top-0 z-sticky p-4 text-white bg-forest shadow-strong">
-    <div class="max-w-[960px] mx-auto relative flex flex-wrap items-start justify-between gap-3">
+  <header class="sticky top-0 z-sticky bg-forest p-4 text-white shadow-strong">
+    <div class="relative mx-auto flex max-w-[960px] flex-wrap items-start justify-between gap-3">
       <h1 class="sr-only">{{ title }}</h1>
       <div class="logo-container">
         <RouterLink to="/" aria-label="Vote for Julia Home" @click="closeMenu">
@@ -50,7 +51,7 @@ function handleDonateClick() {
             url-endpoint="https://ik.imagekit.io/voteforjulia"
             src="/julia-hamann-for-mankato-mayor.avif"
             alt="Julia Hamann for Mankato Mayor"
-            class="w-[200px] h-auto"
+            class="h-auto w-[200px]"
             sizes="200px"
             :image-breakpoints="[200, 400]"
             :device-breakpoints="[]"
@@ -64,14 +65,14 @@ function handleDonateClick() {
         </RouterLink>
       </div>
       <button
-        class="menu-toggle block bg-mint rounded-md border-none cursor-pointer py-[1.35rem] px-4 ml-auto z-floating"
+        class="menu-toggle z-floating ml-auto block cursor-pointer rounded-md border-none bg-mint px-4 py-[1.35rem]"
         :aria-label="showMenu ? 'Close menu' : 'Open menu'"
         :aria-expanded="showMenu"
         aria-controls="main-menu"
         @click="toggleMenu"
       >
         <span
-          class="block relative w-7 h-[3px] bg-forest rounded-xs before:content-[''] before:absolute before:left-0 before:w-7 before:h-[3px] before:bg-forest before:rounded-xs before:transition-all before:duration-300 before:-top-[9px] after:content-[''] after:absolute after:left-0 after:w-7 after:h-[3px] after:bg-forest after:rounded-xs after:transition-all after:duration-300 after:top-[9px]"
+          class="relative block h-[3px] w-7 rounded-xs bg-forest before:absolute before:-top-[9px] before:left-0 before:h-[3px] before:w-7 before:rounded-xs before:bg-forest before:transition-all before:duration-300 before:content-[''] after:absolute after:top-[9px] after:left-0 after:h-[3px] after:w-7 after:rounded-xs after:bg-forest after:transition-all after:duration-300 after:content-['']"
         ></span>
       </button>
 
@@ -80,30 +81,33 @@ function handleDonateClick() {
           <ul
             v-show="showMenu"
             id="main-menu"
-            class="flex list-none absolute top-[-6px] right-[6px] w-[220px] flex-col bg-leaf rounded-lg py-4 shadow-[0_8px_24px_rgb(0_0_0/0.15)] z-dropdown"
+            class="absolute top-[-6px] right-[6px] z-dropdown flex w-[220px] list-none flex-col rounded-lg bg-leaf py-4 shadow-[0_8px_24px_rgb(0_0_0/0.15)]"
             :class="{ open: showMenu }"
           >
             <li v-for="link in navLinks" :key="link.label">
               <RouterLink
                 :to="link.to"
-                class="text-white font-action font-semibold tracking-[0.08em] flex px-4 py-2"
+                class="flex px-4 py-2 font-action font-semibold tracking-[0.08em] text-white"
                 @click="closeMenu"
                 >{{ link.label }}</RouterLink
               >
             </li>
-            <li>
-              <RouterLink
+            <!-- flex-col so the inline-flex button stretches to the menu width
+                 the way its block-level predecessor did. -->
+            <li class="mx-3 my-1 flex flex-col">
+              <JuliaButton
+                variant="secondary"
+                class="tracking-[0.08em]"
                 to="/donate"
-                class="font-action font-semibold tracking-[0.08em] rounded-pill pt-[0.7rem] pb-2 px-4 shadow-soft flex bg-white text-fern hover:bg-white/85 mx-3 my-1 justify-center"
                 @click="handleDonateClick"
-                >Donate</RouterLink
+                >Donate</JuliaButton
               >
             </li>
-            <li class="flex items-center justify-center gap-2.5 text-2xl text-white px-4 py-2 mt-2">
+            <li class="mt-2 flex items-center justify-center gap-2.5 px-4 py-2 text-2xl text-white">
               <a
                 href="https://www.instagram.com/voteforjuliahamann"
                 aria-label="Julia on Instagram"
-                class="text-white inline-flex"
+                class="inline-flex text-white"
                 target="_blank"
                 rel="noopener noreferrer"
                 ><IconInstagram
@@ -111,7 +115,7 @@ function handleDonateClick() {
               <a
                 href="https://www.facebook.com/profile.php?id=61590411090366"
                 aria-label="Julia on Facebook"
-                class="text-white inline-flex"
+                class="inline-flex text-white"
                 target="_blank"
                 rel="noopener noreferrer"
                 ><IconFacebook

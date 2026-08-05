@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
 import { trackDonateClick, trackFooterIconClick } from '../lib/analytics';
+import JuliaButton from './JuliaButton.vue';
 import IconInstagram from './icons/IconInstagram.vue';
 import IconFacebook from './icons/IconFacebook.vue';
 import IconEnvelope from './icons/IconEnvelope.vue';
@@ -9,12 +9,6 @@ import IconEnvelope from './icons/IconEnvelope.vue';
 defineOptions({
   name: 'JuliaFooter'
 });
-
-// Tailwind's scanner reads these string literals like any template text.
-const BTN_BASE =
-  'inline-block pt-3 pb-2 px-6 font-action font-semibold rounded-pill shadow-soft hover:no-underline';
-const BTN = `${BTN_BASE} bg-leaf text-white hover:bg-sprout/70`;
-const BTN_INVERT = `${BTN_BASE} bg-white text-fern mr-4 hover:bg-white/85`;
 
 function handleFooterIconClick(href: string, ariaLabel: string) {
   trackFooterIconClick(href, ariaLabel);
@@ -155,9 +149,9 @@ onBeforeUnmount(() => {
 
 <template>
   <footer
-    class="py-6 px-8 bg-forest shadow-strong-up backdrop-blur-[4px] motion-reduce:backdrop-blur-none text-center text-sm text-white"
+    class="bg-forest px-8 py-6 text-center text-sm text-white shadow-strong-up backdrop-blur-[4px] motion-reduce:backdrop-blur-none"
   >
-    <div class="grid grid-cols-2 max-md:grid-cols-1 gap-6 max-w-[960px] mx-auto">
+    <div class="mx-auto grid max-w-[960px] grid-cols-2 gap-6 max-md:grid-cols-1">
       <div class="max-md:row-start-2">
         <p class="font-accent text-xl">Follow Julia's Campaign</p>
         <div class="flex items-center justify-center gap-2.5 text-2xl text-white">
@@ -208,14 +202,14 @@ onBeforeUnmount(() => {
             ref="footerSupportActionsRef"
             class="footer-support-actions inline-flex items-center"
             :class="{
-              'footer-support-actions-hidden invisible pointer-events-none':
+              'footer-support-actions-hidden pointer-events-none invisible':
                 isFooterSupportActionsFixed
             }"
             :aria-hidden="isFooterSupportActionsFixed ? 'true' : undefined"
             :inert="isFooterSupportActionsFixed ? true : undefined"
           >
-            <RouterLink :class="BTN_INVERT" to="/volunteer">Volunteer</RouterLink>
-            <RouterLink :class="BTN" to="/donate" @click="handleDonateClick">Donate</RouterLink>
+            <JuliaButton variant="secondary" class="mr-4" to="/volunteer">Volunteer</JuliaButton>
+            <JuliaButton to="/donate" @click="handleDonateClick">Donate</JuliaButton>
           </div>
         </div>
       </div>
@@ -230,15 +224,15 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div
       v-if="isFooterSupportActionsFixed"
-      class="fixed left-0 right-0 bottom-0 h-[calc(5rem_+_var(--safe-area-inset-bottom))] bg-forest shadow-strong-up z-overlay pointer-events-none"
+      class="pointer-events-none fixed right-0 bottom-0 left-0 z-overlay h-[calc(5rem_+_var(--safe-area-inset-bottom))] bg-forest shadow-strong-up"
       aria-hidden="true"
     ></div>
     <div
       v-if="isFooterSupportActionsFixed"
-      class="footer-support-actions footer-support-actions-fixed inline-flex items-center fixed left-1/2 -translate-x-1/2 bottom-[calc(1rem_+_var(--safe-area-inset-bottom))] z-floating"
+      class="footer-support-actions footer-support-actions-fixed fixed bottom-[calc(1rem_+_var(--safe-area-inset-bottom))] left-1/2 z-floating inline-flex -translate-x-1/2 items-center"
     >
-      <RouterLink :class="BTN_INVERT" to="/volunteer">Volunteer</RouterLink>
-      <RouterLink :class="BTN" to="/donate" @click="handleDonateClick">Donate</RouterLink>
+      <JuliaButton variant="secondary" class="mr-4" to="/volunteer">Volunteer</JuliaButton>
+      <JuliaButton to="/donate" @click="handleDonateClick">Donate</JuliaButton>
     </div>
   </Teleport>
 </template>

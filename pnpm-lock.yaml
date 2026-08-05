@@ -26,7 +26,7 @@ importers:
         version: 10.0.1(eslint@10.6.0(jiti@2.7.0)(supports-color@8.1.1))
       '@lhci/cli':
         specifier: ^0.15.1
-        version: 0.15.1
+        version: 0.15.1(supports-color@8.1.1)
       '@newrelic/publish-sourcemap':
         specifier: ^5.1.4
         version: 5.1.4(supports-color@8.1.1)
@@ -75,6 +75,9 @@ importers:
       prettier:
         specifier: 3.9.4
         version: 3.9.4
+      prettier-plugin-tailwindcss:
+        specifier: ^0.8.1
+        version: 0.8.1(prettier@3.9.4)
       rollup-plugin-visualizer:
         specifier: ^7.0.1
         version: 7.0.1(rolldown@1.1.4)
@@ -2678,6 +2681,61 @@ packages:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
 
+  prettier-plugin-tailwindcss@0.8.1:
+    resolution: {integrity: sha512-iaFMYqDsE4ffdDkn5qup0j5f2aCEBFZrdrZnvu9QKTlWx/iGPeQ4HHu7b7fCPMxeo9nwQBiOAh2nSypdFYWJkw==}
+    engines: {node: '>=20.19'}
+    peerDependencies:
+      '@ianvs/prettier-plugin-sort-imports': '*'
+      '@prettier/plugin-hermes': '*'
+      '@prettier/plugin-oxc': '*'
+      '@prettier/plugin-pug': '*'
+      '@shopify/prettier-plugin-liquid': '*'
+      '@trivago/prettier-plugin-sort-imports': '*'
+      '@zackad/prettier-plugin-twig': '*'
+      prettier: ^3.0
+      prettier-plugin-astro: '*'
+      prettier-plugin-css-order: '*'
+      prettier-plugin-jsdoc: '*'
+      prettier-plugin-marko: '*'
+      prettier-plugin-multiline-arrays: '*'
+      prettier-plugin-organize-attributes: '*'
+      prettier-plugin-organize-imports: '*'
+      prettier-plugin-sort-imports: '*'
+      prettier-plugin-svelte: '*'
+    peerDependenciesMeta:
+      '@ianvs/prettier-plugin-sort-imports':
+        optional: true
+      '@prettier/plugin-hermes':
+        optional: true
+      '@prettier/plugin-oxc':
+        optional: true
+      '@prettier/plugin-pug':
+        optional: true
+      '@shopify/prettier-plugin-liquid':
+        optional: true
+      '@trivago/prettier-plugin-sort-imports':
+        optional: true
+      '@zackad/prettier-plugin-twig':
+        optional: true
+      prettier-plugin-astro:
+        optional: true
+      prettier-plugin-css-order:
+        optional: true
+      prettier-plugin-jsdoc:
+        optional: true
+      prettier-plugin-marko:
+        optional: true
+      prettier-plugin-multiline-arrays:
+        optional: true
+      prettier-plugin-organize-attributes:
+        optional: true
+      prettier-plugin-organize-imports:
+        optional: true
+      prettier-plugin-sort-imports:
+        optional: true
+      prettier-plugin-svelte:
+        optional: true
+
   prettier@3.9.4:
     resolution: {integrity: sha512-yWG/o/4oJfo036EKAfK6ACAoDOfHeRHx4tuxkfBZiauURiaSmYwlpOr5LQqKtIkRD2z1PLteme2WoxEnj4tHTg==}
     engines: {node: '>=14'}
@@ -3860,16 +3918,16 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@lhci/cli@0.15.1':
+  '@lhci/cli@0.15.1(supports-color@8.1.1)':
     dependencies:
-      '@lhci/utils': 0.15.1
+      '@lhci/utils': 0.15.1(supports-color@8.1.1)
       chrome-launcher: 0.13.4
       compression: 1.8.1
       debug: 4.4.3(supports-color@8.1.1)
       express: 4.22.2
       inquirer: 6.5.2
       isomorphic-fetch: 3.0.0
-      lighthouse: 12.6.1
+      lighthouse: 12.6.1(supports-color@8.1.1)
       lighthouse-logger: 1.2.0
       open: 7.4.2
       proxy-agent: 6.5.0
@@ -3886,12 +3944,12 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@lhci/utils@0.15.1':
+  '@lhci/utils@0.15.1(supports-color@8.1.1)':
     dependencies:
       debug: 4.4.3(supports-color@8.1.1)
       isomorphic-fetch: 3.0.0
       js-yaml: 3.15.1
-      lighthouse: 12.6.1
+      lighthouse: 12.6.1(supports-color@8.1.1)
       tree-kill: 1.2.2
     transitivePeerDependencies:
       - bare-abort-controller
@@ -3963,10 +4021,10 @@ snapshots:
   '@pkgjs/parseargs@0.11.0':
     optional: true
 
-  '@puppeteer/browsers@2.13.2':
+  '@puppeteer/browsers@2.13.2(supports-color@8.1.1)':
     dependencies:
       debug: 4.4.3(supports-color@8.1.1)
-      extract-zip: 2.0.1
+      extract-zip: 2.0.1(supports-color@8.1.1)
       progress: 2.0.3
       proxy-agent: 6.5.0
       semver: 7.8.5
@@ -5296,7 +5354,7 @@ snapshots:
       iconv-lite: 0.4.24
       tmp: 0.0.33
 
-  extract-zip@2.0.1:
+  extract-zip@2.0.1(supports-color@8.1.1):
     dependencies:
       debug: 4.4.3(supports-color@8.1.1)
       get-stream: 5.2.0
@@ -5927,7 +5985,7 @@ snapshots:
 
   lighthouse-stack-packs@1.12.2: {}
 
-  lighthouse@12.6.1:
+  lighthouse@12.6.1(supports-color@8.1.1):
     dependencies:
       '@paulirish/trace_engine': 0.0.53
       '@sentry/node': 7.120.4
@@ -5948,7 +6006,7 @@ snapshots:
       metaviewport-parser: 0.3.0
       open: 8.4.2
       parse-cache-control: 1.0.1
-      puppeteer-core: 24.43.1
+      puppeteer-core: 24.43.1(supports-color@8.1.1)
       robots-parser: 3.0.1
       semver: 5.7.2
       speedline-core: 1.4.3
@@ -6387,6 +6445,10 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
+  prettier-plugin-tailwindcss@0.8.1(prettier@3.9.4):
+    dependencies:
+      prettier: 3.9.4
+
   prettier@3.9.4: {}
 
   pretty-bytes@5.6.0: {}
@@ -6426,9 +6488,9 @@ snapshots:
 
   punycode@2.3.1: {}
 
-  puppeteer-core@24.43.1:
+  puppeteer-core@24.43.1(supports-color@8.1.1):
     dependencies:
-      '@puppeteer/browsers': 2.13.2
+      '@puppeteer/browsers': 2.13.2(supports-color@8.1.1)
       chromium-bidi: 14.0.0(devtools-protocol@0.0.1608973)
       debug: 4.4.3(supports-color@8.1.1)
       devtools-protocol: 0.0.1608973

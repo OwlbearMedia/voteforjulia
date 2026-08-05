@@ -60,6 +60,7 @@
     "googleapis": "^173.0.0",
     "jsdom": "^29.1.1",
     "prettier": "3.9.4",
+    "prettier-plugin-tailwindcss": "^0.8.1",
     "rollup-plugin-visualizer": "^7.0.1",
     "swagger-ui-dist": "^5.32.11",
     "tailwindcss": "^4.3.3",

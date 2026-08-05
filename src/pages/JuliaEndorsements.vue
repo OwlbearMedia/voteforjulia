@@ -50,13 +50,13 @@ useHead(
   <section id="endorsements">
     <h2>Endorsements</h2>
 
-    <p class="font-accent bg-sprout/50 p-4 my-4 text-center rounded-lg text-xl">
+    <p class="my-4 rounded-lg bg-sprout/50 p-4 text-center font-accent text-xl">
       Julia is grateful to be endorsed by:
     </p>
 
-    <ul class="list-none p-0 my-8 flex flex-col gap-12">
+    <ul class="my-8 flex list-none flex-col gap-12 p-0">
       <li v-for="endorsement in endorsements" :key="endorsement.name">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        <div class="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
           <a
             :href="endorsement.url"
             target="_blank"
@@ -67,7 +67,7 @@ useHead(
               url-endpoint="https://ik.imagekit.io/voteforjulia"
               :src="endorsement.logo"
               :alt="`${endorsement.name} logo`"
-              class="w-full h-auto"
+              class="h-auto w-full"
               sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 7rem) / 3), 283px"
               :image-breakpoints="[240, 320, 440, 566, 728, 960, 1454]"
               :device-breakpoints="[]"
@@ -82,7 +82,7 @@ useHead(
           <div class="md:col-span-2">
             <h3>{{ endorsement.name }}</h3>
             <p v-for="(paragraph, index) in endorsement.body" :key="index">{{ paragraph }}</p>
-            <ul v-if="endorsement.links" class="list-none p-0 m-0">
+            <ul v-if="endorsement.links" class="m-0 list-none p-0">
               <li v-for="link in endorsement.links" :key="link.url" class="mb-1">
                 <a :href="link.url" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>
               </li>
