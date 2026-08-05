@@ -282,16 +282,43 @@ jobs:
               exit 1
             fi
 
-            find . -type f ! -path './tmp/*' ! -name deploy-manifest.txt \
+            # Paths this deploy does not own, and must never delete. The rule
+            # is "anything not in the manifest is stale", which is only safe
+            # while the directory holds nothing but deployed code — and here it
+            # does not. On test the app root *is* the subdomain's document
+            # root, so cPanel's own files sit in the directory this step walks,
+            # `.htaccess` among them. That file carries the CloudLinux
+            # Passenger directives and every SetEnv the app reads. Delete it
+            # and LiteSpeed stops handing requests to Passenger and serves a
+            # directory listing instead: the app is unreachable, cPanel reports
+            # it as "not configured", and the selector still cheerfully says
+            # `started` because the registration is untouched. That took the
+            # test API down from 2026-08-03 (when this step was introduced)
+            # until 2026-08-05, with the deploy reporting success throughout.
+            #
+            # Production escaped only because its document root (~/api-sub) is
+            # a different directory from its app root (~/api). That split is
+            # cPanel configuration, not a guarantee, so both workflows carry
+            # this list.
+            protected='^(deploy-manifest\.txt|\.htaccess|\.user\.ini|stderr\.log)$|^(\.well-known|cgi-bin)/'
+
+            find . -type f ! -path './tmp/*' \
               | sed 's|^\./||' \
               | LC_ALL=C sort > /tmp/deployed-files.$$
-            LC_ALL=C comm -23 /tmp/deployed-files.$$ deploy-manifest.txt > /tmp/stale-files.$$
+            # `|| true` because grep exits 1 when it filters everything out,
+            # which pipefail would otherwise treat as a failure.
+            LC_ALL=C comm -23 /tmp/deployed-files.$$ deploy-manifest.txt \
+              | grep -Ev "$protected" > /tmp/stale-files.$$ || true
 
             if [ -s /tmp/stale-files.$$ ]; then
               echo "Removing $(wc -l < /tmp/stale-files.$$) stale file(s):"
               cat /tmp/stale-files.$$
               tr '\n' '\0' < /tmp/stale-files.$$ | xargs -0 -r rm -f --
-              find . -mindepth 1 -type d -empty ! -path './tmp*' -delete
+              # Same reasoning for directories: cPanel creates .well-known (ACME
+              # renewal) and cgi-bin empty, and an empty directory is exactly
+              # what this sweep removes.
+              find . -mindepth 1 -type d -empty ! -path './tmp*' \
+                ! -name .well-known ! -name cgi-bin -delete
             else
               echo "No stale files."
             fi
