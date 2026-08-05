@@ -46,13 +46,13 @@ const props = withDefaults(
 // Tailwind's scanner reads these string literals like any template text — which
 // works only because each class appears here whole, never concatenated.
 //
-// The focus ring is two-tone on purpose. These buttons sit on the light page
-// background, the forest footer, the leaf nav dropdown and the mint modal, and
-// no single colour clears 3:1 against all four. `ring-4` fills the 0–4px band
-// with near-black and the offset outline paints white over its outer half, so
-// whichever band the background swallows, the other one shows. `ring` composes
-// with `shadow-soft` rather than replacing it — they are separate variables in
-// v4's box-shadow chain.
+// The focus indicator is two-tone on purpose. These buttons sit on the light
+// page background, the forest footer, the leaf nav dropdown and the mint modal,
+// and no single colour clears 3:1 against all four. The 4px halo fills the
+// 0–4px band with near-black and the offset outline paints white over its outer
+// half, so whichever band the background swallows, the other one shows. It
+// composes with the resting shadow rather than replacing it — the two are
+// separate variables in v4's box-shadow chain.
 //
 // `no-underline` is unconditional rather than hover-only, which is what it used
 // to be: style.css underlines `p a` at rest, so a link-form button dropped into
@@ -61,8 +61,10 @@ const props = withDefaults(
 // outranks the base-layer rule whatever the specificity.
 //
 // Naming a class in a comment is enough to emit it: the scanner reads comment
-// text like any other, so the three utilities this file discusses but no longer
-// applies were shipping as dead CSS until these comments were reworded.
+// text like any other, so utilities this file discusses but does not apply ship
+// as dead CSS. Avoided above where a distinctive token made it easy; not worth
+// contorting prose for, since plain English words are utilities too (see
+// docs/conventions.md).
 //
 // Ordered the way prettier-plugin-tailwindcss orders class attributes. The
 // plugin only sorts markup, so a string in script drifts from the house order
@@ -91,26 +93,34 @@ const isLink = computed(() => Boolean(props.to || props.href));
 // Font size is deliberately not part of the base: the footer/header/home
 // buttons run at body size, the modal and form buttons at `text-sm`. Callers
 // pass that (and any layout classes) through the fallthrough `class` attr.
-const classes = computed(() => [
-  BUTTON_BASE,
-  BUTTON_VARIANTS[props.variant],
-  // `pointer-events-none` is what makes a disabled link unclickable; paired
-  // with tabindex="-1" below it is unreachable by keyboard too. Cancelling the
-  // caller's own @click instead would depend on handler ordering.
-  isLink.value && props.disabled ? 'pointer-events-none opacity-60' : ''
-]);
+const classes = computed(() => [BUTTON_BASE, BUTTON_VARIANTS[props.variant]]);
 
-const tag = computed(() => (props.to ? RouterLink : props.href ? 'a' : 'button'));
+/**
+ * A disabled link is not rendered as a link at all.
+ *
+ * Styling one to look disabled is not enough, and neither is the obvious
+ * hardening: `pointer-events-none` only stops the mouse and `tabindex="-1"`
+ * only stops tabbing, so `element.click()` — the path scripts take, and the
+ * path some assistive technologies take to activate a control — still ran the
+ * caller's handler and still navigated. Rendering a <button disabled> removes
+ * the question: there is no href to follow, and the platform will not dispatch
+ * a click on a disabled form control in the first place. Announced as a
+ * disabled button rather than a disabled link, which is what it now is.
+ */
+const tag = computed(() => {
+  if (props.disabled) return 'button';
+
+  return props.to ? RouterLink : props.href ? 'a' : 'button';
+});
 
 // Built rather than spread from props so a <button> never receives a stray
 // `to`/`href` and a link never receives `type`.
 const tagProps = computed(() => {
-  const disabledLink = props.disabled ? { 'aria-disabled': 'true', tabindex: -1 } : {};
+  if (props.disabled) return { type: isLink.value ? 'button' : props.type, disabled: true };
+  if (props.to) return { to: props.to };
+  if (props.href) return { href: props.href };
 
-  if (props.to) return { to: props.to, ...disabledLink };
-  if (props.href) return { href: props.href, ...disabledLink };
-
-  return { type: props.type, disabled: props.disabled };
+  return { type: props.type, disabled: false };
 });
 
 const root = ref<HTMLElement | ComponentPublicInstance | null>(null);

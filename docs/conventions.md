@@ -107,11 +107,20 @@ There is no `tailwind.config.js`.
   `.ts`/`.vue` script (e.g. the `BUTTON_BASE` / `BUTTON_VARIANTS` constants in
   `JuliaButton.vue`) are picked up — but only if the full class string appears
   literally, not concatenated fragments. **This includes comments**: the scanner
-  reads text, not code, so writing a utility's name in a comment about why the
-  code no longer uses it emits it into the stylesheet as dead CSS. Three of
-  those shipped from `JuliaButton.vue` before anyone noticed. Describe a class
-  you are not applying in prose ("sprout at 70% opacity"), not in its class
-  spelling.
+  reads text, not code, so naming a utility in a comment about why the code no
+  longer applies it emits it into the stylesheet as dead CSS.
+
+  Worth knowing, not worth contorting prose over — **plain English words are
+  utilities too**. `visible`, `static`, `outline` and `ring` are all real
+  classes, so a comment cannot reliably avoid them, and the whole set costs
+  **29 bytes gzipped**. Rewrite a distinctive token you are not applying
+  (`hover:bg-sprout/70` → "sprout at 70% opacity") and leave the English alone.
+  Tailwind's `blocklist` would fix it properly but lives in the JS-config
+  compatibility layer, which would mean reintroducing `tailwind.config.js` for
+  those 29 bytes — see the note above on not having one. To audit the current
+  set, list the class selectors in `dist/assets/*.css` and find the ones whose
+  only occurrence in `src/` is on a comment line.
+
 - **`prettier-plugin-tailwindcss` sorts class attributes**, so class order is not
   yours to choose and `pnpm format` will rewrite it. Two consequences. It only
   sorts _markup_ — a class string in script (the `JuliaButton.vue` constants) is
@@ -156,10 +165,13 @@ hand-roll another one; the classes drifted three ways before this existed.
   hand. Forest is the other tempting choice and is wrong for a different
   reason: it is the footer's own background, so the Donate button would vanish
   into the bar.
-- **`disabled` is handled per tag, not passed through.** A `<button>` gets the
-  real attribute; a link gets `aria-disabled`, `tabindex="-1"` and
-  `pointer-events-none`, because `disabled` means nothing on an anchor and a
-  faded-but-live link is worse than no disabled state at all.
+- **A disabled link is rendered as a disabled `<button>`, not a faded `<a>`.**
+  `disabled` is not an attribute anchors have, and the styling-only hardening
+  that looks sufficient is not: `pointer-events-none` only stops the mouse and
+  `tabindex="-1"` only stops tabbing, so `element.click()` — scripts, and some
+  assistive-tech activation paths — still navigated and still ran the caller's
+  `@click`. Swapping the tag closes it, because the platform will not dispatch
+  a click on a disabled form control at all. A unit test pins that.
 - **Size and layout classes are the caller's**, passed through the fallthrough
   `class` attr and merged with the variant's — the base deliberately sets no
   font size, because the footer/header/hero buttons run at body size and the

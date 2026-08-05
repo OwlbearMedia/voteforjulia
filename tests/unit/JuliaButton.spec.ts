@@ -1,5 +1,5 @@
 import { mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import JuliaButton from '../../src/components/JuliaButton.vue';
 
@@ -96,16 +96,46 @@ describe('JuliaButton', () => {
     expect(clickable.emitted('click')).toHaveLength(1);
   });
 
-  // `disabled` is meaningless on an anchor: the attribute does not exist there,
-  // so the link would still navigate and still take focus while wearing the
-  // disabled styling.
-  it('makes a disabled link genuinely inoperable, not just faded', () => {
-    const wrapper = mount(JuliaButton, { props: { href: '/donate', disabled: true } });
+  // Both forms disable their submit button while the request is in flight. The
+  // tag swap that handles disabled links must not demote that to type="button",
+  // or the form would stop submitting the moment it was re-enabled.
+  it('keeps type="submit" on a disabled submit button', () => {
+    const wrapper = mount(JuliaButton, { props: { type: 'submit', disabled: true } });
 
+    expect(wrapper.element.tagName).toBe('BUTTON');
+    expect(wrapper.attributes('type')).toBe('submit');
+    expect(wrapper.attributes('disabled')).toBeDefined();
+  });
+
+  // `disabled` is meaningless on an anchor — the attribute does not exist
+  // there — so a disabled link renders as a disabled <button> instead. Styling
+  // alone was not enough: pointer-events-none only stops the mouse and
+  // tabindex="-1" only stops tabbing, leaving element.click() (scripts, and
+  // some assistive-tech activation paths) free to navigate and to run the
+  // caller's handler.
+  it('renders a disabled link as a disabled button, with no href to follow', () => {
+    const onClick = vi.fn();
+    const wrapper = mountAttached({
+      props: { href: '/donate', disabled: true },
+      attrs: { onClick }
+    });
+
+    expect(wrapper.element.tagName).toBe('BUTTON');
+    expect(wrapper.attributes('href')).toBeUndefined();
+    expect(wrapper.attributes('disabled')).toBeDefined();
+
+    // The platform refuses to dispatch a click on a disabled form control, so
+    // the activation path that defeated the styling-only version is closed.
+    (wrapper.element as HTMLElement).click();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('still renders a live link when it is not disabled', () => {
+    const wrapper = mount(JuliaButton, { props: { href: '/donate' } });
+
+    expect(wrapper.element.tagName).toBe('A');
+    expect(wrapper.attributes('href')).toBe('/donate');
     expect(wrapper.attributes('disabled')).toBeUndefined();
-    expect(wrapper.attributes('aria-disabled')).toBe('true');
-    expect(wrapper.attributes('tabindex')).toBe('-1');
-    expect(wrapper.classes()).toContain('pointer-events-none');
   });
 
   // JuliaModal focuses its confirm button on open through this method; a
