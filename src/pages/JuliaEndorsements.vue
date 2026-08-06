@@ -33,6 +33,24 @@ const endorsements: Endorsement[] = [
         url: 'https://sites.google.com/indivisiblespgm.org/indivisiblespgm/elections/2026-mankato-mayor-primary'
       }
     ]
+  },
+  {
+    name: 'Run for Something',
+    logo: '/run-for-something.jpg',
+    url: 'https://www.runforsomething.net/',
+    body: [
+      'Run for Something is a national organization that recruits and supports the next generation of progressive leaders for state and local office.'
+    ],
+    links: [
+      {
+        label: 'Run for Something',
+        url: 'https://runforsomething.net/'
+      },
+      {
+        label: 'Julia Hamann Endorsement',
+        url: 'https://directory.runforsomething.net/candidate/14077cfb2901e06d5815cceab4945a0c/hamann-julia/?fbclid=IwY2xjawTg2oVleHRuA2FlbQIxMABicmlkETFEa1VZUUVUbjAxcFo4dk5xc3J0YwZhcHBfaWQQMjIyMDM5MTc4ODIwMDg5MgABHjz5Kmf9CVbWyNZo2mjWlO78C9MTDH8mcWU9V_dtxkTHLQ6DIBKQfWrBvTDq_aem_CqWpu1RuExPVnpd9AMlwGA'
+      }
+    ]
   }
 ];
 
