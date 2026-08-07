@@ -204,6 +204,7 @@ export default defineConfig({
         }): Promise<{
           rowIndex: number;
           row: string[];
+          totalRows: number;
         } | null> {
           const spreadsheetId = getSpreadsheetId(env);
           const worksheet =
@@ -223,7 +224,14 @@ export default defineConfig({
           const rowIndex = rows.findIndex((row) => row[3] === email);
           if (rowIndex < 0) return null;
 
-          return { rowIndex, row: rows[rowIndex] as string[] };
+          // `totalRows` is what lets the specs check *where* the row landed, not
+          // just that it exists. values.get trims trailing empty rows, so this
+          // is the height of the real data — a correctly appended submission is
+          // the last of them. Searching every row for the email, which is all
+          // this task used to do, passes just as happily on a row stranded 900
+          // rows below the data as on one in the right place; that is precisely
+          // how the August 2026 outage got through CI for four days.
+          return { rowIndex, row: rows[rowIndex] as string[], totalRows: rows.length };
         },
 
         async deleteSheetRow({

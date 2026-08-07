@@ -158,17 +158,32 @@ The ordering is deliberate and load-bearing:
   placement inside the write, and inserts rather than overwrites, so a row can
   land in an unexpected position but never on top of an existing one.
 - **Scoping the range does _not_ scope the API's table detection**, and assuming
-  it did cost two days of yard-sign rows. The range (`A:G`, the submission's own
-  columns) says where the API starts looking; the table it finds is the
-  contiguous block of data, and a column _outside_ that range holding values
-  further down stretches the table with it. A checkbox column reads `FALSE`
-  rather than empty in every cell it covers, so one filled to row 958 sent
-  appends to row 959 — far below anything a human scrolls to, while the endpoint
-  returned 200 and the submitter got their confirmation email. Nothing below the
-  live data may hold values; clearing a checkbox is not enough, because a
-  checkbox cell with no value still reads `FALSE` — the validation rule itself
-  has to go. The append response's `tableRange` and `updates.updatedRange` are
-  logged on every write so the next occurrence is visible rather than silent.
+  it did cost four days of yard-sign requests (2026-08-01 to 2026-08-06). The
+  range (`A:G`, the submission's own columns) says where the API starts looking;
+  the table it finds is the contiguous block of data, and a column _outside_
+  that range holding values further down stretches the table with it. On
+  `Yard Signs` the `Paid` and `Delivered` checkbox columns had been filled to
+  row 963 — a checkbox reads `FALSE` rather than empty in every cell it covers,
+  so it is data — and submissions landed at 959 and 960, far below anything a
+  human scrolls to, while the endpoint returned 200 and each submitter got their
+  confirmation email. The append response's `tableRange` and
+  `updates.updatedRange` are logged on every write so a recurrence is visible
+  rather than silent, and both e2e specs now assert the new row is the _last_
+  row of the sheet, which is the check that was missing: searching for the row
+  by email finds it just as happily 900 rows out of place.
+- **Nothing below the live rows may hold values, and that is a property of the
+  spreadsheet, not of this code.** Clearing a checkbox is not enough — a
+  checkbox cell with no value still reads `FALSE`, so the validation rule itself
+  has to go. Keeping it that way is
+  [sheets/checkbox-validation.gs](../sheets/checkbox-validation.gs), an Apps
+  Script `onChange` trigger that puts a checkbox on a row if and only if that
+  row holds a submission, and strips validation below the data. It exists for
+  rows typed in by hand; rows the API appends need no help, because
+  `INSERT_ROWS` inherits validation from the row above (verified 2026-08-06 — an
+  append onto the cleaned sheet landed at row 29 with `Paid` and `Delivered`
+  already `BOOLEAN`). Like [monitoring/](../monitoring/), the checked-in copy
+  and the one running in the spreadsheet **drift**: nothing syncs them, so a
+  change in one needs a matching change in the other.
 
 ## Environments
 
