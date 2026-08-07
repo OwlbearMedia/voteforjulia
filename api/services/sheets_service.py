@@ -180,12 +180,17 @@ def append_row(config: SheetsConfig, row: list[str]) -> None:
     service = _get_sheets_service(config)
     worksheet_title = _resolve_worksheet_title(service, config.spreadsheet_id, config.worksheet)
 
-    # The range is scoped to exactly the columns this submission writes, which
-    # is what the previous hand-rolled row search was really for: append()'s
-    # table detection was "thrown off" by unrelated columns holding values in
-    # rows with no real submission (a checkbox column defaults every cell to
-    # FALSE rather than truly empty). Bounding the range excludes those columns
-    # from detection without taking the placement decision away from the API.
+    # The range is scoped to exactly the columns this submission writes. Note
+    # what that does and does not buy: it says where the API starts looking, but
+    # it does NOT confine table detection to those columns. The table is the
+    # contiguous block of data, and a column outside A:G holding values further
+    # down stretches it. This was assumed to be the fix for the problem the old
+    # hand-rolled row search existed to solve -- a checkbox column reads FALSE
+    # rather than empty in every cell it covers -- and it is not. One filled to
+    # row 958 put two yard-sign rows at 959 and 960, hundreds of rows below the
+    # live data, while this call, the endpoint and the confirmation email all
+    # reported success. The sheet has to stay clear below the real rows; the
+    # logging after the write is what makes a recurrence visible.
     end_column = _column_letter(max(len(row), 1))
     range_name = f"{_quote_sheet_title(worksheet_title)}!A:{end_column}"
 
@@ -216,16 +221,42 @@ def append_row(config: SheetsConfig, row: list[str]) -> None:
     # discards a stale one long before a submission — rare traffic riding on a
     # frequent probe's connection hygiene.
     try:
-        service.spreadsheets().values().append(
-            spreadsheetId=config.spreadsheet_id,
-            range=range_name,
-            valueInputOption="RAW",
-            insertDataOption="INSERT_ROWS",
-            body={"values": [row]},
-        ).execute()
+        response = (
+            service.spreadsheets()
+            .values()
+            .append(
+                spreadsheetId=config.spreadsheet_id,
+                range=range_name,
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body={"values": [row]},
+            )
+            .execute()
+        )
     except _STALE_CONNECTION_ERRORS:
         logger.warning("Sheets client had a dead connection during append; discarding it")
         reset_sheets_service_cache()
         raise
 
-    logger.info("Appended row to %s in spreadsheet %s", range_name, config.spreadsheet_id)
+    # The requested range is `A:G` — whole columns — so logging it says only
+    # "the call succeeded", which is the one thing a 200 already tells us. What
+    # matters is where the API decided to put the row, and it tells us: the
+    # response carries `tableRange` (the block it detected) and
+    # `updates.updatedRange` (the cells it actually wrote).
+    #
+    # This is not a nicety. `values.append` places the row after the last row of
+    # the *detected table*, and that detection is not confined to the columns
+    # named in the range. A column outside A:G that holds values far below the
+    # real data stretches the table with it, and the row lands hundreds of rows
+    # beneath anything a human scrolls to — while this function, the endpoint
+    # and the submitter's confirmation email all report success. The old log
+    # line could not tell that apart from a healthy append, so the sheet
+    # silently stopped updating for two days before anyone noticed.
+    updates = response.get("updates", {}) if isinstance(response, dict) else {}
+    logger.info(
+        "Appended row to %s in spreadsheet %s (detected table %s, wrote %s)",
+        range_name,
+        config.spreadsheet_id,
+        response.get("tableRange", "unknown") if isinstance(response, dict) else "unknown",
+        updates.get("updatedRange", "unknown"),
+    )

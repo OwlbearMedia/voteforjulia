@@ -156,9 +156,19 @@ The ordering is deliberate and load-bearing:
   the first, invisibly — both returned 200 and both submitters got a
   confirmation. `values.append` with `insertDataOption=INSERT_ROWS` resolves
   placement inside the write, and inserts rather than overwrites, so a row can
-  land in an unexpected position but never on top of an existing one. The range
-  is scoped to just the submission's columns so unrelated ones (a checkbox
-  column defaults every cell to `FALSE`) stay out of the API's table detection.
+  land in an unexpected position but never on top of an existing one.
+- **Scoping the range does _not_ scope the API's table detection**, and assuming
+  it did cost two days of yard-sign rows. The range (`A:G`, the submission's own
+  columns) says where the API starts looking; the table it finds is the
+  contiguous block of data, and a column _outside_ that range holding values
+  further down stretches the table with it. A checkbox column reads `FALSE`
+  rather than empty in every cell it covers, so one filled to row 958 sent
+  appends to row 959 — far below anything a human scrolls to, while the endpoint
+  returned 200 and the submitter got their confirmation email. Nothing below the
+  live data may hold values; clearing a checkbox is not enough, because a
+  checkbox cell with no value still reads `FALSE` — the validation rule itself
+  has to go. The append response's `tableRange` and `updates.updatedRange` are
+  logged on every write so the next occurrence is visible rather than silent.
 
 ## Environments
 

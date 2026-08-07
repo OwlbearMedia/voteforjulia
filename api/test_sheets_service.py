@@ -113,6 +113,47 @@ class AppendRowTests(unittest.TestCase):
         # submitted field cannot become a live formula in the volunteers' sheet.
         self.assertEqual(append_call.call_args.kwargs["valueInputOption"], "RAW")
 
+    def test_logs_where_the_row_actually_landed(self) -> None:
+        # The failure this exists for looks exactly like a healthy append from
+        # the outside: HTTP 200, a confirmation email sent, and a log line
+        # saying the row went to `A:G`. `values.append` places the row after the
+        # last row of the table it detects, and that detection is not limited to
+        # the columns in the range — so a stray value in column H at row 900
+        # sends the row to 901 while every signal still reads "success".
+        #
+        # The response is the only thing that can tell those apart, so the
+        # assertion is on the landing spot appearing in the log, not on the call
+        # arguments (which are the same either way and would restate the diff).
+        service = _fake_service([])
+        service.spreadsheets.return_value.values.return_value.append.return_value.execute.return_value = {
+            "tableRange": "'Yard Signs'!A1:H900",
+            "updates": {"updatedRange": "'Yard Signs'!A901:G901"},
+        }
+
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", return_value=service),
+            self.assertLogs("api.services.sheets_service", level="INFO") as captured,
+        ):
+            append_row(_config(worksheet="Yard Signs"), ["2026-01-04", "Jane", "Doe"])
+
+        self.assertIn("'Yard Signs'!A901:G901", captured.output[-1])
+        self.assertIn("'Yard Signs'!A1:H900", captured.output[-1])
+
+    def test_append_logging_survives_a_response_without_placement(self) -> None:
+        # A MagicMock response, or a future API version that drops the field,
+        # must not turn a successful write into an exception in the logging.
+        service = _fake_service([])
+
+        with (
+            patch("google.oauth2.service_account.Credentials.from_service_account_info"),
+            patch("googleapiclient.discovery.build", return_value=service),
+            self.assertLogs("api.services.sheets_service", level="INFO") as captured,
+        ):
+            append_row(_config(), ["2026-01-04", "Jane", "Doe"])
+
+        self.assertIn("unknown", captured.output[-1])
+
     def test_raises_when_gid_not_found(self) -> None:
         service = _fake_service([{"properties": {"sheetId": 999, "title": "Sheet1"}}])
 
