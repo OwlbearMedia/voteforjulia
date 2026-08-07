@@ -64,8 +64,18 @@ function resolveApiBaseUrl(env: CypressEnv): string {
   return (configured ?? DEFAULT_API_BASE_URL).replace(/\/+$/, '');
 }
 
-/** One line per signal that distinguishes a real response from a WAF challenge. */
-function summarizeProbe(label: string, status: number, headers: Headers, body: string): string {
+/**
+ * One line per signal that distinguishes a real response from a WAF challenge.
+ *
+ * Returns the verdict alongside the text so the caller can act on it without
+ * re-deriving it or, worse, grepping its own output.
+ */
+function summarizeProbe(
+  label: string,
+  status: number,
+  headers: Headers,
+  body: string
+): { text: string; challenged: boolean } {
   const server = headers.get('server') ?? '(none)';
   const allowOrigin = headers.get('access-control-allow-origin') ?? '(none)';
   // The tells are documented in docs/hosting.md#imunify360-waf-disabled: the
@@ -73,12 +83,40 @@ function summarizeProbe(label: string, status: number, headers: Headers, body: s
   // status code nor `server: LiteSpeed` on a good day proves anything.
   const challenged = /openresty/i.test(server) || /One moment, please/i.test(body);
 
-  return [
-    `  ${label} -> ${status}`,
-    `    server: ${server}`,
-    `    access-control-allow-origin: ${allowOrigin}`,
-    `    WAF challenge: ${challenged ? 'YES — see docs/hosting.md#imunify360-waf-disabled' : 'no'}`
-  ].join('\n');
+  return {
+    text: [
+      `  ${label} -> ${status}`,
+      `    server: ${server}`,
+      `    access-control-allow-origin: ${allowOrigin}`,
+      `    WAF challenge: ${challenged ? 'YES — see docs/hosting.md#imunify360-waf-disabled' : 'no'}`
+    ].join('\n'),
+    challenged
+  };
+}
+
+/**
+ * Raise the WAF verdict from spec output to a run-summary annotation.
+ *
+ * The diagnosis was already being printed correctly on 2026-08-07 and still
+ * cost an hour, because it sat inside a failing spec's output where nobody
+ * looks first — the run summary said only "Cypress tests: 2 failed". A
+ * `::warning::` on stdout is how a Node task puts a line next to that result.
+ *
+ * Only in Actions: the syntax means nothing to a local `pnpm test:e2e`, where
+ * it would just be a confusing extra line under a readable report.
+ */
+function annotateWafChallenge(apiBaseUrl: string): void {
+  if (process.env.GITHUB_ACTIONS !== 'true') return;
+
+  // Must stay on one line — GitHub ends the command at the first newline.
+  console.log(
+    `::warning title=Imunify360 WAF is challenging this runner::` +
+      `${apiBaseUrl} answered through openresty instead of LiteSpeed, so the host's WAF is active for this runner's IP ` +
+      `and the response carries no CORS headers. Every form post fails in the browser as "Failed to fetch" with nothing ` +
+      `reaching Flask, so the API logs will be empty. This is the WAF, not the site or the tests. ` +
+      `It was disabled site-wide on 2026-08-01 (docs/hosting.md#imunify360-waf-disabled), so its return means the disable ` +
+      `no longer covers this hostname. Re-running may pass simply by drawing a different runner IP.`
+  );
 }
 
 export default defineConfig({
@@ -171,11 +209,15 @@ export default defineConfig({
             }
           ];
 
+          let challenged = false;
+
           for (const { label, url, init } of probes) {
             try {
               const response = await fetch(url, { ...init, redirect: 'manual' });
               const body = await response.text().catch(() => '');
-              lines.push(summarizeProbe(label, response.status, response.headers, body));
+              const probe = summarizeProbe(label, response.status, response.headers, body);
+              challenged = challenged || probe.challenged;
+              lines.push(probe.text);
             } catch (error) {
               // A rejection here is the interesting case, not an error to raise:
               // it means the runner cannot reach the API at all, which is the
@@ -192,6 +234,10 @@ export default defineConfig({
 
           console.log(lines.join('\n'));
 
+          if (challenged) {
+            annotateWafChallenge(apiBaseUrl);
+          }
+
           return null;
         },
 
@@ -204,6 +250,7 @@ export default defineConfig({
         }): Promise<{
           rowIndex: number;
           row: string[];
+          totalRows: number;
         } | null> {
           const spreadsheetId = getSpreadsheetId(env);
           const worksheet =
@@ -223,7 +270,14 @@ export default defineConfig({
           const rowIndex = rows.findIndex((row) => row[3] === email);
           if (rowIndex < 0) return null;
 
-          return { rowIndex, row: rows[rowIndex] as string[] };
+          // `totalRows` is what lets the specs check *where* the row landed, not
+          // just that it exists. values.get trims trailing empty rows, so this
+          // is the height of the real data — a correctly appended submission is
+          // the last of them. Searching every row for the email, which is all
+          // this task used to do, passes just as happily on a row stranded 900
+          // rows below the data as on one in the right place; that is precisely
+          // how the August 2026 outage got through CI for four days.
+          return { rowIndex, row: rows[rowIndex] as string[], totalRows: rows.length };
         },
 
         async deleteSheetRow({

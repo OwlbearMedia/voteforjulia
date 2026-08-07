@@ -5,7 +5,7 @@ const TEST_LAST_NAME = 'AutoTest';
 const TEST_ADDRESS = '123 Main St, Mankato, MN 56001';
 const YARD_SIGN_WORKSHEET = 'Yard Signs';
 
-type SheetRow = { rowIndex: number; row: string[] };
+type SheetRow = { rowIndex: number; row: string[]; totalRows: number };
 
 describe('Yard sign form', () => {
   // Track the sheet row so the after() hook can clean it up even on failure.
@@ -43,13 +43,30 @@ describe('Yard sign form', () => {
     ).then((result) => {
       expect(result, 'Sheet row should exist after successful submission').to.not.equal(null);
 
-      const { rowIndex, row } = result!;
+      const { rowIndex, row, totalRows } = result!;
       // Column layout: [timestamp, firstName, lastName, email, phone, address, preferredPayment]
       expect(row[1]).to.equal(TEST_FIRST_NAME);
       expect(row[2]).to.equal(TEST_LAST_NAME);
       expect(row[3]).to.equal(TEST_EMAIL);
       expect(row[5]).to.equal(TEST_ADDRESS);
       expect(row[6]).to.equal('Online');
+
+      // Where the row landed, not just that it landed. `values.append` picks
+      // the insertion point from the table it detects, and that detection is
+      // not confined to the columns in the range — a filled column outside
+      // them pushes new rows below the live data, where nobody scrolls. That
+      // shipped in August 2026 and cost four days of yard-sign requests while
+      // every signal read healthy: HTTP 200, a confirmation email, and this
+      // suite green, because finding the row by email finds it anywhere.
+      //
+      // A correct append is the last row of the data, so this is an equality
+      // rather than a tolerance. Nothing else writes to this worksheet during
+      // a run: the volunteer spec targets its own, and real submissions arrive
+      // days apart on a municipal campaign.
+      expect(
+        rowIndex,
+        `Submission should be the last row of the sheet (row ${rowIndex + 1} of ${totalRows})`
+      ).to.equal(totalRows - 1);
 
       sheetRowIndex = rowIndex;
     });
