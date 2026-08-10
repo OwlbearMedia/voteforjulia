@@ -7,6 +7,7 @@ import JuliaHome from '../../src/pages/JuliaHome.vue';
 import JuliaSecretRecipe from '../../src/pages/JuliaSecretRecipe.vue';
 import JuliaEvents from '../../src/pages/JuliaEvents.vue';
 import JuliaEndorsements from '../../src/pages/JuliaEndorsements.vue';
+import JuliaNews from '../../src/pages/JuliaNews.vue';
 import JuliaVolunteer from '../../src/pages/JuliaVolunteer.vue';
 import JuliaYardSign from '../../src/pages/JuliaYardSign.vue';
 
@@ -108,6 +109,76 @@ describe('Page components', () => {
             href: 'https://voteforjulia.com/endorsements'
           })
         ])
+      })
+    );
+  });
+
+  it('JuliaNews renders coverage content and configures page SEO metadata', () => {
+    const wrapper = mount(JuliaNews);
+
+    expect(wrapper.text()).toContain('Julia in the news');
+    expect(wrapper.text()).toContain('Candidate for Mankato Mayor Hosts Campaign Launch Party');
+    expect(wrapper.text()).toContain('Hamann, Bases look to bring new conversations');
+    expect(useHeadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'News | Julia Hamann for Mankato Mayor',
+        link: expect.arrayContaining([
+          expect.objectContaining({
+            rel: 'canonical',
+            href: 'https://voteforjulia.com/news'
+          })
+        ])
+      })
+    );
+  });
+
+  it('JuliaNews renders each item’s publication date as written, without timezone drift', () => {
+    // The dates in the page are bare ISO days, which `Date` reads as UTC
+    // midnight — so a `Date`-based formatter renders the 28th anywhere west of
+    // Greenwich, and prerendering bakes that off-by-one into the static HTML.
+    // CI runs in UTC and would never see it, hence pinning Mankato's zone here.
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'America/Chicago';
+
+    try {
+      const wrapper = mount(JuliaNews);
+
+      expect(wrapper.text()).toContain('June 29, 2026 · KEYC');
+      expect(wrapper.text()).toContain('May 30, 2026 · Mankato Free Press');
+    } finally {
+      process.env.TZ = originalTz;
+    }
+  });
+
+  it('JuliaNews describes the video coverage as a VideoObject and the rest as NewsArticles', () => {
+    mount(JuliaNews);
+
+    const head = useHeadMock.mock.calls.at(-1)?.[0] as {
+      script: { type?: string; textContent?: string }[];
+    };
+    const jsonLd = head.script.find((entry) => entry.type === 'application/ld+json');
+    const graph = JSON.parse(jsonLd?.textContent ?? '{}')['@graph'] as Record<string, unknown>[];
+
+    const coverage = graph.filter(
+      (node) => node['@type'] !== 'WebSite' && node['@type'] !== 'Person'
+    );
+
+    expect(coverage).toHaveLength(5);
+    expect(coverage.filter((node) => node['@type'] === 'VideoObject')).toEqual([
+      expect.objectContaining({
+        name: 'RACE TO WATCH: Julia Hamann',
+        uploadDate: '2026-06-25',
+        url: 'https://www.youtube.com/watch?v=UnVrel_BRfs'
+      })
+    ]);
+    expect(coverage.filter((node) => node['@type'] === 'NewsArticle')).toHaveLength(4);
+    expect(coverage).toContainEqual(
+      expect.objectContaining({
+        '@type': 'NewsArticle',
+        headline: 'Candidate for Mankato Mayor Hosts Campaign Launch Party',
+        datePublished: '2026-06-29',
+        author: { '@type': 'Person', name: 'Kate Jones' },
+        publisher: { '@type': 'Organization', name: 'KEYC' }
       })
     );
   });
