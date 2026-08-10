@@ -57,7 +57,7 @@ const endorsements: Endorsement[] = [
     logo: '/nasw-mn.jpeg',
     url: 'https://naswmn.socialworkers.org/About/What-We-Do',
     body: [
-      'NASW\'s Minnesota Chapter (NASW-MN) currently maintains a membership base of nearly 2,000 professionally-trained social workers and students. Every year, they host a number of training and advocacy events around the state, including the Annual Conference, Social Work Summit, and Social Work Day at the Capitol. Their staff, interns, and volunteers work with community partners to promote practices and policies that align with social work ethics and values, and promote social justice.'
+      "NASW's Minnesota Chapter (NASW-MN) currently maintains a membership base of nearly 2,000 professionally-trained social workers and students. Every year, they host a number of training and advocacy events around the state, including the Annual Conference, Social Work Summit, and Social Work Day at the Capitol. Their staff, interns, and volunteers work with community partners to promote practices and policies that align with social work ethics and values, and promote social justice."
     ],
     links: [
       {
