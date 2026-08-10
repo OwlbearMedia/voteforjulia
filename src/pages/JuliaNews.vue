@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Image } from '@imagekit/vue';
+// import { Image } from '@imagekit/vue';
 import { useHead } from '@unhead/vue';
 import IconCalendar from '../components/icons/IconCalendar.vue';
 import { buildPageHead } from '../lib/pageHead';
@@ -38,6 +38,17 @@ interface NewsItem {
 
 /** Newest first — the page renders them in this order. */
 const newsItems: NewsItem[] = [
+  {
+    headline: 'Mankato mayor candidates address questions ahead of primary election',
+    outlet: 'Mankato Free Press',
+    author: 'Ethan Becker',
+    published: '2026-08-07',
+    url: 'https://www.mankatofreepress.com/news/local_news/mankato-mayor-candidates-address-questions-ahead-of-primary-election/article_7d757752-b589-4311-892b-646cd708193a.html',
+    linkLabel: 'Read the full article at Mankato Free Press',
+    body: [
+      'With just days to go before the primary election, The Free Press sent each candidate — Mankato Mayor Najwa Massad, Toby Leonard and Julia Hamann — the same list of questions via email. The following are their responses.'
+    ]
+  },
   {
     headline: 'Candidate for Mankato Mayor Hosts Campaign Launch Party',
     outlet: 'KEYC',
@@ -202,33 +213,33 @@ useHead(
         ><IconCalendar /> {{ formatPublished(item.published) }} &middot; {{ item.outlet }}</a
       >
 
-      <hr class="hr-event" />
+      <!-- <hr class="hr-event" />
 
-      <a
-        v-if="item.image"
-        class="my-4 block"
-        :href="item.url"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <Image
-          url-endpoint="https://ik.imagekit.io/voteforjulia"
-          :src="item.image.src"
-          :alt="item.image.alt"
-          class="h-auto w-full rounded-lg"
-          sizes="(max-width: 767px) calc(100vw - 6.5rem), (max-width: 960px) calc(100vw - 8rem), 832px"
-          :image-breakpoints="item.image.imageBreakpoints"
-          :device-breakpoints="[]"
-          :width="item.image.width"
-          :height="item.image.height"
-          crossorigin="anonymous"
-          :fetchpriority="item.image.eager ? 'high' : undefined"
-          :loading="item.image.eager ? 'eager' : 'lazy'"
-          :decoding="item.image.eager ? undefined : 'async'"
-        />
-      </a>
+        <a
+          v-if="item.image"
+          class="my-4 block"
+          :href="item.url"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Image
+            url-endpoint="https://ik.imagekit.io/voteforjulia"
+            :src="item.image.src"
+            :alt="item.image.alt"
+            class="h-auto w-full rounded-lg"
+            sizes="(max-width: 767px) calc(100vw - 6.5rem), (max-width: 960px) calc(100vw - 8rem), 832px"
+            :image-breakpoints="item.image.imageBreakpoints"
+            :device-breakpoints="[]"
+            :width="item.image.width"
+            :height="item.image.height"
+            crossorigin="anonymous"
+            :fetchpriority="item.image.eager ? 'high' : undefined"
+            :loading="item.image.eager ? 'eager' : 'lazy'"
+            :decoding="item.image.eager ? undefined : 'async'"
+          />
+        </a>
 
-      <p v-for="(paragraph, index) in item.body" :key="index">{{ paragraph }}</p>
+        <p v-for="(paragraph, index) in item.body" :key="index">{{ paragraph }}</p> -->
 
       <p>
         <a class="text-lime" :href="item.url" target="_blank" rel="noopener noreferrer">{{

@@ -150,8 +150,8 @@ describe('Page components', () => {
     }
   });
 
-  it('JuliaNews describes the video coverage as a VideoObject and the rest as NewsArticles', () => {
-    mount(JuliaNews);
+  it('JuliaNews describes every rendered item, with the video as a VideoObject', () => {
+    const wrapper = mount(JuliaNews);
 
     const head = useHeadMock.mock.calls.at(-1)?.[0] as {
       script: { type?: string; textContent?: string }[];
@@ -163,7 +163,16 @@ describe('Page components', () => {
       (node) => node['@type'] !== 'WebSite' && node['@type'] !== 'Person'
     );
 
-    expect(coverage).toHaveLength(5);
+    // Derived from what the page rendered rather than a hardcoded count, so
+    // adding an item to the page does not mean editing this test — the property
+    // being pinned is that the two cannot drift apart, and a count assertion
+    // would have to be bumped by hand for every new article.
+    const renderedHeadlines = wrapper.findAll('h3').map((heading) => heading.text());
+
+    expect(renderedHeadlines.length).toBeGreaterThan(0);
+    expect(coverage.map((node) => node.headline ?? node.name).sort()).toEqual(
+      [...renderedHeadlines].sort()
+    );
     expect(coverage.filter((node) => node['@type'] === 'VideoObject')).toEqual([
       expect.objectContaining({
         name: 'RACE TO WATCH: Julia Hamann',
@@ -171,7 +180,6 @@ describe('Page components', () => {
         url: 'https://www.youtube.com/watch?v=UnVrel_BRfs'
       })
     ]);
-    expect(coverage.filter((node) => node['@type'] === 'NewsArticle')).toHaveLength(4);
     expect(coverage).toContainEqual(
       expect.objectContaining({
         '@type': 'NewsArticle',
