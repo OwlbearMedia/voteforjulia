@@ -52,8 +52,22 @@ SMTP and reads spreadsheet metadata — see
 
 | Monitor                              | Target     | Period | Alerts? |
 | ------------------------------------ | ---------- | ------ | ------- |
-| `voteforjulia-api /health/deep`      | production | 5 min  | **yes** |
-| `voteforjulia-api-test /health/deep` | test       | 15 min | no      |
+| `voteforjulia-api /health/deep`      | production | 15 min | **yes** |
+| `voteforjulia-api-test /health/deep` | test       | 30 min | no      |
+
+**The periods are a billing constraint, not a tuning choice.** Both were
+lengthened on 2026-08-10 — production from 5 min, test from 15 — because
+5-minute checks ran over the plan's budget. Two things follow, and both are
+easy to miss:
+
+- **The alert's aggregation window has to track the period.** See the
+  [alert conditions](#alert-conditions) below; changing one without the other
+  stops the alert firing at all.
+- **`/health/deep` has its own rate-limit allowance** (30/hour, against the
+  form endpoints' 10) so a monitor can never 429 itself into a false alert.
+  `test_health_deep_allowance_fits_the_synthetic_monitor` in
+  [api/test_app_pipeline.py](../api/test_app_pipeline.py) fails if a future
+  period change outgrows it. Raise the allowance before shortening the period.
 
 **The test monitor is deliberately not wired to the policy.** Every PR deploy
 restarts `api_test` and it briefly fails. Alerting on that would train you to
@@ -81,6 +95,25 @@ one).
 The third exists because **silence is not a signal**. If the worker dies or the
 agent crashes, error _rate_ has no data to be high on, so it uses
 `fillOption: STATIC, fillValue: 0` to make absence look like zero throughput.
+
+**Two of the three are coupled to the synthetic's period**, and neither
+dependency is visible from the New Relic UI. This bit on 2026-08-10: lengthening
+the monitor to 15 minutes left the first condition with a 5-minute aggregation
+window, which stops it firing entirely.
+
+- **"API dependency check failing" — keep `aggregationWindow` equal to the
+  period and `thresholdDuration` at twice it.** At the current 15 minutes that
+  is 900 and 1800. The condition fills empty windows with 0 and requires _every_
+  window in `thresholdDuration` to breach, so a window shorter than the period
+  guarantees a filled zero between checks and the breach can never be sustained.
+  It then fails silently, which is the worst way for an alert to fail. Detection
+  now takes about 30 minutes — the cost of the longer period, not a choice.
+- **"API not reporting" needs six consecutive empty 5-minute windows**, and the
+  synthetic is most of this API's baseline traffic. At a 15-minute period a
+  check lands in every third window, so the longest run of zeros is two. A
+  30-minute period would make that run five against a threshold of six, and the
+  condition would start flapping. Lengthen `thresholdDuration` alongside any
+  further increase.
 
 ## When something fires
 

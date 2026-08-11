@@ -19,8 +19,10 @@ so restoration is automatic rather than hand-rolled in a `tearDown`.
 """
 
 import logging
+import re
 import smtplib
 from dataclasses import replace
+from pathlib import Path
 
 import httplib2
 import pytest
@@ -667,14 +669,38 @@ def test_an_empty_honeypot_is_indistinguishable_from_an_absent_one(client, pipel
     """The negative case, without which the test above proves nothing.
 
     Every real submission carries this field blank, so a check testing presence
-    rather than content would 400 the whole site. Whitespace counts as blank,
-    as in `_is_blank`.
+    rather than content would 400 the whole site.
     """
     assert client.post(path, json={**payload, "referralCode": ""}).status_code == 200
     assert client.post(path, json={**payload, "referralCode": "   "}).status_code == 200
     assert client.post(path, json=payload).status_code == 200
 
     assert len(pipeline.notifications) == 3
+
+
+@pytest.mark.parametrize(
+    "blank",
+    [
+        pytest.param("\n", id="newline"),
+        pytest.param("\r\n", id="crlf"),
+        pytest.param("\t", id="tab"),
+        pytest.param("\u00a0", id="non-breaking-space"),
+        pytest.param(" \n\t ", id="mixed"),
+    ],
+)
+def test_whitespace_only_honeypot_values_count_as_blank(client, pipeline, blank):
+    """Every flavour of whitespace, not just the ones `normalize_text` strips.
+
+    Caught by Copilot on PR #134. The check used to be a plain truthiness test
+    on `normalize_text`, which strips only spaces and tabs -- so a lone newline
+    or a non-breaking space read as a filled honeypot and rejected the
+    submission. A pasted value or an odd keyboard layout is enough to produce
+    one, and the person could not see the field to clear it.
+    """
+    response = client.post(CONTACT_PATH, json={**CONTACT_PAYLOAD, "referralCode": blank})
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
 
 
 def test_a_filled_honeypot_is_caught_on_the_form_encoded_path(client, pipeline):
@@ -722,3 +748,94 @@ def test_the_honeypot_can_be_disabled_without_a_deploy(client, pipeline, monkeyp
     assert response.status_code == 200
     assert len(pipeline.notifications) == 1
     assert "honeypot" in caplog.text
+
+
+# --- /health/deep's own hourly allowance, ADR-0016 ---------------------------
+
+
+def test_health_deep_has_a_larger_hourly_allowance_than_the_forms(client, pipeline, monkeypatch):
+    """The scopes must not share a number.
+
+    Caught by Copilot on PR #134: the persistent tier initially applied the
+    forms' allowance to `/health/deep` too. A monitor polls on a schedule, so
+    the forms' figure -- sized against "a supporter submits one form once" --
+    would 429 it on a cadence that is entirely legitimate, and a 429 there is a
+    false page rather than a blocked spammer.
+
+    Asserts on "was it rate limited", not on the status code: the probes fail in
+    a test environment with no SMTP or Sheets, so a served request is a 503.
+    That is the property under test either way.
+    """
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS", 5)
+    # Keep the probes off the network; this test is about the limiter.
+    monkeypatch.setattr(app_module, "verify_smtp_credentials", lambda config: None)
+    monkeypatch.setattr(app_module, "verify_sheets_access", lambda config: None)
+
+    def probe():
+        monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+        monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+        return client.get("/health/deep").status_code
+
+    # The form allowance is exhausted after one request; the health scope keeps
+    # going, which is only true if the two are looked up separately.
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 429
+    assert [probe() for _ in range(5)] == [200] * 5
+    assert probe() == 429
+
+
+def test_health_deep_allowance_fits_the_synthetic_monitor():
+    """The shipped defaults must leave the real monitor headroom.
+
+    Reads the period straight out of `monitoring/alerts.graphql` rather than
+    restating it, so shortening the monitor without raising the allowance fails
+    here instead of paging with a 429 that looks like an outage. The monitor
+    runs from two locations, and the worst case is both egressing from one
+    address, so the arithmetic assumes they share a bucket.
+
+    Parsed from the production monitor's own block, located by the name it
+    creates -- an earlier version took the first period in the file, which meant
+    a period New Relic spells without a trailing "S" (`EVERY_MINUTE`) silently
+    matched the *test* monitor instead and the assertion passed regardless.
+
+    `monitoring/` drifts silently against the live account (docs/monitoring.md),
+    so this pins the checked-in intent -- it cannot see a change made in the UI.
+    """
+    graphql = (Path(__file__).resolve().parent.parent / "monitoring" / "alerts.graphql").read_text()
+
+    # Every period enum New Relic accepts, in minutes. A value outside this map
+    # fails loudly below rather than being skipped by a regex that misses it.
+    period_minutes = {
+        "EVERY_MINUTE": 1,
+        "EVERY_5_MINUTES": 5,
+        "EVERY_10_MINUTES": 10,
+        "EVERY_15_MINUTES": 15,
+        "EVERY_30_MINUTES": 30,
+        "EVERY_HOUR": 60,
+        "EVERY_6_HOURS": 360,
+        "EVERY_12_HOURS": 720,
+        "EVERY_DAY": 1440,
+    }
+
+    production = re.search(r'name: "voteforjulia-api /health/deep".*?\n    \}', graphql, re.DOTALL)
+    assert production, "could not find the production monitor block in alerts.graphql"
+    block = production.group(0)
+
+    period = re.search(r"period: (\w+)", block)
+    assert period, "the production monitor declares no period"
+    assert period.group(1) in period_minutes, (
+        f"unrecognised monitor period {period.group(1)!r} -- add it to period_minutes"
+    )
+
+    locations = re.search(r"locations: \{ public: \[([^\]]*)\]", block)
+    assert locations, "the production monitor declares no locations"
+
+    checks_per_hour = (60 / period_minutes[period.group(1)]) * len(locations.group(1).split(","))
+
+    assert checks_per_hour * 2 <= app_module._HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS, (
+        f"the production monitor makes {checks_per_hour:.0f} checks/hour "
+        f"({period.group(1)} x {len(locations.group(1).split(','))} locations), which leaves no "
+        f"margin under an allowance of {app_module._HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS}/hour -- "
+        "raise HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS or lengthen the period"
+    )

@@ -169,3 +169,28 @@ def test_reset_clears_every_key(db_path):
     reset(db_path=db_path)
 
     assert consume("k", limit=1, window_seconds=60, db_path=db_path) is None
+
+
+def test_an_uncreatable_parent_directory_fails_open(tmp_path, caplog):
+    """`mkdir` raises OSError, which is not a `sqlite3.Error`.
+
+    Caught by Copilot on PR #134. `test_an_unusable_database_fails_open` above
+    misses this: it puts a directory where the *file* goes, so the parent still
+    exists and the failure surfaces from sqlite3. Put a *file* where the parent
+    directory goes and the failure comes from `mkdir` instead — which escaped
+    the fail-open path entirely and turned a submission into a 500.
+    """
+    blocker = tmp_path / "tmp"
+    blocker.write_text("a file where the directory should be")
+
+    assert consume("k", limit=1, window_seconds=60, db_path=blocker / "rate-limit.sqlite3") is None
+    assert "Rate-limit store" in caplog.text
+
+
+def test_reset_survives_an_uncreatable_parent_directory(tmp_path, caplog):
+    blocker = tmp_path / "tmp"
+    blocker.write_text("a file where the directory should be")
+
+    reset(db_path=blocker / "rate-limit.sqlite3")
+
+    assert "Rate-limit store" in caplog.text

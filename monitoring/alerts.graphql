@@ -17,7 +17,7 @@ mutation CreateProductionMonitor {
     monitor: {
       name: "voteforjulia-api /health/deep"
       uri: "https://api.voteforjulia.com/health/deep"
-      period: EVERY_5_MINUTES
+      period: EVERY_15_MINUTES
       status: ENABLED
       locations: { public: ["AWS_US_EAST_2", "AWS_US_WEST_1"] }
       advancedOptions: {
@@ -47,7 +47,7 @@ mutation CreateTestMonitor {
     monitor: {
       name: "voteforjulia-api-test /health/deep"
       uri: "https://test-api.voteforjulia.com/health/deep"
-      period: EVERY_15_MINUTES
+      period: EVERY_30_MINUTES
       status: ENABLED
       locations: { public: ["AWS_US_EAST_2"] }
       advancedOptions: {
@@ -85,8 +85,19 @@ mutation CreatePolicy {
 # 4. Condition: dependency check failing
 # ─────────────────────────────────────────────────────────────────────────────
 # This is the one that would have caught the 2026-07-30 SMTP outage.
-# Two consecutive failures (thresholdDuration 600 at a 5-min period) so a single
-# transient network blip does not page.
+#
+# The aggregation window MUST track the monitor's period. Empty windows are
+# filled with 0 and thresholdOccurrences is ALL, so a window shorter than the
+# period guarantees a filled-zero window between checks and the condition can
+# never stay above the threshold — it stops firing silently, which is the worst
+# way for an alert to fail. This was live from 2026-08-09 with a 300s window
+# against a 5-min period, and shortening the monitor to EVERY_15_MINUTES on
+# 2026-08-10 is what broke it.
+#
+# So: aggregationWindow == period (900), thresholdDuration == 2 x period (1800),
+# which keeps the original intent of two consecutive failures before paging.
+# Detection now takes ~30 minutes rather than ~10; that is the cost of the
+# longer period, not a tuning choice.
 
 mutation ConditionSyntheticFailure {
   alertsNrqlConditionStaticCreate(
@@ -99,7 +110,7 @@ mutation ConditionSyntheticFailure {
         query: "SELECT filter(count(*), WHERE result = 'FAILED') FROM SyntheticCheck WHERE monitorName = 'voteforjulia-api /health/deep'"
       }
       signal: {
-        aggregationWindow: 300
+        aggregationWindow: 900
         aggregationMethod: EVENT_FLOW
         aggregationDelay: 120
         fillOption: STATIC
@@ -110,7 +121,7 @@ mutation ConditionSyntheticFailure {
           threshold: 0
           operator: ABOVE
           priority: CRITICAL
-          thresholdDuration: 600
+          thresholdDuration: 1800
           thresholdOccurrences: ALL
         }
       ]

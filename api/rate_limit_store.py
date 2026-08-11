@@ -5,7 +5,9 @@ in process memory, which cannot hold an hour here because Passenger reaps idle
 workers ([../docs/hosting.md](../docs/hosting.md#watch-worker-memory)).
 
 Every failure fails open: a limiter that cannot reach its database logs and
-allows the request.
+allows the request. That means `sqlite3.Error` *and* `OSError` — creating the
+directory is a filesystem operation, and letting its failure escape would turn
+the fail-open promise into a 500.
 
 See [ADR-0016](../docs/adr/0016-second-tier-rate-limiting-and-honeypot.md) for
 why SQLite, and its implementation notes for the choices below.
@@ -71,7 +73,10 @@ def consume(
 
     try:
         connection = _connect(path)
-    except sqlite3.Error:
+    except (sqlite3.Error, OSError):
+        # OSError covers `mkdir` as much as sqlite: an inaccessible `tmp/`, or a
+        # file sitting where the directory should be, raises NotADirectoryError
+        # rather than anything sqlite3 defines.
         logger.exception("Rate-limit store unavailable at %s; allowing request", path)
         return None
 
@@ -96,7 +101,7 @@ def consume(
 
             connection.execute("INSERT INTO hits (key, ts) VALUES (?, ?)", (key, current))
             return None
-    except sqlite3.Error:
+    except (sqlite3.Error, OSError):
         # Includes the busy timeout expiring. Fail open -- the burst tier is still
         # in front of this, and refusing a real volunteer is the worse failure.
         logger.exception("Rate-limit store failed for key %r; allowing request", key)
@@ -110,14 +115,14 @@ def reset(db_path: Path | None = None) -> None:
     path = db_path or DEFAULT_DB_PATH
     try:
         connection = _connect(path)
-    except sqlite3.Error:
+    except (sqlite3.Error, OSError):
         logger.exception("Rate-limit store unavailable at %s; nothing to reset", path)
         return
 
     try:
         with connection:
             connection.execute("DELETE FROM hits")
-    except sqlite3.Error:
+    except (sqlite3.Error, OSError):
         logger.exception("Rate-limit store reset failed at %s", path)
     finally:
         connection.close()

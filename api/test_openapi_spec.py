@@ -315,6 +315,12 @@ def test_long_rate_limit_defaults_match_the_spec():
     assert f"{app_module._LONG_RATE_LIMIT_WINDOW_SECONDS} seconds" in description
 
 
+def test_health_deep_allowance_matches_the_spec():
+    # `/health/deep` is documented as having its own, larger hourly allowance.
+    description = SPEC["components"]["responses"]["RateLimited"]["description"]
+    assert f"{app_module._HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS} per hour" in description
+
+
 def test_documented_request_size_limit_matches_the_app():
     # The 413 description quotes the byte cap as the default, the same way the
     # 429 description quotes the rate-limit numbers.

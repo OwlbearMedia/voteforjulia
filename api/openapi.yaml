@@ -438,8 +438,14 @@ components:
 
     BadRequest:
       description: |
-        The request was rejected before anything was sent. The submitter still
-        has their data and can correct it and retry.
+        The request was rejected before anything was sent, so the submitter
+        still has their data.
+
+        Every case below except one names the field at fault and is fixed by
+        correcting it and retrying. The exception is the honeypot: the field it
+        objects to is invisible to the submitter, so there is nothing for them
+        to correct, and the message points them at email instead. Do not present
+        that one as a form validation error.
       headers:
         Vary:
           $ref: '#/components/headers/Vary'
@@ -528,6 +534,12 @@ components:
           (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`).
         - **Sustained** — 10 requests per 3600 seconds by default
           (`LONG_RATE_LIMIT_MAX_REQUESTS` / `LONG_RATE_LIMIT_WINDOW_SECONDS`).
+
+        `/health/deep` is polled on a schedule rather than by people, so it gets
+        a larger sustained allowance of 30 per hour
+        (`HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS`). The form endpoints' figure is
+        sized against "a supporter submits one form once" and would 429 a
+        synthetic monitor, which is a false alert rather than a blocked spammer.
 
         The second tier exists because the first cannot see a patient caller.
         The 2026-08-10 abuse ran 43 submissions over roughly two hours without
