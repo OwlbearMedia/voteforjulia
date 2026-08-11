@@ -90,14 +90,20 @@ mutation CreatePolicy {
 # filled with 0 and thresholdOccurrences is ALL, so a window shorter than the
 # period guarantees a filled-zero window between checks and the condition can
 # never stay above the threshold — it stops firing silently, which is the worst
-# way for an alert to fail. This was live from 2026-08-09 with a 300s window
-# against a 5-min period, and shortening the monitor to EVERY_15_MINUTES on
-# 2026-08-10 is what broke it.
+# way for an alert to fail.
 #
 # So: aggregationWindow == period (900), thresholdDuration == 2 x period (1800),
 # which keeps the original intent of two consecutive failures before paging.
-# Detection now takes ~30 minutes rather than ~10; that is the cost of the
-# longer period, not a tuning choice.
+# Detection takes ~30 minutes at a 15-minute period; that is the cost of the
+# period, not a tuning choice. These were 300 and 600 while the monitor ran
+# every 5 minutes, and moving it to EVERY_15_MINUTES on 2026-08-10 is what
+# made them wrong.
+#
+# WHAT THE LIVE CONDITION USES IS NOT KNOWN. A condition by this name exists
+# and is enabled (policy 7831111, condition 64880222), but the read-only MCP
+# server cannot return a condition's signal block, so nobody has read the
+# deployed aggregationWindow back. Check it in the UI before assuming this file
+# matches it — the file header's "NOT TESTED" warning applies here too.
 
 mutation ConditionSyntheticFailure {
   alertsNrqlConditionStaticCreate(

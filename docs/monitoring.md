@@ -86,6 +86,23 @@ All three sit on the **`voteforjulia — API`** policy (`PER_CONDITION`, so an
 SMTP outage and a Sheets outage open separate issues rather than collapsing into
 one).
 
+Read back from the account on 2026-08-10, all three exist and are enabled:
+
+| Condition                                 | ID         |
+| ----------------------------------------- | ---------- |
+| Policy `voteforjulia — API`               | `7831111`  |
+| API dependency check failing (production) | `64880222` |
+| API error rate above 5% (production)      | `64880233` |
+| API not reporting (production)            | `64880240` |
+
+**Conditions existing is not the same as being alerted.** A policy with no
+notification workflow and destination raises issues that sit in the UI and reach
+nobody, which looks identical to "nothing has gone wrong". The account had **no
+issues at all** as of 2026-08-10, which is consistent both with nothing breaking
+and with the conditions never having evaluated — so it is not evidence either
+way. Confirm a workflow exists (Alerts → Workflows) and send yourself a test
+notification; that is the only check that proves the path end to end.
+
 | Condition                    | Fires when                                    |
 | ---------------------------- | --------------------------------------------- |
 | API dependency check failing | the production synthetic fails twice in a row |
@@ -97,9 +114,12 @@ agent crashes, error _rate_ has no data to be high on, so it uses
 `fillOption: STATIC, fillValue: 0` to make absence look like zero throughput.
 
 **Two of the three are coupled to the synthetic's period**, and neither
-dependency is visible from the New Relic UI. This bit on 2026-08-10: lengthening
-the monitor to 15 minutes left the first condition with a 5-minute aggregation
-window, which stops it firing entirely.
+dependency is visible from the New Relic UI. Lengthening the monitor to 15
+minutes on 2026-08-10 made the values in `alerts.graphql` wrong, and they were
+corrected in the same change — but **whether the live conditions were ever
+updated has not been established**, because a condition's signal block cannot be
+read back through the read-only MCP server. Check the two below in the UI before
+trusting either.
 
 - **"API dependency check failing" — keep `aggregationWindow` equal to the
   period and `thresholdDuration` at twice it.** At the current 15 minutes that
