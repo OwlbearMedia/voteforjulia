@@ -226,6 +226,17 @@
 
 /* ── Components (only what utilities can't express) ── */
 @layer components {
+  /*
+   * Spam honeypot (ADR-0016). `display: none` is load-bearing and NOT
+   * interchangeable with `.sr-only`: it removes the element from the
+   * accessibility tree, whereas `.sr-only` hides it visually precisely so
+   * screen readers still announce it. Making this field perceivable by any
+   * means is a bug, not a style tweak — tests/unit/honeypot.spec.ts asserts it.
+   */
+  .honeypot-field {
+    display: none;
+  }
+
   /* hr variant used inside dark event cards */
   .hr-event {
     margin: 0.5rem 0;

@@ -46,6 +46,10 @@ export function useContactForm() {
 
   const helpWays = ref<string[]>([]);
 
+  // Spam honeypot (ADR-0016). Sent on the scripted path too, not just the no-JS
+  // form post, so a headless browser that fills every field is caught as well.
+  const referralCode = ref('');
+
   const fullName = computed(() =>
     `${firstNameField.value.value.trim()} ${lastNameField.value.value.trim()}`.trim()
   );
@@ -58,7 +62,8 @@ export function useContactForm() {
       email: emailField.value.value,
       phone: phoneField.value.value,
       helpWays: [...helpWays.value].join(', '),
-      message: messageField.value.value
+      message: messageField.value.value,
+      referralCode: referralCode.value
     }),
     submit: submitContactForm,
     trackRequest: trackVolunteerRequestBody,
@@ -87,6 +92,7 @@ export function useContactForm() {
     validateMessageField: messageField.validate,
     // Form-level state.
     helpWays,
+    referralCode,
     submitError,
     isSubmitted,
     isSubmitting,
