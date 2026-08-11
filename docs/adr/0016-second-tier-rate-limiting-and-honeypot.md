@@ -124,6 +124,31 @@ shorter:
   insert that follows it have to be one atomic step. Deferred, two workers can
   both read the same count, both conclude they are under the limit, and the
   effective limit is one higher than configured for every concurrent pair.
+
+  **Atomicity here actually has two independent guards**, which is worth knowing
+  before refactoring either. The second is that the prune's `DELETE` runs before
+  the `SELECT`: it is a write, so it takes the write lock regardless of how the
+  transaction began. Measured over 25 runs of eight processes racing for one
+  remaining slot:
+
+  | Transaction       | Prune position | Callers admitted |
+  | ----------------- | -------------- | ---------------- |
+  | `BEGIN IMMEDIATE` | before count   | 1 (shipped)      |
+  | `BEGIN`           | before count   | 1                |
+  | `BEGIN IMMEDIATE` | after count    | 1                |
+  | `BEGIN`           | after count    | **4–8**          |
+
+  So either guard alone holds, and `test_concurrent_workers_cannot_both_take_the_last_slot`
+  pins the property rather than either keyword. Moving the prune below the count
+  looks like a harmless reordering and is safe only while `BEGIN IMMEDIATE`
+  stays.
+
+  The failure is also silent rather than loud: a deferred transaction losing the
+  snapshot raises `SQLITE_BUSY`, which the fail-open handler below turns into an
+  admission. Failing open is right for a database that cannot be reached, but it
+  means lock contention degrades the limit rather than erroring — another reason
+  the write lock must be taken up front rather than contended for.
+
 - **WAL journalling**, so a reader is not blocked while another worker writes.
   It persists in the database header, so setting it per connection is a no-op
   after the first.

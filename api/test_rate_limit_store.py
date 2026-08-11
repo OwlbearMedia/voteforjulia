@@ -10,6 +10,7 @@ autouse fixture, since these call `consume` directly.
 
 from __future__ import annotations
 
+import multiprocessing
 import sqlite3
 import subprocess
 import sys
@@ -194,3 +195,77 @@ def test_reset_survives_an_uncreatable_parent_directory(tmp_path, caplog):
     reset(db_path=blocker / "rate-limit.sqlite3")
 
     assert "Rate-limit store" in caplog.text
+
+
+def _attempt_at_barrier(db_path: str, barrier, queue, limit: int, window_seconds: int) -> None:
+    """One worker's single `consume` call, released simultaneously with the rest.
+
+    Module level and importable by name because `multiprocessing` uses `spawn`
+    on macOS, which re-imports this module in the child rather than inheriting
+    it. Takes `db_path` as a string for the same reason.
+    """
+    from api.rate_limit_store import consume
+
+    barrier.wait(timeout=60)
+    queue.put(consume("shared", limit=limit, window_seconds=window_seconds, db_path=Path(db_path)))
+
+
+def test_concurrent_workers_cannot_both_take_the_last_slot(db_path):
+    """Exactly one caller is admitted when several race for one remaining slot.
+
+    Raised by Copilot on PR #134: nothing exercised the read-modify-write in
+    `consume` under contention, so the atomicity was an unverified claim.
+
+    Real processes rather than threads, because that is what Passenger runs and
+    because POSIX advisory locks are owned per process -- intra-process locking
+    goes through a different path inside SQLite than the one production uses.
+
+    Note what this does and does not pin. Atomicity here has two independent
+    guards: `BEGIN IMMEDIATE`, and the prune's `DELETE` landing before the
+    `SELECT` (a write, so it takes the write lock whatever the transaction
+    began as). Either alone is sufficient, so removing just one keeps this
+    green. Measured over 25 runs of each arrangement:
+
+        BEGIN IMMEDIATE + prune before count   1 admitted   (shipped)
+        BEGIN           + prune before count   1 admitted
+        BEGIN IMMEDIATE + prune after count    1 admitted
+        BEGIN           + prune after count    4-8 admitted
+
+    So this is a test of the property, not of either keyword. It fails when a
+    refactor removes both -- which is exactly the plausible accident, since
+    moving the prune below the count looks like a harmless reordering.
+    """
+    workers = 8
+    limit = 4
+
+    # Fill to one below the limit, so exactly one slot is available.
+    for _ in range(limit - 1):
+        assert consume("shared", limit=limit, window_seconds=3600, db_path=db_path) is None
+
+    context = multiprocessing.get_context("spawn")
+    barrier = context.Barrier(workers)
+    queue = context.Queue()
+    processes = [
+        context.Process(
+            target=_attempt_at_barrier, args=(str(db_path), barrier, queue, limit, 3600)
+        )
+        for _ in range(workers)
+    ]
+
+    for process in processes:
+        process.start()
+    try:
+        results = [queue.get(timeout=60) for _ in range(workers)]
+    finally:
+        for process in processes:
+            process.join(timeout=60)
+            if process.is_alive():  # pragma: no cover - only on a hung child
+                process.terminate()
+
+    admitted = [result for result in results if result is None]
+    assert len(admitted) == 1, (
+        f"{len(admitted)} of {workers} callers were admitted to a single remaining "
+        "slot -- the count and the insert are not atomic against a concurrent worker"
+    )
+    # And the losers got a usable Retry-After rather than a bare refusal.
+    assert all(1 <= result <= 3600 for result in results if result is not None)
