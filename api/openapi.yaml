@@ -303,9 +303,32 @@ components:
             the site posts it as a hidden field alongside them.
           examples: [Alex Rivera]
 
+    HoneypotField:
+      type: object
+      properties:
+        referralCode:
+          type: string
+          description: |
+            Anti-spam honeypot (ADR-0016). Both forms render this as a
+            `display: none` input that no person can see, focus or tab into, so
+            a request that carries a non-empty value did not come from someone
+            using the site.
+
+            **Send it empty or omit it.** A non-empty value is refused with
+            `400` before any mail is sent, and the body is written to the
+            application log so a false positive stays recoverable. Setting
+            `HONEYPOT_ENFORCED=false` keeps the logging but stops the rejection,
+            so the check can be switched off without a deploy.
+
+            Documented rather than hidden: an undocumented field that rejects
+            requests is worse for a legitimate client than a known one, and a
+            spam bot does not read specifications.
+          examples: ['']
+
     ContactSubmission:
       allOf:
         - $ref: '#/components/schemas/NameFields'
+        - $ref: '#/components/schemas/HoneypotField'
         - type: object
           properties:
             email:
@@ -346,6 +369,7 @@ components:
     YardSignRequest:
       allOf:
         - $ref: '#/components/schemas/NameFields'
+        - $ref: '#/components/schemas/HoneypotField'
         - type: object
           properties:
             email:
@@ -450,6 +474,12 @@ components:
               summary: Email is well-formed text but not an address
               value:
                 error: Please provide a valid email address.
+            honeypot:
+              summary: The hidden anti-spam field was filled in
+              value:
+                error: >-
+                  We could not process this submission. Please email
+                  info@voteforjulia.com and we will follow up personally.
 
     PayloadTooLarge:
       description: |
@@ -491,9 +521,18 @@ components:
 
     RateLimited:
       description: |
-        Too many submissions from this client. The limit is per endpoint and per
-        client IP — 5 requests per 60 seconds by default
-        (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`).
+        Too many submissions from this client. Two limits apply, both per
+        endpoint and per client IP, and either can produce this response:
+
+        - **Burst** — 5 requests per 60 seconds by default
+          (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`).
+        - **Sustained** — 10 requests per 3600 seconds by default
+          (`LONG_RATE_LIMIT_MAX_REQUESTS` / `LONG_RATE_LIMIT_WINDOW_SECONDS`).
+
+        The second tier exists because the first cannot see a patient caller.
+        The 2026-08-10 abuse ran 43 submissions over roughly two hours without
+        ever exceeding three in any single minute, so the per-minute limit never
+        fired. See ADR-0016.
 
         The client is identified by the socket address. Forwarding headers are
         **not** trusted: nothing sits in front of this API to overwrite them, so
@@ -503,8 +542,11 @@ components:
         makes that header authoritative (its **last** hop); no other header is
         consulted. See ADR-0014.
 
-        Buckets live in process memory, so they are per-worker and reset on
-        restart.
+        The burst tier counts in process memory, so it is per-worker and resets
+        on restart. The sustained tier counts in SQLite under the app's `tmp/`
+        directory, because Passenger reaps idle workers and an hour-long window
+        held in memory would restart with them. If that store cannot be reached
+        the sustained tier fails open and only the burst tier applies.
 
         `Retry-After` is rounded up, so honouring it exactly is enough to clear
         the window.

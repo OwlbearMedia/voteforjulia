@@ -26,6 +26,7 @@ import httplib2
 import pytest
 
 import api.app as app_module
+import api.rate_limit_store as rate_limit_store
 from api.config import EmailConfig, SheetsConfig
 
 VALID_EMAIL_CONFIG = EmailConfig(
@@ -542,3 +543,182 @@ def test_empty_last_forwarded_hop_falls_back_to_remote_addr(client, pipeline, mo
     )
 
     assert list(app_module._RATE_LIMIT_BUCKETS) == ["send-email:127.0.0.1"]
+
+
+# --- Second-tier (long-window) rate limiting, ADR-0016 ----------------------
+#
+# The burst tier stays at its shipped 5/60s throughout, so anything that 429s
+# here was refused by the hour-scale tier. Tightening both would make these
+# tests pass regardless of which tier did the work.
+
+
+def test_a_caller_under_the_burst_limit_is_still_stopped_by_the_long_window(
+    client, pipeline, monkeypatch
+):
+    """The gap that let the 2026-08-10 abuse through.
+
+    That traffic never exceeded three requests in a minute, so the per-minute
+    limiter could not fire once. Four requests in four separate minutes is the
+    same shape: each inside the burst allowance, the fourth still refused.
+    """
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 3)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    statuses = []
+    for _minute in range(4):
+        # A fresh burst bucket each time, which is what a caller pacing itself
+        # minutes apart gets for free — the 60-second window has emptied.
+        monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+        monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+        statuses.append(client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code)
+
+    assert statuses == [200, 200, 200, 429]
+    # And the refusal happened before any of the expensive work.
+    assert len(pipeline.notifications) == 3
+    assert len(pipeline.confirmations) == 3
+    assert len(pipeline.rows) == 3
+
+
+def test_long_window_429_carries_a_retry_after_and_the_standard_body(client, pipeline, monkeypatch):
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    refused = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD)
+
+    assert refused.status_code == 429
+    assert refused.get_json() == {"error": "Too many requests. Please try again later."}
+    # Up to a full window, never zero or negative, and never past the window.
+    assert 1 <= int(refused.headers["Retry-After"]) <= 3600
+
+
+def test_long_window_is_scoped_per_endpoint(client, pipeline, monkeypatch):
+    """Exhausting the contact form must not lock out the yard-sign form.
+
+    Pins that the persistent tier inherits the burst tier's `{endpoint}:{client}`
+    key instead of collapsing both forms into one hourly allowance.
+    """
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 429
+    assert client.post(YARD_SIGN_PATH, json=YARD_SIGN_PAYLOAD).status_code == 200
+
+
+def test_burst_refusals_do_not_spend_the_hourly_allowance(client, pipeline, monkeypatch):
+    """A 429 from the burst tier must not also be counted by the long one.
+
+    Otherwise an accidental double-click burns hourly budget on requests that
+    were never served.
+    """
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 3)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    # One served, then four refused by the burst tier in the same window.
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    for _ in range(4):
+        assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 429
+
+    # The hourly tier has seen exactly one request, so two more are available
+    # once the burst window clears.
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+
+def test_an_unusable_store_leaves_the_endpoint_working(client, pipeline, monkeypatch, tmp_path):
+    """Fail open, end to end.
+
+    `test_rate_limit_store.py` proves `consume` returns None on a broken database;
+    this is the part a supporter notices — the sign-up still goes through.
+    """
+    broken = tmp_path / "not-a-database"
+    broken.mkdir()
+    monkeypatch.setattr(rate_limit_store, "DEFAULT_DB_PATH", broken)
+
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD)
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+# --- Honeypot, ADR-0016 -----------------------------------------------------
+
+
+@BOTH_ENDPOINTS
+def test_a_filled_honeypot_is_refused_before_any_work(client, pipeline, path, payload):
+    response = client.post(path, json={**payload, "referralCode": "https://spam.example"})
+
+    assert response.status_code == 400
+    assert "info@voteforjulia.com" in response.get_json()["error"]
+    # The whole point: no mail to the campaign, no confirmation to whatever
+    # address the caller supplied, and no row in the volunteers' sheet.
+    assert pipeline.notifications == []
+    assert pipeline.confirmations == []
+    assert pipeline.rows == []
+
+
+@BOTH_ENDPOINTS
+def test_an_empty_honeypot_is_indistinguishable_from_an_absent_one(client, pipeline, path, payload):
+    """The negative case, without which the test above proves nothing.
+
+    Every real submission carries this field blank, so a check testing presence
+    rather than content would 400 the whole site. Whitespace counts as blank,
+    as in `_is_blank`.
+    """
+    assert client.post(path, json={**payload, "referralCode": ""}).status_code == 200
+    assert client.post(path, json={**payload, "referralCode": "   "}).status_code == 200
+    assert client.post(path, json=payload).status_code == 200
+
+    assert len(pipeline.notifications) == 3
+
+
+def test_a_filled_honeypot_is_caught_on_the_form_encoded_path(client, pipeline):
+    """The encoding every one of the 2026-08-10 requests actually used.
+
+    All 36 were form-encoded while the site's scripted path posts JSON, so a
+    JSON-only check would have missed the whole attack it was written for.
+    """
+    response = client.post(
+        CONTACT_PATH,
+        data={**CONTACT_PAYLOAD, "referralCode": "buy-cheap-things"},
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    assert response.status_code == 400
+    assert pipeline.notifications == []
+
+
+def test_a_filled_honeypot_logs_the_body_so_a_false_positive_is_recoverable(
+    client, pipeline, caplog
+):
+    """A person tripping this must not vanish silently.
+
+    The field is invisible, so they cannot fix the form. The response tells them
+    to email; this log line is how the campaign finds them if they do not.
+    """
+    with caplog.at_level(logging.WARNING):
+        client.post(CONTACT_PATH, json={**CONTACT_PAYLOAD, "referralCode": "x"})
+
+    assert "honeypot" in caplog.text
+    assert "julia@example.com" in caplog.text, "the body is logged, so nothing is lost"
+
+
+def test_the_honeypot_can_be_disabled_without_a_deploy(client, pipeline, monkeypatch, caplog):
+    """The kill switch, for the day it rejects someone real.
+
+    Unenforced still logs, so turning it off answers whether it was catching
+    bots or catching people.
+    """
+    monkeypatch.setattr(app_module, "_HONEYPOT_ENFORCED", False)
+
+    with caplog.at_level(logging.WARNING):
+        response = client.post(CONTACT_PATH, json={**CONTACT_PAYLOAD, "referralCode": "x"})
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+    assert "honeypot" in caplog.text

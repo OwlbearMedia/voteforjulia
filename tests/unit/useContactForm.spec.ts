@@ -230,7 +230,8 @@ describe('useContactForm', () => {
         email: 'julia@example.com',
         phone: '555-111-2222',
         helpWays: 'Canvassing, Phone banking',
-        message: 'Happy to help!'
+        message: 'Happy to help!',
+        referralCode: ''
       });
     });
 

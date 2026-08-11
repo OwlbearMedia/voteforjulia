@@ -173,7 +173,8 @@ describe('useYardSignForm', () => {
         email: 'julia@example.com',
         phone: '555-111-2222',
         address: '123 Main St, Mankato, MN 56001',
-        preferredPayment: ''
+        preferredPayment: '',
+        referralCode: ''
       });
     });
 

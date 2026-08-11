@@ -170,6 +170,12 @@ GENERATED_ERRORS = {
     "The data value transmitted exceeds the capacity limit.": (
         lambda: RequestEntityTooLarge().description
     ),
+    # Long enough that app.py composes it across two source lines, so it never
+    # appears as a single literal. Keyed on the constant rather than a copy of
+    # its text: that makes the lookup itself the drift check, because a spec
+    # that quotes anything other than what app.py sends will not find an entry
+    # here and falls through to the literal search, which fails.
+    app_module._HONEYPOT_MESSAGE: lambda: app_module._HONEYPOT_MESSAGE,
 }
 
 _SOURCE = "\n".join(
@@ -298,6 +304,15 @@ def test_rate_limit_defaults_match_the_spec():
     description = SPEC["components"]["responses"]["RateLimited"]["description"]
     assert f"{app_module._RATE_LIMIT_MAX_REQUESTS} requests" in description
     assert f"{app_module._RATE_LIMIT_WINDOW_SECONDS} seconds" in description
+
+
+def test_long_rate_limit_defaults_match_the_spec():
+    # Same drift check for the second tier (ADR-0016). Kept as its own test
+    # rather than four asserts in the one above so a failure names which tier
+    # drifted -- the two are configured independently and change independently.
+    description = SPEC["components"]["responses"]["RateLimited"]["description"]
+    assert f"{app_module._LONG_RATE_LIMIT_MAX_REQUESTS} requests" in description
+    assert f"{app_module._LONG_RATE_LIMIT_WINDOW_SECONDS} seconds" in description
 
 
 def test_documented_request_size_limit_matches_the_app():

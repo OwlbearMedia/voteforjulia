@@ -28,6 +28,7 @@ const {
   messageError,
   validateMessageField,
   helpWays,
+  referralCode,
   submitError,
   isSubmitted,
   isSubmitting,
@@ -135,6 +136,24 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       </div>
 
       <input type="hidden" name="name" :value="fullName" />
+
+      <!--
+        Spam honeypot (ADR-0016). `.honeypot-field` is `display: none`, never
+        `.sr-only` — see src/style.css. The label is real so that a stylesheet
+        failure degrades to a visible, explained field rather than an
+        unexplained one that silently rejects the submission.
+      -->
+      <div class="honeypot-field">
+        <label for="contact-referral-code">Referral code (leave this field empty)</label>
+        <input
+          id="contact-referral-code"
+          v-model="referralCode"
+          name="referralCode"
+          type="text"
+          tabindex="-1"
+          autocomplete="off"
+        />
+      </div>
 
       <label for="contact-email" class="sr-only">Email *</label>
       <input
