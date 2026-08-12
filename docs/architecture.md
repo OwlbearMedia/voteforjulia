@@ -248,8 +248,9 @@ What is watched, what the alerts mean, and what to do when one fires is
 are version-controlled in [monitoring/](../monitoring/).
 
 **Testing.** Vitest for units, Cypress against the deployed test site for the two
-form flows end to end (they submit real data and clean up after themselves), and
-pytest for the API. The OpenAPI spec is kept honest by a test that diffs it
+form flows end to end (they submit real data and clean up after themselves) and
+for the Donorbox widget on `/donate`, and pytest for the API. The OpenAPI spec is
+kept honest by a test that diffs it
 against the app ([api/test_openapi_spec.py](../api/test_openapi_spec.py)) rather
 than by discipline.
 

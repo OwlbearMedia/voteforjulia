@@ -217,26 +217,27 @@ Run in watch mode:
 pnpm run test:watch
 ```
 
-Tests are organized in a dedicated directory:
+Specs live in [tests/unit/](tests/unit/) and are named after their subject, so
+`JuliaButton.vue` is covered by `JuliaButton.spec.ts`. Most cover one component,
+composable or `src/lib/` module.
 
-- tests/unit/App.spec.ts — pageHeaderTitle computed per route
-- tests/unit/JuliaHeader.spec.ts
-- tests/unit/JuliaFooter.spec.ts
-- tests/unit/JuliaContactForm.spec.ts
-- tests/unit/JuliaYardSignForm.spec.ts
-- tests/unit/pages.spec.ts — render + SEO metadata for all page components (Home, About, Events, Volunteer, Donate, Secret Recipe, Yard Sign)
-- tests/unit/routes.spec.ts — route paths and no `.html` aliases
-- tests/unit/sitemap.spec.ts — sitemap fallback routes and XML generation
-- tests/unit/useContactForm.spec.ts
-- tests/unit/useYardSignForm.spec.ts
-- tests/unit/analytics.spec.ts
-- tests/unit/api.spec.ts
-- tests/unit/newrelic.spec.ts
-- tests/unit/bundleBudget.spec.ts — first-load measurement and budget evaluation (see [Performance Checks](#performance-checks))
+The exceptions are worth knowing about, because their names do not tell you what
+they guard: `routes.spec.ts` and `sitemap.spec.ts` derive their expectations from
+`appRoutePaths`, `pages.spec.ts` renders every page component and asserts its SEO
+metadata, `bundleBudget.spec.ts` covers the first-load measurement behind
+[Performance Checks](#performance-checks), and `honeypot.spec.ts` parses
+`src/style.css` to pin a CSS declaration the spam defence depends on. The
+conventions these follow — and the traps specific to testing this codebase — are
+in [docs/conventions.md](docs/conventions.md#testing).
 
 ### E2E Tests (Cypress)
 
-Runs the volunteer form and yard sign form end-to-end against the staging site, submits a real form for each, verifies the entry was written to the corresponding Google Sheets tab, and deletes it.
+Specs live in [cypress/e2e/](cypress/e2e/) and run against the deployed test
+site, not a local server. The two form specs submit a real entry, verify it
+reached the right Google Sheets tab, and delete it; the donate spec checks the
+Donorbox widget renders, including on an SPA return visit
+([docs/donate-integration.md](docs/donate-integration.md) explains why that
+second case has its own test).
 
 Required environment variables (add to `cypress.env.json` locally, or set as environment variables):
 
@@ -340,11 +341,10 @@ that split.**
 ## CI and Deployment (GitHub Actions)
 
 This repository uses a trunk-based workflow. All development happens on short-lived
-feature branches that are merged directly to `main`. There are three workflow files:
-
-- `.github/workflows/ci.yml`
-- `.github/workflows/deploy-test.yml`
-- `.github/workflows/deploy-production.yml`
+feature branches that are merged directly to `main`. The workflows are in
+[.github/workflows/](.github/workflows/): `ci.yml` gates everything, the two
+`deploy-*.yml` files ship it, and `dependabot-lockfile.yml` is a maintenance
+job described at the end of this section.
 
 ### CI workflow
 
@@ -384,6 +384,23 @@ files removed in the new build no longer linger. The previous build is retained 
 If tests fail in either workflow, the job stops before any deployment steps. When a
 downstream job (e.g. a verify job) fails, use GitHub Actions' "Re-run failed jobs" to
 retry only that job and its dependents, rather than "Re-run all jobs".
+
+### Dependabot lockfile workflow
+
+- Trigger: a pull request opened or updated by `dependabot[bot]`.
+- File: `.github/workflows/dependabot-lockfile.yml`
+
+Dependabot edits `pnpm-lock.yaml` with its own resolver rather than by running
+pnpm, which can leave a lockfile pnpm then rejects. This job checks out the PR
+branch, runs a real `pnpm install`, and commits the result back to the branch if
+it changed — so CI runs against a lockfile pnpm itself produced.
+
+Two things about it are worth understanding before editing it. It runs on
+`pull_request_target` with `contents: write`, which is what lets it push to the
+PR branch; that trigger runs the **base** branch's copy of the workflow with a
+writable token, so it must never be widened to check out and execute untrusted
+PR code. And the `github.actor == 'dependabot[bot]'` condition is the whole of
+its access control.
 
 ### Required GitHub Secrets
 
@@ -435,18 +452,15 @@ Until the first upload completes, the coverage badge reads `unknown`.
 ## Project Structure (Relevant)
 
 - src/: Vue application source
-- src/components/: Shared Vue components (header, footer, contact form)
-- src/components/icons/: Inline SVG icon components (Instagram, Facebook, Envelope, Spinner)
+- src/components/: Shared Vue components, with hand-rolled SVG icons in src/components/icons/
 - src/pages/: Page-level Vue components, lazy-loaded by the router
 - src/composables/: Reusable Vue composables
-- src/lib/: Framework-agnostic utilities (routing, analytics, API client, route paths)
+- src/lib/: Framework-agnostic utilities — routing, SEO metadata, analytics, the API client
 - tests/unit/: Frontend Vitest specs
 - api/: Flask API and Python tests
-- docs/: Conventions, hosting/deploys, performance budgets, and the donate integration
+- docs/: Architecture and ADRs, conventions, hosting/deploys, performance budgets, monitoring, and the donate integration
 - sheets/: Apps Script that runs inside the submissions spreadsheet — checked in here, but not deployed from here (see docs/architecture.md)
 - scripts/: Build-adjacent Node tooling (source map upload, bundle budget check)
 - dist/: Build output generated by pnpm run build
 - perf-budgets.json / lighthouserc.cjs: Performance thresholds enforced by CI
-- .github/workflows/ci.yml: typecheck, lint, tests, and performance budgets — runs on PRs and pushes to `main`
-- .github/workflows/deploy-test.yml: test environment deploy, triggered when CI passes on a PR
-- .github/workflows/deploy-production.yml: production deploy, triggered when CI passes on `main`
+- .github/workflows/: CI, the two deploys, and the Dependabot lockfile job — see [CI and Deployment](#ci-and-deployment-github-actions)
