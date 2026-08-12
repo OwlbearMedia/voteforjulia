@@ -167,6 +167,57 @@ jobs:
           overwrite: true
           strip_components: 1
 
+      # Same carry-over as production — see the long comment in
+      # [deploy-production.yml](deploy-production.yml) for why this exists at
+      # all. Test pairs its own two docroots (public_html_test + api_test) and
+      # never reads production's, so a block is never moved between
+      # environments by this step.
+      - name: Carry cPanel IP Blocker rules into the staged .htaccess
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+            staged=./public_html_test_next/.htaccess
+
+            if [ ! -s "$staged" ]; then
+              echo "Staged $staged is missing or empty; aborting before the swap." >&2
+              exit 1
+            fi
+
+            denies=$(
+              for f in ./public_html_test/.htaccess ./api_test/.htaccess; do
+                [ -f "$f" ] || continue
+                grep -iE '^[[:space:]]*deny[[:space:]]+from[[:space:]]+[^[:space:]]+[[:space:]]*$' "$f" || true
+              done | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g' \
+                   | tr 'A-Z' 'a-z' | LC_ALL=C sort -u
+            )
+
+            if [ -z "$denies" ]; then
+              echo "No cPanel IP Blocker rules to carry over."
+              exit 0
+            fi
+
+            {
+              echo ""
+              echo "# --- cPanel IP Blocker rules, carried across this deploy ---"
+              echo "# Managed from cPanel > IP Blocker, never from this repo."
+              echo "# Rebuilt on every deploy from the union of the live and API docroots."
+              echo "<Files 403.shtml>"
+              echo "order allow,deny"
+              echo "allow from all"
+              echo "</Files>"
+              echo ""
+              printf '%s\n' "$denies"
+            } >> "$staged"
+
+            # Count only — public repo, public Actions logs.
+            echo "Carried over $(printf '%s\n' "$denies" | wc -l | tr -d ' ') IP Blocker rule(s)."
+
       - name: Atomically swap staging into the test document root
         uses: appleboy/ssh-action@v1.2.5
         with:

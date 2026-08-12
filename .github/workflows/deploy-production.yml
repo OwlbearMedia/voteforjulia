@@ -148,6 +148,77 @@ jobs:
           overwrite: true
           strip_components: 1
 
+      # cPanel's IP Blocker appends `deny from` lines to the .htaccess of EVERY
+      # document root on the account, and renders its UI list from
+      # public_html/.htaccess alone. Replacing that file wholesale therefore
+      # drops the main site's blocks *and* empties the screen, while the copies
+      # under ~/api-sub keep enforcing invisibly — so an address stays refused
+      # by api.voteforjulia.com with nothing left in cPanel to un-block it.
+      # Observed 2026-08-10; see docs/hosting.md.
+      #
+      # So the block is rebuilt into the staged file before the swap, from the
+      # UNION of the live docroot and the API docroot. The union — rather than
+      # merely preserving public_html's copy — is what repairs an already
+      # orphaned entry: it reappears in the UI, where removing it clears every
+      # docroot at once. It never widens enforcement, because a unioned address
+      # is by definition already being refused by the API.
+      #
+      # Reconstructed rather than copied verbatim so the output does not depend
+      # on how the source files happen to be ordered. The <Files 403.shtml>
+      # stanza is cPanel's own, and keeps the 403 document itself reachable.
+      - name: Carry cPanel IP Blocker rules into the staged .htaccess
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+            staged=./public_html_next/.htaccess
+
+            # .htaccess arrives in its own scp step because the dist/** glob
+            # does not match dotfiles. If that step ever silently fails,
+            # appending here would create a file holding deny rules and no CSP
+            # at all — the exact silent loss ADR-0010 warns about. Fail loudly.
+            if [ ! -s "$staged" ]; then
+              echo "Staged $staged is missing or empty; aborting before the swap." >&2
+              exit 1
+            fi
+
+            denies=$(
+              for f in ./public_html/.htaccess ./api-sub/.htaccess; do
+                [ -f "$f" ] || continue
+                grep -iE '^[[:space:]]*deny[[:space:]]+from[[:space:]]+[^[:space:]]+[[:space:]]*$' "$f" || true
+              done | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g' \
+                   | tr 'A-Z' 'a-z' | LC_ALL=C sort -u
+            )
+
+            if [ -z "$denies" ]; then
+              echo "No cPanel IP Blocker rules to carry over."
+              exit 0
+            fi
+
+            {
+              echo ""
+              echo "# --- cPanel IP Blocker rules, carried across this deploy ---"
+              echo "# Managed from cPanel > IP Blocker, never from this repo."
+              echo "# Rebuilt on every deploy from the union of the live and API docroots."
+              echo "<Files 403.shtml>"
+              echo "order allow,deny"
+              echo "allow from all"
+              echo "</Files>"
+              echo ""
+              printf '%s\n' "$denies"
+            } >> "$staged"
+
+            # Count only. This repo is public, so its Actions logs are public
+            # too, and the addresses are the one thing here worth not
+            # publishing — a residential IP reassigned to a real supporter
+            # would otherwise be named in a permanent public log.
+            echo "Carried over $(printf '%s\n' "$denies" | wc -l | tr -d ' ') IP Blocker rule(s)."
+
       - name: Atomically swap staging into the live document root
         uses: appleboy/ssh-action@v1.2.5
         with:
