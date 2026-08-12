@@ -10,7 +10,7 @@ The map that ties them together is [../architecture.md](../architecture.md).
 
 ## Status values
 
-- **Accepted** — in force. Everything here is currently Accepted.
+- **Accepted** — in force.
 - **Superseded by NNNN** — replaced. Leave the original file in place and add
   the pointer; the history is the point.
 - **Deprecated** — no longer applies and nothing replaced it.

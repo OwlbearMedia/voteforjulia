@@ -177,6 +177,59 @@ Both environments serve prerendered static files; `.htaccess` is uploaded as a
 dot-prefixed files. Both also stage into a scratch directory and swap it in with
 two renames, rather than uploading over the live root — see the swap below.
 
+### Deploying wipes the main site's half of cPanel's IP blocklist
+
+**cPanel's IP Blocker writes `deny from` into the `.htaccess` of _every_ document
+root on the account — `public_html`, `api-sub`, `api_test`, the test docroots.
+The frontend deploy replaces only `public_html/.htaccess`, verbatim from
+[public/.htaccess](../public/.htaccess). So a deploy clears the block on
+`voteforjulia.com` and leaves the identical block on `api.voteforjulia.com`
+untouched.**
+
+That partial state is the dangerous part, because it does not look broken.
+Blocked traffic starts being served by the main site while the API keeps
+refusing it, so whichever log you happen to open tells you a different story —
+and the deploy is green either way.
+
+Observed on 2026-08-10. The bot's cycle the next day made the split obvious:
+
+```
+13:18:54  GET  voteforjulia.com/      200   ← block gone, page served
+13:18:55  POST api.voteforjulia.com/send-email  403   ← block intact
+```
+
+**The previous copy is kept.** The atomic swap leaves the old document root in
+`public_html_prev`, so `grep deny ~/public_html_prev/.htaccess` recovers the
+rules the deploy just dropped — which is the fastest way to restore them.
+
+Three things worth knowing when diagnosing it:
+
+- **The IP Blocker screen goes empty too.** cPanel renders that list _from_
+  `public_html/.htaccess` rather than from a datastore of its own, so replacing
+  the file removes the entries from the UI as well as from enforcement. Opening
+  IP Blocker and finding addresses you know you added are simply gone is the
+  symptom — that is how this was spotted. `grep -i deny ~/public_html/.htaccess`
+  says the same thing from the shell.
+- **An empty UI does not mean nothing is blocked.** The screen reflects only the
+  main docroot, so the subdomain copies keep enforcing invisibly. Search them all
+  before concluding a block is gone:
+
+  ```
+  find ~ -maxdepth 3 -name .htaccess -exec grep -l "deny from" {} +
+  ```
+
+- **A `403` with a ~1.2KB body is an Apache-level block**, i.e. `.htaccess`. A
+  firewall block drops the connection instead, so the response shape tells you
+  which layer you are looking at — and therefore whether a deploy can erase it.
+
+If a block genuinely needs to survive deploys, it has to live somewhere the
+deploy does not overwrite — a firewall-level rule, or a `deny` committed to
+`public/.htaccess` in this repo. **The repo is public**, so the second option
+publishes the addresses and keeps them in history forever; it also makes stale
+blocks permanent, and a residential IP reassigned to a real supporter would then
+be refused with no diagnostic. Prefer defences that are not keyed on IP at all
+([ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md)).
+
 ### Test — [deploy-test.yml](../.github/workflows/deploy-test.yml)
 
 Triggered by a successful CI run on a **pull request**. A `gate` job refuses to

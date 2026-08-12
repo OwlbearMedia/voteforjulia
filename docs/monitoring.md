@@ -205,9 +205,12 @@ apart from a request the server already applied, so a retry could duplicate a
 supporter's row. It clears the cached client and fails, which returns a 502 and
 logs the raw body for recovery.
 
-One useful side effect: `/health/deep` exercises the same cached client every
-five minutes, so a stale connection is usually discovered and discarded by a
-probe long before a real submission meets it.
+One useful side effect: `/health/deep` exercises the same cached client on every
+probe, so a stale connection is often discovered and discarded before a real
+submission meets it. **Lengthening the monitor's period widened that gap** — at
+the current 15 minutes the window in which a submission can be the first caller
+to touch a dead socket is three times what it was at 5, so treat this as a
+mitigation rather than a guard.
 
 ### Turning it off
 

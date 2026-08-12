@@ -1,14 +1,24 @@
 # 0009. Rate-limit in process memory, keyed per IP and endpoint
 
-**Status:** Superseded by [0014](0014-do-not-trust-forwarding-headers.md)
+**Status:** Superseded by [0014](0014-do-not-trust-forwarding-headers.md) and
+[0016](0016-second-tier-rate-limiting-and-honeypot.md)
 **Date:** 2026-07-31 (recorded; decided at project start)
 
-> The limiter itself — in process memory, per endpoint and per client — still
-> stands. What [0014](0014-do-not-trust-forwarding-headers.md) replaces is the
+> A burst limiter in process memory, per endpoint and per client, still stands —
+> but two later records each replace part of this one, and neither is optional
+> reading.
+>
+> [0014](0014-do-not-trust-forwarding-headers.md) replaces the
 > client-identification rule below: trusting `CF-Connecting-IP` and
 > `X-Forwarded-For` unconditionally made the limiter bypassable by anyone who
 > sent either header, because nothing sits in front of the API to overwrite
 > them. Do not implement the "Two details are deliberate" section as written.
+>
+> [0016](0016-second-tier-rate-limiting-and-honeypot.md) replaces this record's
+> assumption that process memory suits _every_ window. It survives a 60-second
+> window and not an hour-long one, because Passenger reaps workers at idle — so
+> the sustained tier added there counts in SQLite instead, and a honeypot covers
+> the caller who simply changes IP.
 
 ## Context
 
