@@ -39,7 +39,9 @@ exercise SMTP, so nothing goes red.
 
 **Choose app env var values from `[A-Za-z0-9._~-]`.** Avoid `$`, `{`, `}`, `"`,
 `\`, backtick, and spaces. Hand-quoting the generated file is not a fix; cPanel
-rewrites it.
+rewrites it. The variables this applies to are listed under
+[Environment variables](#environment-variables); `EMAIL_PASSWORD` and
+`GOOGLE_SERVICE_ACCOUNT_JSON` are the two where a stray `$` is most likely.
 
 To confirm what a running worker actually received, compare it against the stored
 config — hash the values, never print them:
@@ -325,6 +327,80 @@ Consequences worth knowing:
   machines and `comm` compares bytes, so a collation mismatch between the runner
   and the host would report live files as stale.
 
+### Environment variables
+
+**This is the only deployment state with no representation in the checkout.**
+Nothing in the repo sets these — they are entered per app in cPanel's Python
+selector, they are not in the deploy workflows, and a rebuilt app starts with
+none of them. The table below is a reference, not a source of truth: read the
+live values back with the command under
+[Reading an app's configured environment](#reading-an-apps-configured-environment),
+and mind the [`$` rule](#app-env-vars-must-not-contain-) when setting any of them.
+
+**When a change takes effect** depends on where the variable is read, and the
+split is not arbitrary. Anything in [api/config.py](../api/config.py) is read
+**per request**, so it applies on the next submission with no restart — that is
+what makes rotating `EMAIL_PASSWORD` a cPanel edit rather than a deploy.
+Anything read at import in [api/app.py](../api/app.py) needs
+`touch api/tmp/restart.txt`, because a bad value there would otherwise fail
+module import and take every form down rather than degrade
+(`_int_setting` logs and falls back for exactly this reason).
+
+Mail — per request, no restart:
+
+| Variable                       | Default                 | Notes                                                          |
+| ------------------------------ | ----------------------- | -------------------------------------------------------------- |
+| `EMAIL_ADDRESS`                | _none_                  | SMTP username and the `From` address. Unset ⇒ every form 500s. |
+| `EMAIL_PASSWORD`               | _none_                  | Unset ⇒ every form 500s. See the `$` rule.                     |
+| `SMTP_SERVER`                  | `mail.voteforjulia.com` |                                                                |
+| `SMTP_PORT`                    | `465`                   |                                                                |
+| `SMTP_SECURITY`                | `auto`                  | `auto` \| `ssl` \| `starttls`; `auto` means STARTTLS on 587.   |
+| `SMTP_TIMEOUT_SECONDS`         | `10`                    | Raises `ValueError` (JSON 500) if unparseable or ≤ 0.          |
+| `RECIPIENT_EMAIL`              | `info@voteforjulia.com` | Comma- or semicolon-separated.                                 |
+| `RECIPIENT_EMAIL_SIGNS`        | falls back to the above | Yard-sign notifications only.                                  |
+| `PLAIN_TEXT_CONFIRMATION_ONLY` | `false`                 | Drops the HTML part of confirmation emails.                    |
+
+Google Sheets — per request, no restart:
+
+| Variable                           | Default      | Notes                                                              |
+| ---------------------------------- | ------------ | ------------------------------------------------------------------ |
+| `GOOGLE_SHEETS_SPREADSHEET_ID`     | _none_       | **Unset ⇒ appends are silently skipped**, and the form still 200s. |
+| `GOOGLE_SHEETS_WORKSHEET`          | `Sheet1`     | Title, or a numeric gid.                                           |
+| `GOOGLE_SHEETS_YARDSIGN_WORKSHEET` | `Yard Signs` |                                                                    |
+| `GOOGLE_SERVICE_ACCOUNT_FILE`      | _none_       | Takes precedence over the JSON form below.                         |
+| `GOOGLE_SERVICE_ACCOUNT_JSON`      | _none_       | The whole key as one value; watch the `$` rule.                    |
+| `SHEETS_TIMEOUT_SECONDS`           | `15`         | Larger than SMTP's: it runs after both emails are away.            |
+
+Abuse controls — read at import, **restart required**:
+
+| Variable                              | Default                                     | Notes                                                                                                                                                                           |
+| ------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ORIGIN_ENFORCED`                     | `true`                                      | `false` logs cross-site posts without refusing them. [ADR-0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md)                                                       |
+| `HONEYPOT_ENFORCED`                   | `true`                                      | `false` logs a filled honeypot without refusing it. [ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md)                                                              |
+| `CORS_ALLOWED_ORIGINS`                | apex, www, test, test-api, `localhost:5173` | Comma-separated. Since ADR-0017 this also decides who may _submit_, not only who may read a response.                                                                           |
+| `RATE_LIMIT_MAX_REQUESTS`             | `5`                                         | Burst tier, per client per endpoint.                                                                                                                                            |
+| `RATE_LIMIT_WINDOW_SECONDS`           | `60`                                        |                                                                                                                                                                                 |
+| `LONG_RATE_LIMIT_MAX_REQUESTS`        | `10`                                        | Sustained tier, counted in SQLite.                                                                                                                                              |
+| `LONG_RATE_LIMIT_WINDOW_SECONDS`      | `3600`                                      |                                                                                                                                                                                 |
+| `HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS` | `30`                                        | `/health/deep` only. Raise before shortening the monitor's period.                                                                                                              |
+| `RATE_LIMIT_MAX_BUCKETS`              | `10000`                                     | Memory backstop; crossing it resets allowances, failing open.                                                                                                                   |
+| `TRUSTED_CLIENT_IP_HEADER`            | _unset_                                     | **Leave unset unless something really does front the app.** Setting it lets any caller mint a fresh bucket per request. [ADR-0014](adr/0014-do-not-trust-forwarding-headers.md) |
+| `MAX_REQUEST_BYTES`                   | `65536`                                     | Bodies above this are refused with 413 before parsing.                                                                                                                          |
+
+Ops — read at import, **restart required**:
+
+| Variable                    | Default | Notes                                                                                                                |
+| --------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| `HEALTH_DEEP_CACHE_SECONDS` | `60`    | Keep well under the synthetic monitor's period. [ADR-0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md) |
+| `NEW_RELIC_LICENSE_KEY`     | _unset_ | Unset ⇒ the agent never starts and the app runs uninstrumented.                                                      |
+| `NEW_RELIC_APP_NAME`        | _unset_ | Read by the agent, not by our code. See [New Relic agent environment](#new-relic-agent-environment).                 |
+| `PORT`                      | `5000`  | `python -m api.app` only; Passenger does not use it.                                                                 |
+
+Two defaults are worth reading twice, because both fail quietly rather than
+loudly: an unset `GOOGLE_SHEETS_SPREADSHEET_ID` makes every submission return
+200 with no row written, and an unset `NEW_RELIC_LICENSE_KEY` means a healthy
+site reporting no server-side telemetry at all.
+
 ### Dependencies: installed by the deploy, pinned in the repo
 
 Each app has its own cPanel-managed virtualenv, created by the CloudLinux Python
@@ -457,6 +533,10 @@ If memory does approach the cap, clear `NEW_RELIC_LICENSE_KEY` on the affected
 app — that disables the agent without a deploy — and revisit ADR-0013.
 
 #### Reading an app's configured environment
+
+What each variable does is under
+[Environment variables](#environment-variables); this is how to see what an app
+actually has set.
 
 `/proc/<pid>/environ` only works while a worker happens to be alive. The durable
 source is the selector, but its `get` output embeds `EMAIL_PASSWORD` and the
