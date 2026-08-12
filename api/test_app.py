@@ -839,6 +839,99 @@ class AppDeepHealthTests(unittest.TestCase):
 
         self.assertNotIn("hunter2", response.get_data(as_text=True))
 
+    def _count_probes(self) -> dict[str, int]:
+        """Replace both dependency checks with counters that always pass."""
+        counts = {"smtp": 0, "sheets": 0}
+
+        def smtp(_config):
+            counts["smtp"] += 1
+
+        def sheets(_config):
+            counts["sheets"] += 1
+
+        app_module.verify_smtp_credentials = smtp
+        app_module.verify_sheets_access = sheets
+        return counts
+
+    def _age_the_cache(self, seconds: float) -> None:
+        """Backdate the cached result instead of sleeping through the TTL."""
+        cached = app_module._deep_health_cache
+        app_module._deep_health_cache = cached._replace(produced_at=cached.produced_at - seconds)
+
+    def test_repeated_calls_reuse_one_probe_result(self) -> None:
+        """The amplification bound, and the whole reason the cache exists.
+
+        A probe is a real SMTP `LOGIN` against the campaign's own mail account
+        plus a Google Sheets read. Run per request, one cheap unauthenticated
+        GET bought two expensive calls against the dependencies every form on
+        the site needs, and enough of them gets the mail host to throttle us --
+        which takes down sending, not just the probe.
+        """
+        counts = self._count_probes()
+        app_module._RATE_LIMIT_MAX_REQUESTS = 50
+
+        statuses = [self._get().status_code for _ in range(20)]
+
+        self.assertEqual(statuses, [200] * 20)
+        self.assertEqual(counts, {"smtp": 1, "sheets": 1})
+
+    def test_a_failing_probe_is_cached_too(self) -> None:
+        """Otherwise the amplifier returns exactly when it costs the most.
+
+        Caching only successes would leave a dependency that is already failing
+        to be hammered once per request for as long as it stays down.
+        """
+        calls = {"n": 0}
+
+        def failing(_config):
+            calls["n"] += 1
+            raise OSError("connection refused")
+
+        app_module.verify_smtp_credentials = failing
+        app_module._RATE_LIMIT_MAX_REQUESTS = 50
+
+        statuses = [self._get().status_code for _ in range(5)]
+
+        self.assertEqual(statuses, [503] * 5)
+        self.assertEqual(calls["n"], 1)
+
+    def test_an_outage_is_reported_once_the_cached_result_expires(self) -> None:
+        """Both halves of the trade the cache makes.
+
+        Up to one TTL of staleness is the price, so the test asserts the stale
+        window exists rather than pretending it does not — and then that it
+        ends. The monitor polls every 15 minutes against a 60-second TTL, so a
+        real outage is never hidden from more than one poll.
+        """
+        self._count_probes()
+        self.assertEqual(self._get().status_code, 200)
+
+        app_module.verify_smtp_credentials = self._raise(
+            smtplib.SMTPAuthenticationError(535, b"Incorrect authentication data")
+        )
+
+        # Inside the TTL the outage is deliberately not visible yet.
+        self.assertEqual(self._get().status_code, 200)
+
+        self._age_the_cache(app_module._HEALTH_DEEP_CACHE_SECONDS + 1)
+
+        self.assertEqual(self._get().status_code, 503)
+
+    def test_the_age_header_reports_how_stale_the_answer_is(self) -> None:
+        """The cache's only outward sign.
+
+        Without it neither `curl -I` nor the monitor can tell a fresh answer
+        from one held over, and a cache nobody can observe is a cache nobody can
+        debug.
+        """
+        self._count_probes()
+
+        self.assertEqual(self._get().headers.get("Age"), "0")
+
+        self._age_the_cache(5)
+
+        self.assertEqual(self._get().headers.get("Age"), "5")
+
     def test_is_rate_limited(self) -> None:
         # Each call opens an SMTP connection and hits the Sheets API, so an
         # unlimited endpoint is a free amplifier against both.
