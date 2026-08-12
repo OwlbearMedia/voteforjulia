@@ -93,7 +93,8 @@ describe('JuliaContactForm', () => {
       email: 'julia@example.com',
       phone: '555-111-2222',
       helpWays: 'Canvassing',
-      message: 'Happy to help on weekends'
+      message: 'Happy to help on weekends',
+      referralCode: ''
     });
     expect(trackVolunteerRequestBody).toHaveBeenCalledWith({
       firstName: 'Julia',
@@ -101,7 +102,8 @@ describe('JuliaContactForm', () => {
       email: 'julia@example.com',
       phone: '555-111-2222',
       helpWays: 'Canvassing',
-      message: 'Happy to help on weekends'
+      message: 'Happy to help on weekends',
+      referralCode: ''
     });
     expect(trackVolunteerFormSubmit).toHaveBeenCalledWith('success');
     expect(wrapper.find('form').exists()).toBe(false);
@@ -145,7 +147,8 @@ describe('JuliaContactForm', () => {
       email: 'julia@example.com',
       phone: '',
       helpWays: '',
-      message: ''
+      message: '',
+      referralCode: ''
     });
     expect(trackVolunteerFormSubmit).toHaveBeenCalledWith('error');
     expect(wrapper.text()).toContain('Server unavailable');

@@ -22,6 +22,7 @@ from api.config import (
     DEFAULT_YARDSIGN_SHEETS_WORKSHEET,
     EmailConfig,
     env,
+    env_bool,
     load_email_config,
     load_sheets_config,
 )
@@ -29,9 +30,11 @@ from api.models import (
     Submission,
     YardSignRequest,
     looks_like_email,
+    normalize_text,
     validate_submission,
     validate_yard_sign_request,
 )
+from api.rate_limit_store import consume as consume_persistent_rate_limit
 from api.services.email_service import (
     send_confirmation_email,
     send_submission_email,
@@ -94,6 +97,25 @@ app.config["MAX_CONTENT_LENGTH"] = _int_setting("MAX_REQUEST_BYTES", DEFAULT_MAX
 
 _RATE_LIMIT_WINDOW_SECONDS = _int_setting("RATE_LIMIT_WINDOW_SECONDS", 60)
 _RATE_LIMIT_MAX_REQUESTS = _int_setting("RATE_LIMIT_MAX_REQUESTS", 5)
+
+# The second tier (ADR-0016): the patient caller the burst limit above cannot
+# see. Sized from the 2026-08-10 abuse, which peaked at 23/hour while never
+# exceeding three in any single minute.
+_LONG_RATE_LIMIT_WINDOW_SECONDS = _int_setting("LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+_LONG_RATE_LIMIT_MAX_REQUESTS = _int_setting("LONG_RATE_LIMIT_MAX_REQUESTS", 10)
+
+# `/health/deep` gets its own, larger hourly allowance. It is polled on a
+# schedule rather than by people, so the form endpoints' figure -- chosen
+# against "a supporter submits one form once" -- describes nothing about it, and
+# a 429 here is a false alert rather than a blocked spammer.
+#
+# Sized against the synthetic monitor in monitoring/alerts.graphql, currently
+# EVERY_15_MINUTES from two locations. Should the monitor and this ever drift
+# apart, `test_health_deep_allowance_fits_the_synthetic_monitor` fails rather
+# than the alert policy paging at 3am. Raise this before shortening the period.
+_HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS = _int_setting("HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS", 30)
+
+_HEALTH_DEEP_SCOPE = "health-deep"
 
 # A ceiling on how many client keys are tracked at once, so the dict cannot grow
 # without bound. Far above any plausible number of distinct clients in a
@@ -355,7 +377,87 @@ def _consume_rate_limit(scope: str) -> int | None:
         return retry_after
 
     bucket.append(now)
-    return None
+
+    # Second tier last: the cheap in-memory check short-circuits a burst before
+    # anything touches the disk, and counting only requests the burst tier
+    # allowed stops a refused request from spending the hourly allowance.
+    return _consume_long_rate_limit(scope, key)
+
+
+def _long_rate_limit_for(scope: str) -> int:
+    """The hourly allowance for one scope.
+
+    Read at call time rather than baked into a dict at import, so a test can
+    monkeypatch either setting.
+    """
+    if scope == _HEALTH_DEEP_SCOPE:
+        return _HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS
+
+    return _LONG_RATE_LIMIT_MAX_REQUESTS
+
+
+def _consume_long_rate_limit(scope: str, key: str) -> int | None:
+    """The hour-scale tier, counted in SQLite so it outlives the worker.
+
+    Separate from the burst tier because this one talks to a file and fails
+    open, degrading to pre-ADR-0016 behaviour rather than taking the forms down.
+    """
+    return consume_persistent_rate_limit(
+        key,
+        limit=_long_rate_limit_for(scope),
+        window_seconds=_LONG_RATE_LIMIT_WINDOW_SECONDS,
+    )
+
+
+# The honeypot (ADR-0016). Both forms render this as a `display: none` input no
+# person can see, focus or tab into. The name is chosen to look worth filling to
+# something enumerating inputs while matching no autofill heuristic -- an
+# autofilled honeypot would reject a real volunteer.
+_HONEYPOT_FIELD = "referralCode"
+
+# Kill switch, so a honeypot that rejects someone real is a cPanel restart to
+# disable rather than a release.
+_HONEYPOT_ENFORCED = env_bool("HONEYPOT_ENFORCED", True)
+
+# Not the generic validation message: the field they would have to clear is
+# invisible to them, so the only useful thing to say is "reach us another way".
+_HONEYPOT_MESSAGE = (
+    "We could not process this submission. "
+    "Please email info@voteforjulia.com and we will follow up personally."
+)
+
+
+def _honeypot_value() -> str:
+    """The honeypot field as submitted, over either encoding.
+
+    Mirrors `_submission_from_request`'s JSON-then-form order rather than reading
+    `request.values`, so the two cannot disagree about which body was read.
+    """
+    payload = request.get_json(silent=True)
+    if isinstance(payload, dict):
+        return normalize_text(payload.get(_HONEYPOT_FIELD))
+
+    if request.form:
+        return normalize_text(request.form.get(_HONEYPOT_FIELD))
+
+    return ""
+
+
+def _honeypot_tripped(endpoint_name: str) -> bool:
+    """Whether this request filled in the hidden field.
+
+    Blankness is `_is_blank`, not merely falsiness. `normalize_text` strips only
+    spaces and tabs, so a lone "\\n" or a non-breaking space survives it and
+    would otherwise read as a filled honeypot and reject a real submission.
+
+    Logged even when unenforced, so the kill switch can be flipped on evidence
+    rather than on a hunch.
+    """
+    if _is_blank(_honeypot_value()):
+        return False
+
+    logger.warning("%s honeypot field %r was filled", endpoint_name, _HONEYPOT_FIELD)
+    return _HONEYPOT_ENFORCED
 
 
 _SMTP_UNAVAILABLE_MESSAGE = "Unable to send email right now."
@@ -436,6 +538,11 @@ def _handle_form_submission(
     recipient_env="RECIPIENT_EMAIL",
 ):
     _log_request_fields(endpoint_name)
+
+    # Before the email config is even read, so a trip costs a log line and
+    # nothing else -- no SMTP, no Sheets write, no mail to a supplied address.
+    if _honeypot_tripped(endpoint_name):
+        return _lost_submission_response(endpoint_name, _HONEYPOT_MESSAGE, 400)
 
     try:
         # Inside the try so a malformed SMTP_SECURITY/SMTP_PORT env value
@@ -569,7 +676,7 @@ def _probe(name: str, check) -> tuple[str, bool]:
 
 @app.route("/health/deep", methods=["GET"])
 def deep_health_check():
-    retry_after = _consume_rate_limit("health-deep")
+    retry_after = _consume_rate_limit(_HEALTH_DEEP_SCOPE)
     if retry_after is not None:
         return _rate_limited_response(retry_after)
 

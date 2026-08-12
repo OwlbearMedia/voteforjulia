@@ -29,6 +29,7 @@ const {
   addressError,
   validateAddressField,
   preferredPayment,
+  referralCode,
   submitError,
   isSubmitted,
   isSubmitting,
@@ -140,6 +141,22 @@ useScrollToSuccess(successMessageRef, isSubmitted);
       </div>
 
       <input type="hidden" name="name" :value="fullName" />
+
+      <!--
+        Spam honeypot (ADR-0016) — see JuliaContactForm.vue for why this is
+        `display: none` via `.honeypot-field` and never `.sr-only`.
+      -->
+      <div class="honeypot-field">
+        <label for="yard-sign-referral-code">Referral code (leave this field empty)</label>
+        <input
+          id="yard-sign-referral-code"
+          v-model="referralCode"
+          name="referralCode"
+          type="text"
+          tabindex="-1"
+          autocomplete="off"
+        />
+      </div>
 
       <label for="yard-sign-email" class="sr-only">Email *</label>
       <input

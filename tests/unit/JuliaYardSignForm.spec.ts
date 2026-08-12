@@ -81,7 +81,8 @@ describe('JuliaYardSignForm', () => {
       email: 'julia@example.com',
       phone: '555-111-2222',
       address: '123 Main St, Mankato, MN 56001',
-      preferredPayment: ''
+      preferredPayment: '',
+      referralCode: ''
     });
     expect(trackYardSignRequestBody).toHaveBeenCalledWith({
       firstName: 'Julia',
@@ -89,7 +90,8 @@ describe('JuliaYardSignForm', () => {
       email: 'julia@example.com',
       phone: '555-111-2222',
       address: '123 Main St, Mankato, MN 56001',
-      preferredPayment: ''
+      preferredPayment: '',
+      referralCode: ''
     });
     expect(trackYardSignFormSubmit).toHaveBeenCalledWith('success');
     expect(wrapper.find('form').exists()).toBe(false);
@@ -133,7 +135,8 @@ describe('JuliaYardSignForm', () => {
       email: 'julia@example.com',
       phone: '',
       address: '123 Main St',
-      preferredPayment: ''
+      preferredPayment: '',
+      referralCode: ''
     });
     expect(trackYardSignFormSubmit).toHaveBeenCalledWith('error');
     expect(wrapper.text()).toContain('Server unavailable');
