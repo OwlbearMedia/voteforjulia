@@ -74,8 +74,11 @@ and a JSON-LD graph containing the shared `campaignWebSiteNode` +
 - `schemaGraph` — fully replace the graph when node order matters (e.g. Donate
   inserts a `WebPage` node between WebSite and Person). Compose it from the
   exported `campaignWebSiteNode` / `campaignPersonNode`.
-- `scripts` — extra `<script>` tags, emitted before the JSON-LD (e.g. Donate's
-  Donorbox loader).
+- `scripts` — extra `<script>` tags, emitted before the JSON-LD. No caller today:
+  Donate used it for the Donorbox loader until that moved to `onMounted`.
+- `extraLinks` — extra `<link>` tags (e.g. Donate's `modulepreload` for the
+  Donorbox loader, which is preloaded here but _executed_ from `onMounted` — see
+  [Custom elements](#custom-elements)).
 - `extraMeta` — meta tags appended after the standard block.
 
 ## Tailwind

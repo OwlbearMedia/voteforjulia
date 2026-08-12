@@ -394,6 +394,7 @@ retry only that job and its dependents, rather than "Re-run all jobs".
 - SSH_PORT
 - NEW_RELIC_API_KEY (New Relic User key, `NRAK-…`, for uploading source maps in the production deploy)
 - CODECOV_TOKEN (repository upload token from [codecov.io](https://codecov.io); enables the coverage upload and the README coverage badge)
+- GOOGLE_SHEETS_SPREADSHEET_ID and GOOGLE_SERVICE_ACCOUNT_JSON (the same two values the [E2E tests](#e2e-tests-cypress) need locally — the Cypress job in the test deploy reads the submitted rows back out of the sheet and deletes them, so without these the e2e job fails after an otherwise good deploy)
 
 ### Test coverage (Codecov)
 
