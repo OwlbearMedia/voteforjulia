@@ -28,6 +28,11 @@ cypress/videos
 __pycache__
 *.pyc
 
+# Passenger's directory, and where the long-window rate limiter keeps its
+# counters (ADR-0016). Runtime state that belongs to whichever host the app is
+# deployed on — the deploy's prune step skips `tmp/` for the same reason.
+api/tmp/
+
 # Editor directories and files
 # `.vscode/*` not `.vscode`: git does not descend into an excluded directory,
 # so the negation below only works if the contents are excluded rather than

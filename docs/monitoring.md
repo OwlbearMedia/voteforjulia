@@ -52,8 +52,22 @@ SMTP and reads spreadsheet metadata — see
 
 | Monitor                              | Target     | Period | Alerts? |
 | ------------------------------------ | ---------- | ------ | ------- |
-| `voteforjulia-api /health/deep`      | production | 5 min  | **yes** |
-| `voteforjulia-api-test /health/deep` | test       | 15 min | no      |
+| `voteforjulia-api /health/deep`      | production | 15 min | **yes** |
+| `voteforjulia-api-test /health/deep` | test       | 30 min | no      |
+
+**The periods are a billing constraint, not a tuning choice.** Both were
+lengthened on 2026-08-10 — production from 5 min, test from 15 — because
+5-minute checks ran over the plan's budget. Two things follow, and both are
+easy to miss:
+
+- **The alert's aggregation window has to track the period.** See the
+  [alert conditions](#alert-conditions) below; changing one without the other
+  stops the alert firing at all.
+- **`/health/deep` has its own rate-limit allowance** (30/hour, against the
+  form endpoints' 10) so a monitor can never 429 itself into a false alert.
+  `test_health_deep_allowance_fits_the_synthetic_monitor` in
+  [api/test_app_pipeline.py](../api/test_app_pipeline.py) fails if a future
+  period change outgrows it. Raise the allowance before shortening the period.
 
 **The test monitor is deliberately not wired to the policy.** Every PR deploy
 restarts `api_test` and it briefly fails. Alerting on that would train you to
@@ -72,6 +86,23 @@ All three sit on the **`voteforjulia — API`** policy (`PER_CONDITION`, so an
 SMTP outage and a Sheets outage open separate issues rather than collapsing into
 one).
 
+Read back from the account on 2026-08-10, all three exist and are enabled:
+
+| Condition                                 | ID         |
+| ----------------------------------------- | ---------- |
+| Policy `voteforjulia — API`               | `7831111`  |
+| API dependency check failing (production) | `64880222` |
+| API error rate above 5% (production)      | `64880233` |
+| API not reporting (production)            | `64880240` |
+
+**Conditions existing is not the same as being alerted.** A policy with no
+notification workflow and destination raises issues that sit in the UI and reach
+nobody, which looks identical to "nothing has gone wrong". The account had **no
+issues at all** as of 2026-08-10, which is consistent both with nothing breaking
+and with the conditions never having evaluated — so it is not evidence either
+way. Confirm a workflow exists (Alerts → Workflows) and send yourself a test
+notification; that is the only check that proves the path end to end.
+
 | Condition                    | Fires when                                    |
 | ---------------------------- | --------------------------------------------- |
 | API dependency check failing | the production synthetic fails twice in a row |
@@ -81,6 +112,28 @@ one).
 The third exists because **silence is not a signal**. If the worker dies or the
 agent crashes, error _rate_ has no data to be high on, so it uses
 `fillOption: STATIC, fillValue: 0` to make absence look like zero throughput.
+
+**Two of the three are coupled to the synthetic's period**, and neither
+dependency is visible from the New Relic UI. Lengthening the monitor to 15
+minutes on 2026-08-10 made the values in `alerts.graphql` wrong, and they were
+corrected in the same change — but **whether the live conditions were ever
+updated has not been established**, because a condition's signal block cannot be
+read back through the read-only MCP server. Check the two below in the UI before
+trusting either.
+
+- **"API dependency check failing" — keep `aggregationWindow` equal to the
+  period and `thresholdDuration` at twice it.** At the current 15 minutes that
+  is 900 and 1800. The condition fills empty windows with 0 and requires _every_
+  window in `thresholdDuration` to breach, so a window shorter than the period
+  guarantees a filled zero between checks and the breach can never be sustained.
+  It then fails silently, which is the worst way for an alert to fail. Detection
+  now takes about 30 minutes — the cost of the longer period, not a choice.
+- **"API not reporting" needs six consecutive empty 5-minute windows**, and the
+  synthetic is most of this API's baseline traffic. At a 15-minute period a
+  check lands in every third window, so the longest run of zeros is two. A
+  30-minute period would make that run five against a threshold of six, and the
+  condition would start flapping. Lengthen `thresholdDuration` alongside any
+  further increase.
 
 ## When something fires
 
