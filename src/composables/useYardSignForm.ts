@@ -46,6 +46,10 @@ export function useYardSignForm() {
 
   const preferredPayment = ref<string[]>([]);
 
+  // Spam honeypot (ADR-0016) — see useContactForm. Both forms must carry it or
+  // one endpoint is unprotected.
+  const referralCode = ref('');
+
   const fullName = computed(() =>
     `${firstNameField.value.value.trim()} ${lastNameField.value.value.trim()}`.trim()
   );
@@ -58,7 +62,8 @@ export function useYardSignForm() {
       email: emailField.value.value,
       phone: phoneField.value.value,
       address: addressField.value.value,
-      preferredPayment: [...preferredPayment.value].join(', ')
+      preferredPayment: [...preferredPayment.value].join(', '),
+      referralCode: referralCode.value
     }),
     submit: submitYardSignForm,
     trackRequest: trackYardSignRequestBody,
@@ -84,6 +89,7 @@ export function useYardSignForm() {
     addressError: addressField.error,
     validateAddressField: addressField.validate,
     preferredPayment,
+    referralCode,
     submitError,
     isSubmitted,
     isSubmitting,
