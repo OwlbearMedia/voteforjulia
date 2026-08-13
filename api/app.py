@@ -5,6 +5,7 @@ import smtplib
 from collections import deque
 from math import ceil
 from time import monotonic
+from typing import NamedTuple
 
 from flask import Flask, json, jsonify, request
 from werkzeug.exceptions import HTTPException
@@ -116,6 +117,12 @@ _LONG_RATE_LIMIT_MAX_REQUESTS = _int_setting("LONG_RATE_LIMIT_MAX_REQUESTS", 10)
 _HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS = _int_setting("HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS", 30)
 
 _HEALTH_DEEP_SCOPE = "health-deep"
+
+# How long one probe result is reused. The rate limit above bounds how often one
+# address may ask; this bounds what the answer costs. Keep it well under the
+# synthetic monitor's period, or scheduled polls start grading a cached answer.
+# See ADR-0017.
+_HEALTH_DEEP_CACHE_SECONDS = _int_setting("HEALTH_DEEP_CACHE_SECONDS", 60)
 
 # A ceiling on how many client keys are tracked at once, so the dict cannot grow
 # without bound. Far above any plausible number of distinct clients in a
@@ -419,12 +426,41 @@ _HONEYPOT_FIELD = "referralCode"
 # disable rather than a release.
 _HONEYPOT_ENFORCED = env_bool("HONEYPOT_ENFORCED", True)
 
-# Not the generic validation message: the field they would have to clear is
-# invisible to them, so the only useful thing to say is "reach us another way".
-_HONEYPOT_MESSAGE = (
+# Shared by the honeypot and the origin check: neither is correctable by editing
+# the form, so both can only say "reach us another way". See ADR-0017.
+_REFUSED_SUBMISSION_MESSAGE = (
     "We could not process this submission. "
     "Please email info@voteforjulia.com and we will follow up personally."
 )
+
+# The origin trust boundary (ADR-0017). CORS decides who may read a response,
+# never who may send a request: a form-encoded POST is a simple request, so the
+# allowlist above never sees it before it arrives. Per-IP limiting is blind to
+# the same case, because each conscripted browser brings its own address.
+_ORIGIN_ENFORCED = env_bool("ORIGIN_ENFORCED", True)
+
+# Attacker-chosen text on its way to a log line.
+_MAX_LOGGED_ORIGIN_CHARS = 128
+
+
+def _origin_rejected(endpoint_name: str) -> bool:
+    """Whether this submission came from a page the campaign does not control.
+
+    Absent is allowed -- only browsers send `Origin`, and the callers that do
+    not are the ones per-IP limiting bounds. Present-but-unlisted is not,
+    including the `null` a sandboxed iframe sends. Logs the origin even when
+    unenforced, but never the body: nothing rate-limits this path. See ADR-0017.
+    """
+    origin = request.headers.get("Origin", "").strip()
+    if not origin or origin in _CORS_ALLOWED_ORIGINS:
+        return False
+
+    logger.warning(
+        "%s rejected a submission from origin %r",
+        endpoint_name,
+        origin[:_MAX_LOGGED_ORIGIN_CHARS],
+    )
+    return _ORIGIN_ENFORCED
 
 
 def _honeypot_value() -> str:
@@ -517,6 +553,11 @@ def _lost_submission_response(endpoint_name: str, message: str, status: int):
     return jsonify({"error": message}), status
 
 
+def _cross_site_response():
+    """403, not 400: the body is fine, the page that sent it is not."""
+    return jsonify({"error": _REFUSED_SUBMISSION_MESSAGE}), 403
+
+
 def _rate_limited_response(retry_after: int):
     response = jsonify({"error": "Too many requests. Please try again later."})
     response.status_code = 429
@@ -542,7 +583,7 @@ def _handle_form_submission(
     # Before the email config is even read, so a trip costs a log line and
     # nothing else -- no SMTP, no Sheets write, no mail to a supplied address.
     if _honeypot_tripped(endpoint_name):
-        return _lost_submission_response(endpoint_name, _HONEYPOT_MESSAGE, 400)
+        return _lost_submission_response(endpoint_name, _REFUSED_SUBMISSION_MESSAGE, 400)
 
     try:
         # Inside the try so a malformed SMTP_SECURITY/SMTP_PORT env value
@@ -674,29 +715,76 @@ def _probe(name: str, check) -> tuple[str, bool]:
         return "fail", False
 
 
-@app.route("/health/deep", methods=["GET"])
-def deep_health_check():
-    retry_after = _consume_rate_limit(_HEALTH_DEEP_SCOPE)
-    if retry_after is not None:
-        return _rate_limited_response(retry_after)
+class _DeepHealthResult(NamedTuple):
+    """One probe run, kept so the next caller within the TTL can reuse it."""
 
+    produced_at: float
+    payload: dict[str, str]
+    status: int
+
+
+# Per worker, like the burst rate-limit tier: Passenger reaps idle workers, so
+# the bound is one probe per worker per TTL rather than one globally.
+_deep_health_cache: _DeepHealthResult | None = None
+
+
+def _reset_deep_health_cache() -> None:
+    """Forget the cached result, forcing the next request to probe. For tests."""
+    global _deep_health_cache
+    _deep_health_cache = None
+
+
+def _run_deep_health_probes(produced_at: float) -> _DeepHealthResult:
     smtp_status, smtp_ok = _probe("smtp", lambda: verify_smtp_credentials(load_email_config()))
     sheets_status, sheets_ok = _probe("sheets", lambda: verify_sheets_access(load_sheets_config()))
 
     healthy = smtp_ok and sheets_ok
-    return jsonify(
-        {
+    return _DeepHealthResult(
+        produced_at=produced_at,
+        payload={
             "status": "ok" if healthy else "degraded",
             "smtp": smtp_status,
             "sheets": sheets_status,
-        }
-    ), (200 if healthy else 503)
+        },
+        status=200 if healthy else 503,
+    )
+
+
+@app.route("/health/deep", methods=["GET"])
+def deep_health_check():
+    global _deep_health_cache
+
+    retry_after = _consume_rate_limit(_HEALTH_DEEP_SCOPE)
+    if retry_after is not None:
+        return _rate_limited_response(retry_after)
+
+    # Stamped before the probes, so Age may overstate but never understates.
+    now = monotonic()
+
+    cached = _deep_health_cache
+    if cached is None or now - cached.produced_at >= _HEALTH_DEEP_CACHE_SECONDS:
+        # Failures too: caching only successes would restore the amplifier
+        # exactly when a dependency is already in trouble.
+        cached = _run_deep_health_probes(now)
+        _deep_health_cache = cached
+
+    response = jsonify(cached.payload)
+    response.status_code = cached.status
+    # The cache's only outward sign; 0 means the probes ran for this request.
+    response.headers["Age"] = str(int(now - cached.produced_at))
+    return response
 
 
 @app.route("/send-email", methods=["POST", "OPTIONS"])
 def send_email():
     if request.method == "OPTIONS":
         return ("", 204)
+
+    # Ahead of the limiter: a cross-site flood arrives on its victims'
+    # addresses, so charging it to their buckets would spend real supporters'
+    # allowance.
+    if _origin_rejected("/send-email"):
+        return _cross_site_response()
 
     retry_after = _consume_rate_limit("send-email")
     if retry_after is not None:
@@ -719,6 +807,10 @@ def send_email():
 def yard_sign():
     if request.method == "OPTIONS":
         return ("", 204)
+
+    # Before the limiter, for the reason given in `send_email`.
+    if _origin_rejected("/yard-sign"):
+        return _cross_site_response()
 
     retry_after = _consume_rate_limit("yard-sign")
     if retry_after is not None:

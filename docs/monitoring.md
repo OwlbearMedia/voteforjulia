@@ -68,6 +68,14 @@ easy to miss:
   `test_health_deep_allowance_fits_the_synthetic_monitor` in
   [api/test_app_pipeline.py](../api/test_app_pipeline.py) fails if a future
   period change outgrows it. Raise the allowance before shortening the period.
+- **Its results are cached for 60 seconds**
+  ([ADR-0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md)), so the
+  endpoint cannot be used as an amplifier against SMTP and Sheets. At a 15- or
+  30-minute period every scheduled check still runs the real probes, and the
+  `Age` response header says which it got — `0` means the probes ran for that
+  request. **Keep any future period comfortably above the TTL**: a period below
+  it would have the monitor grading a cached answer, and an outage could clear
+  and re-alert against a result nothing re-measured.
 
 **The test monitor is deliberately not wired to the policy.** Every PR deploy
 restarts `api_test` and it briefly fails. Alerting on that would train you to
@@ -167,8 +175,16 @@ FROM SyntheticCheck WHERE result = 'FAILED' SINCE 2 hours ago
 `/health/deep` reports which dependency broke:
 
 ```
-curl -s https://api.voteforjulia.com/health/deep | jq
+curl -s -D /dev/stderr https://api.voteforjulia.com/health/deep | jq
 ```
+
+`-D /dev/stderr`, not `-D -`: the latter writes the headers to stdout, where
+they reach `jq` ahead of the body and it dies on `HTTP/2 200` instead of showing
+you the probe result.
+
+Read `Age` from the headers first. Anything above `0` is a cached result, so a
+green answer may predate the alert by up to a minute — wait it out and ask
+again rather than concluding the alert was noise.
 
 - `"smtp": "fail"` → the mail server or its credentials. This is the
   2026-07-30 failure mode; check `EMAIL_PASSWORD` for a `$`

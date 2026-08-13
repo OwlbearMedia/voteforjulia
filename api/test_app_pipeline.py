@@ -750,6 +750,183 @@ def test_the_honeypot_can_be_disabled_without_a_deploy(client, pipeline, monkeyp
     assert "honeypot" in caplog.text
 
 
+# --- Origin trust boundary, ADR-0017 ----------------------------------------
+
+
+SITE_ORIGIN = "https://voteforjulia.com"
+
+
+@pytest.fixture
+def allowed_origins(monkeypatch):
+    """Pin the allowlist so these tests do not depend on `CORS_ALLOWED_ORIGINS`.
+
+    The set is built from the environment at import, so a developer shell that
+    exports the variable would otherwise change what these tests mean.
+    """
+    monkeypatch.setattr(app_module, "_CORS_ALLOWED_ORIGINS", {SITE_ORIGIN})
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        pytest.param("https://evil.example", id="unrelated-site"),
+        # The reason this is a set membership test and not a substring or
+        # suffix one. Both of these contain the real origin's text.
+        pytest.param("https://voteforjulia.com.evil.example", id="suffix-lookalike"),
+        pytest.param("https://evil.example/?https://voteforjulia.com", id="prefix-lookalike"),
+        # What a sandboxed iframe or a `data:` URL sends. No supporter submits
+        # from one, and it must not be read as "no origin".
+        pytest.param("null", id="opaque-origin"),
+        # Same host, wrong scheme: a page served over plain HTTP is a page an
+        # active network attacker wrote.
+        pytest.param("http://voteforjulia.com", id="insecure-scheme"),
+    ],
+)
+def test_a_cross_site_submission_is_refused_before_any_work(
+    client, pipeline, allowed_origins, origin
+):
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": origin})
+
+    assert response.status_code == 403
+    assert "info@voteforjulia.com" in response.get_json()["error"]
+    # The point of doing this before anything else: no mail to the campaign, no
+    # confirmation to whatever address the page supplied, no row in the sheet.
+    assert pipeline.notifications == []
+    assert pipeline.confirmations == []
+    assert pipeline.rows == []
+
+
+@BOTH_ENDPOINTS
+def test_a_same_site_submission_is_accepted(client, pipeline, allowed_origins, path, payload):
+    """The negative case, without which the test above proves nothing.
+
+    Every scripted submission the site makes carries this header, so a check
+    that rejected on presence rather than on value would take both forms down.
+    """
+    response = client.post(path, json=payload, headers={"Origin": SITE_ORIGIN})
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+def test_a_cross_site_form_post_is_refused(client, pipeline, allowed_origins):
+    """The encoding that made this reachable in the first place.
+
+    A form-encoded POST is a CORS simple request: the browser sends it with no
+    preflight, so nothing consults the allowlist before it arrives. It is also
+    the encoding all 36 recorded requests of the 2026-08-10 abuse used.
+    """
+    response = client.post(
+        CONTACT_PATH,
+        data=CONTACT_PAYLOAD,
+        content_type="application/x-www-form-urlencoded",
+        headers={"Origin": "https://evil.example"},
+    )
+
+    assert response.status_code == 403
+    assert pipeline.notifications == []
+
+
+def test_a_submission_with_no_origin_header_is_accepted(client, pipeline, allowed_origins):
+    """Absent is not foreign, and that is deliberate.
+
+    Only browsers attach `Origin`. curl, a monitor and anything server-side send
+    none, and those are precisely the callers per-IP rate limiting does bound.
+    Rejecting them would buy nothing and break every scripted client.
+    """
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD)
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+def test_a_cross_site_flood_does_not_spend_a_victims_rate_limit(
+    client, pipeline, allowed_origins, monkeypatch
+):
+    """The reason the check runs ahead of the limiter.
+
+    A cross-site attack arrives on its victims' addresses. If a rejected request
+    consumed a bucket, the attacker would spend the allowance of the very people
+    whose browsers were conscripted -- so a supporter who then submitted the form
+    themselves would be turned away by a limit they never approached.
+    """
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 3)
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+
+    for _ in range(10):
+        rejected = client.post(
+            CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": "https://evil.example"}
+        )
+        assert rejected.status_code == 403
+
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": SITE_ORIGIN})
+
+    assert response.status_code == 200, "the rejections should have cost this client nothing"
+    assert len(pipeline.notifications) == 1
+
+
+def test_a_rejected_origin_is_logged_without_the_body(client, pipeline, allowed_origins, caplog):
+    """Logged, but not the way the honeypot logs.
+
+    The honeypot dumps the body because a false positive there is a real person
+    whose submission is otherwise lost. This path cannot afford that: it runs
+    before the limiter, so nothing bounds how many times an attacker can reach
+    it, and a body dump per request would be a way to fill the disk. The origin
+    alone is what makes the kill switch usable, and it is bounded text.
+    """
+    with caplog.at_level(logging.WARNING):
+        client.post(
+            CONTACT_PATH,
+            json={**CONTACT_PAYLOAD, "message": "unique-body-marker"},
+            headers={"Origin": "https://evil.example"},
+        )
+
+    assert "https://evil.example" in caplog.text
+    assert "unique-body-marker" not in caplog.text
+    assert "julia@example.com" not in caplog.text
+
+
+def test_an_oversized_origin_is_truncated_before_it_reaches_the_log(
+    client, pipeline, allowed_origins, caplog
+):
+    """The header is attacker-chosen text on its way to a log file.
+
+    Asserts the line is written *and* bounded. A bare length check passes just
+    as well when nothing is logged at all, so on its own it would go green the
+    day the rejection stopped happening.
+    """
+    with caplog.at_level(logging.WARNING):
+        client.post(
+            CONTACT_PATH,
+            json=CONTACT_PAYLOAD,
+            headers={"Origin": "https://" + "a" * 4000 + ".example"},
+        )
+
+    assert "rejected a submission from origin" in caplog.text
+    assert "a" * 4000 not in caplog.text
+    assert len(caplog.text) < 1000
+
+
+def test_the_origin_check_can_be_disabled_without_a_deploy(
+    client, pipeline, allowed_origins, monkeypatch, caplog
+):
+    """The kill switch, for the day it rejects someone real.
+
+    Unenforced still logs, so turning it off answers whether it was catching
+    attackers or catching people -- the same bargain `HONEYPOT_ENFORCED` makes.
+    """
+    monkeypatch.setattr(app_module, "_ORIGIN_ENFORCED", False)
+
+    with caplog.at_level(logging.WARNING):
+        response = client.post(
+            CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": "https://evil.example"}
+        )
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+    assert "https://evil.example" in caplog.text
+
+
 # --- /health/deep's own hourly allowance, ADR-0016 ---------------------------
 
 

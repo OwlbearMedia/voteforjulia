@@ -32,8 +32,17 @@ info:
 
     ### Authentication
 
-    None. The endpoints are public and protected by CORS plus per-IP rate
-    limiting.
+    None. The endpoints are public. What stands in for authentication is a
+    stack of controls, each covering a case the others cannot see: an origin
+    check (`403`) that refuses submissions from pages the campaign does not
+    control, two tiers of per-IP rate limiting (`429`), and a hidden honeypot
+    field (`400`).
+
+    CORS is **not** one of them, despite appearing to be. A form-encoded POST is
+    a CORS simple request, so the browser sends it with no preflight and the
+    allowlist never gets a say in whether it is made — it governs only who may
+    read the response. That is what the origin check exists to cover; see
+    ADR-0017.
   contact:
     name: Vote for Julia
     email: info@voteforjulia.com
@@ -87,10 +96,22 @@ paths:
         Failures report `fail` and nothing more; the underlying exception text
         quotes credentials and is logged server-side only. The deploy pipeline
         checks `/health`, not this — a mail-server blip must not fail a deploy.
+
+        **Results are cached for 60 seconds** (`HEALTH_DEEP_CACHE_SECONDS`),
+        successes and failures alike. Rate limiting bounds how often one address
+        may ask; the cache bounds what the answer costs, so an unauthenticated
+        caller spread across many addresses cannot turn this into an amplifier
+        against the mail server and the Sheets API. `Age` reports how old the
+        answer is — `0` means the probes ran for this request. The cache is
+        per-worker, so the real ceiling is one probe per worker per TTL. See
+        ADR-0017.
       operationId: deepHealthCheck
       responses:
         '200':
           description: Both dependencies are reachable and authenticated.
+          headers:
+            Age:
+              $ref: '#/components/headers/Age'
           content:
             application/json:
               schema:
@@ -99,6 +120,9 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           description: At least one dependency failed.
+          headers:
+            Age:
+              $ref: '#/components/headers/Age'
           content:
             application/json:
               schema:
@@ -116,6 +140,9 @@ paths:
         `firstName` and `email` are required. A confirmation email that fails to
         send is logged but does **not** fail the request; a Google Sheets append
         that fails does (`502`), because the submission is then only in email.
+
+        Browser callers must send an `Origin` on the allowlist — see
+        `#/components/responses/CrossSiteRejected`.
       operationId: sendEmail
       requestBody:
         required: true
@@ -153,6 +180,8 @@ paths:
           $ref: '#/components/responses/Sent'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/CrossSiteRejected'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '429':
@@ -179,6 +208,9 @@ paths:
         and rows are appended to the `Yard Signs` worksheet.
 
         `firstName`, `email`, and `address` are required.
+
+        Browser callers must send an `Origin` on the allowlist — see
+        `#/components/responses/CrossSiteRejected`.
       operationId: yardSign
       requestBody:
         required: true
@@ -211,6 +243,8 @@ paths:
           $ref: '#/components/responses/Sent'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/CrossSiteRejected'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '429':
@@ -487,6 +521,42 @@ components:
                   We could not process this submission. Please email
                   info@voteforjulia.com and we will follow up personally.
 
+    CrossSiteRejected:
+      description: |
+        The request carried an `Origin` header that is not in
+        `CORS_ALLOWED_ORIGINS`, so it was sent by a page the campaign does not
+        control. Refused before the rate limiter, before the honeypot, and
+        before any mail or sheet write.
+
+        This exists because CORS does not stop the request being *made*. A
+        form-encoded POST is a simple request: no preflight, so a page anywhere
+        can auto-submit these forms from its visitors' browsers. Every visitor
+        arrives on their own address, which is what makes per-IP limiting blind
+        to it — one request per victim.
+
+        A missing `Origin` is **not** refused. Only browsers send one, and the
+        callers that do not (curl, monitors, anything server-side) are the ones
+        per-IP limiting does bound.
+
+        `403` rather than `400`: the body is fine, the page that sent it is not,
+        so there is nothing for the caller to correct and retry. The message is
+        the one the honeypot uses, because the useful advice is the same and the
+        response should not say which control fired. Set `ORIGIN_ENFORCED=false`
+        to log without refusing.
+      headers:
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: >-
+              We could not process this submission. Please email
+              info@voteforjulia.com and we will follow up personally.
+
     PayloadTooLarge:
       description: |
         The request body exceeds `MAX_REQUEST_BYTES` (65536 by default) and was
@@ -669,6 +739,18 @@ components:
             const: '86400'
 
   headers:
+    Age:
+      description: |
+        Seconds since the probes behind this response actually ran. `0` means
+        they ran for this request; anything higher is a cached result being
+        reused. Stamped before the probes rather than after, so a slow run
+        reports itself as older than it is — this may overstate, never
+        understate.
+      schema:
+        type: integer
+        minimum: 0
+      example: 0
+
     Vary:
       description: |
         Always includes `Origin` — on rejected origins too, so a shared cache
