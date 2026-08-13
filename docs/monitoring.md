@@ -175,8 +175,12 @@ FROM SyntheticCheck WHERE result = 'FAILED' SINCE 2 hours ago
 `/health/deep` reports which dependency broke:
 
 ```
-curl -s -D - https://api.voteforjulia.com/health/deep | jq
+curl -s -D /dev/stderr https://api.voteforjulia.com/health/deep | jq
 ```
+
+`-D /dev/stderr`, not `-D -`: the latter writes the headers to stdout, where
+they reach `jq` ahead of the body and it dies on `HTTP/2 200` instead of showing
+you the probe result.
 
 Read `Age` from the headers first. Anything above `0` is a cached result, so a
 green answer may predate the alert by up to a minute — wait it out and ask
