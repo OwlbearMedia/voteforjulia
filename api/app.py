@@ -118,22 +118,10 @@ _HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS = _int_setting("HEALTH_LONG_RATE_LIMIT_MAX_
 
 _HEALTH_DEEP_SCOPE = "health-deep"
 
-# How long one probe result is reused (ADR-0017).
-#
-# The rate limit above bounds how often *one* address can ask; nothing bounded
-# how much work the answer costs, and the answer is a real SMTP `LOGIN` against
-# the campaign's own mail account plus a Google Sheets read. Spread across
-# enough addresses that is an unauthenticated amplifier pointed at the two
-# dependencies every form on the site needs -- and the plausible outcome is the
-# mail host throttling or blocking us, which takes down sending, not just the
-# probe.
-#
-# With a cache the ceiling stops scaling with the caller's address count and
-# starts scaling with ours: at most one probe per worker per TTL, however many
-# addresses ask. Sized well under the monitor's 15-minute period, so every
-# scheduled poll still does real work and the cache only ever collapses a
-# flood. The floor is 1 second (`_int_setting` rejects less), which is
-# effectively "off" while still bounding a flood to one probe per second.
+# How long one probe result is reused. The rate limit above bounds how often one
+# address may ask; this bounds what the answer costs. Keep it well under the
+# synthetic monitor's period, or scheduled polls start grading a cached answer.
+# See ADR-0017.
 _HEALTH_DEEP_CACHE_SECONDS = _int_setting("HEALTH_DEEP_CACHE_SECONDS", 60)
 
 # A ceiling on how many client keys are tracked at once, so the dict cannot grow
@@ -438,55 +426,30 @@ _HONEYPOT_FIELD = "referralCode"
 # disable rather than a release.
 _HONEYPOT_ENFORCED = env_bool("HONEYPOT_ENFORCED", True)
 
-# Shared by the honeypot and the origin check below, deliberately. Neither
-# control can be corrected by editing the form -- one objects to a field the
-# submitter cannot see, the other to the page they submitted from -- so the only
-# useful thing to say in both cases is "reach us another way". Sharing it also
-# means the response does not say which control fired.
+# Shared by the honeypot and the origin check: neither is correctable by editing
+# the form, so both can only say "reach us another way". See ADR-0017.
 _REFUSED_SUBMISSION_MESSAGE = (
     "We could not process this submission. "
     "Please email info@voteforjulia.com and we will follow up personally."
 )
 
-# The origin trust boundary (ADR-0017).
-#
-# A form-encoded POST is a CORS "simple request": no preflight, so the
-# allowlist in `add_cors_headers` never gets a say in whether it is *made*.
-# That is by design in CORS -- it governs who may read a response, not who may
-# send a request -- and it means any page on the internet can auto-submit these
-# forms from its visitors' browsers. Each visitor arrives on their own address,
-# so per-IP limiting (ADR-0009, ADR-0016) counts one request per victim and
-# never fires, and the honeypot is public in a public repo.
-#
-# Browsers attach `Origin` to every POST, including the no-JS `<form action>`
-# navigation the site falls back to, and `voteforjulia.com` posting to
-# `api.voteforjulia.com` is same-site -- so a legitimate submission always
-# carries an origin that is already on the allowlist. One that carries a
-# different one came from a page the campaign does not control.
-#
-# Absent means allowed: curl, a synthetic monitor and anything server-side send
-# no `Origin` at all, and those are exactly the callers per-IP limiting does
-# bound. This check closes the distributed-browser vector, not the scripted one.
+# The origin trust boundary (ADR-0017). CORS decides who may read a response,
+# never who may send a request: a form-encoded POST is a simple request, so the
+# allowlist above never sees it before it arrives. Per-IP limiting is blind to
+# the same case, because each conscripted browser brings its own address.
 _ORIGIN_ENFORCED = env_bool("ORIGIN_ENFORCED", True)
 
-# The origin is attacker-chosen text on its way to a log line, so it is bounded
-# before it gets there. Any real origin is a scheme and a host.
+# Attacker-chosen text on its way to a log line.
 _MAX_LOGGED_ORIGIN_CHARS = 128
 
 
 def _origin_rejected(endpoint_name: str) -> bool:
     """Whether this submission came from a page the campaign does not control.
 
-    An absent or empty `Origin` is not a rejection: only browsers send one, and
-    the callers that do not are the ones per-IP limiting already bounds. A
-    present-but-unlisted origin is, and that includes the literal `null` a
-    sandboxed iframe or a `data:` URL sends -- no supporter submits from one.
-
-    Logged even when unenforced, so `ORIGIN_ENFORCED=false` answers whether this
-    is catching attackers or catching people, exactly as the honeypot's switch
-    does. Unlike the honeypot it does not log the body: nothing rate-limits a
-    rejected origin (the check runs first, so a flood costs no I/O), and dumping
-    4KB per request would hand an attacker the disk.
+    Absent is allowed -- only browsers send `Origin`, and the callers that do
+    not are the ones per-IP limiting bounds. Present-but-unlisted is not,
+    including the `null` a sandboxed iframe sends. Logs the origin even when
+    unenforced, but never the body: nothing rate-limits this path. See ADR-0017.
     """
     origin = request.headers.get("Origin", "").strip()
     if not origin or origin in _CORS_ALLOWED_ORIGINS:
@@ -591,11 +554,7 @@ def _lost_submission_response(endpoint_name: str, message: str, status: int):
 
 
 def _cross_site_response():
-    """403, not 400: the body is fine, the page that sent it is not.
-
-    A 400 invites the caller to fix their payload and retry, which is precisely
-    what an attacker would do and precisely what will not help a real supporter.
-    """
+    """403, not 400: the body is fine, the page that sent it is not."""
     return jsonify({"error": _REFUSED_SUBMISSION_MESSAGE}), 403
 
 
@@ -764,11 +723,8 @@ class _DeepHealthResult(NamedTuple):
     status: int
 
 
-# Per worker, like the burst rate-limit tier and for the same reason: Passenger
-# reaps idle workers, so there is nothing longer-lived to hold it in. That makes
-# the real ceiling one probe per worker per TTL rather than one globally --
-# still bounded by our own worker count instead of the caller's address count,
-# which is the property that matters.
+# Per worker, like the burst rate-limit tier: Passenger reaps idle workers, so
+# the bound is one probe per worker per TTL rather than one globally.
 _deep_health_cache: _DeepHealthResult | None = None
 
 
@@ -802,23 +758,19 @@ def deep_health_check():
     if retry_after is not None:
         return _rate_limited_response(retry_after)
 
-    # Stamped before the probes rather than after, so a slow run reports itself
-    # as older than it is. Age may overstate; it must never understate.
+    # Stamped before the probes, so Age may overstate but never understates.
     now = monotonic()
 
     cached = _deep_health_cache
     if cached is None or now - cached.produced_at >= _HEALTH_DEEP_CACHE_SECONDS:
-        # Failures are cached too. Caching only the successes would restore the
-        # full amplifier at exactly the moment a dependency is already in
-        # trouble, which is when hammering it is least affordable.
+        # Failures too: caching only successes would restore the amplifier
+        # exactly when a dependency is already in trouble.
         cached = _run_deep_health_probes(now)
         _deep_health_cache = cached
 
     response = jsonify(cached.payload)
     response.status_code = cached.status
-    # Standard HTTP, and the only thing that makes the cache observable: 0 on
-    # the response that ran the probes, then the age of the reused one. Without
-    # it neither `curl` nor the monitor can tell a fresh answer from a held one.
+    # The cache's only outward sign; 0 means the probes ran for this request.
     response.headers["Age"] = str(int(now - cached.produced_at))
     return response
 
@@ -828,10 +780,9 @@ def send_email():
     if request.method == "OPTIONS":
         return ("", 204)
 
-    # Ahead of the limiter, and that order is the point. A cross-site flood
-    # arrives on its victims' addresses, so charging it to their buckets would
-    # spend the allowance of people who did nothing -- and the check itself is a
-    # header read and a set lookup, cheaper than the bucket it would consume.
+    # Ahead of the limiter: a cross-site flood arrives on its victims'
+    # addresses, so charging it to their buckets would spend real supporters'
+    # allowance.
     if _origin_rejected("/send-email"):
         return _cross_site_response()
 
