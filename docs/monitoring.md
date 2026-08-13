@@ -170,6 +170,24 @@ FROM SyntheticCheck WHERE result = 'FAILED' SINCE 2 hours ago
   single-location failure is therefore worth taking seriously as evidence the
   WAF is back, rather than dismissing as noise.
 
+### A 503 from the submission cap
+
+`API error rate above 5%` counts these, deliberately — the site turning
+supporters away is worth knowing about. Tell them apart from a genuine fault by
+the log line, which names the cap:
+
+```
+/send-email refused: 12 submissions already in flight
+```
+
+That is not a bug report. It means twelve submissions were being served at once,
+and the usual cause is SMTP or Sheets responding slowly enough that ordinary
+traffic stacks up — so check `/health/deep` before looking at the form code at
+all. Raising `MAX_CONCURRENT_SUBMISSIONS` is the wrong first move: the cap is
+sized against the account's memory limit, and lifting it trades a shed
+submission for an LVE fault that takes the whole account down.
+See [ADR-0018](adr/0018-cap-concurrent-submissions.md).
+
 ### If it is real
 
 `/health/deep` reports which dependency broke:

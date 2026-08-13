@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from api.rate_limit_store import consume, reset
+from api.rate_limit_store import acquire, consume, release, reset
 
 
 @pytest.fixture
@@ -269,3 +269,130 @@ def test_concurrent_workers_cannot_both_take_the_last_slot(db_path):
     )
     # And the losers got a usable Retry-After rather than a bare refusal.
     assert all(1 <= result <= 3600 for result in results if result is not None)
+
+
+# --- The concurrent-submission cap, ADR-0018 --------------------------------
+
+
+def test_slots_up_to_the_cap_are_granted(db_path):
+    tokens = [acquire(limit=3, ttl_seconds=60, db_path=db_path) for _ in range(3)]
+
+    assert all(tokens)
+    assert len(set(tokens)) == 3, "each holder needs a distinct token to release its own slot"
+
+
+def test_the_request_past_the_cap_is_refused(db_path):
+    for _ in range(3):
+        acquire(limit=3, ttl_seconds=60, db_path=db_path)
+
+    assert acquire(limit=3, ttl_seconds=60, db_path=db_path) is None
+
+
+def test_releasing_a_slot_frees_it_for_the_next_caller(db_path):
+    held = [acquire(limit=2, ttl_seconds=60, db_path=db_path) for _ in range(2)]
+    assert acquire(limit=2, ttl_seconds=60, db_path=db_path) is None
+
+    release(held[0], db_path=db_path)
+
+    assert acquire(limit=2, ttl_seconds=60, db_path=db_path) is not None
+
+
+def test_a_slot_expires_so_a_killed_worker_cannot_leak_it(db_path):
+    """The property that makes this safe without a cleanup job.
+
+    Passenger reaps workers, and a worker killed mid-request never reaches its
+    `release`. Without expiry those slots would accumulate until the cap was
+    permanently full and every submission 503'd -- a self-inflicted outage that
+    a restart would not even clear, because the count is on disk.
+    """
+    for _ in range(2):
+        acquire(limit=2, ttl_seconds=60, db_path=db_path, now=1000.0)
+
+    # Still held one second before the TTL is up.
+    assert acquire(limit=2, ttl_seconds=60, db_path=db_path, now=1059.0) is None
+
+    assert acquire(limit=2, ttl_seconds=60, db_path=db_path, now=1061.0) is not None
+
+
+def test_releasing_an_unknown_token_is_harmless(db_path):
+    """A slot reclaimed by expiry is released by its holder afterwards."""
+    acquire(limit=1, ttl_seconds=60, db_path=db_path)
+
+    release("a-token-that-was-never-issued", db_path=db_path)
+
+    assert acquire(limit=1, ttl_seconds=60, db_path=db_path) is None, "nothing else was freed"
+
+
+def test_an_unusable_database_lets_the_submission_through(tmp_path, caplog):
+    """Fails open, like `consume`: an unreachable store must not refuse a form.
+
+    The cost of the opposite is the whole point -- a store that failed closed
+    would turn a disk problem into "no supporter can contact the campaign".
+    """
+    occupied = tmp_path / "rate-limit.sqlite3"
+    occupied.mkdir()
+
+    assert acquire(limit=1, ttl_seconds=60, db_path=occupied) is not None
+    assert acquire(limit=1, ttl_seconds=60, db_path=occupied) is not None
+    assert "Concurrency store" in caplog.text
+
+
+def test_release_survives_an_unusable_database(tmp_path, caplog):
+    occupied = tmp_path / "rate-limit.sqlite3"
+    occupied.mkdir()
+
+    release("token", db_path=occupied)
+
+    assert "Concurrency store" in caplog.text
+
+
+def test_reset_clears_held_slots(db_path):
+    acquire(limit=1, ttl_seconds=60, db_path=db_path)
+
+    reset(db_path=db_path)
+
+    assert acquire(limit=1, ttl_seconds=60, db_path=db_path) is not None
+
+
+def _acquire_at_barrier(db_path: str, barrier, queue, limit: int) -> None:
+    """One worker's single `acquire`, released simultaneously with the rest.
+
+    Module level and importable by name for the same reason as
+    `_attempt_at_barrier`: `spawn` re-imports this module in the child.
+    """
+    from api.rate_limit_store import acquire as acquire_slot
+
+    barrier.wait(timeout=60)
+    queue.put(bool(acquire_slot(limit=limit, ttl_seconds=60, db_path=Path(db_path))))
+
+
+def test_concurrent_workers_cannot_both_take_the_last_inflight_slot(db_path):
+    """The cap has to hold across processes or it is not a cap at all.
+
+    Same shape as the `consume` test above, and here for the same reason: the
+    count-then-insert in `acquire` is a read-modify-write, and the whole value
+    of putting this in SQLite rather than in memory is that separate Passenger
+    workers see one shared number. Threads would not exercise it -- POSIX
+    advisory locks are per process.
+    """
+    workers = 8
+    limit = 4
+
+    for _ in range(limit - 1):
+        assert acquire(limit=limit, ttl_seconds=60, db_path=db_path) is not None
+
+    context = multiprocessing.get_context("spawn")
+    barrier = context.Barrier(workers)
+    queue = context.Queue()
+    processes = [
+        context.Process(target=_acquire_at_barrier, args=(str(db_path), barrier, queue, limit))
+        for _ in range(workers)
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=60)
+
+    granted = [queue.get(timeout=10) for _ in range(workers)]
+
+    assert sum(granted) == 1, f"exactly one worker should get the last slot, got {sum(granted)}"

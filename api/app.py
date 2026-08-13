@@ -35,7 +35,9 @@ from api.models import (
     validate_submission,
     validate_yard_sign_request,
 )
+from api.rate_limit_store import acquire as acquire_submission_slot
 from api.rate_limit_store import consume as consume_persistent_rate_limit
+from api.rate_limit_store import release as release_submission_slot
 from api.services.email_service import (
     send_confirmation_email,
     send_submission_email,
@@ -118,6 +120,17 @@ _HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS = _int_setting("HEALTH_LONG_RATE_LIMIT_MAX_
 
 _HEALTH_DEEP_SCOPE = "health-deep"
 
+# How many submissions may be in flight at once, across every worker (ADR-0018).
+# The rate limit tiers bound how often one client may ask; this bounds how much
+# work can run at all, which is what an upstream slowdown turns into.
+_MAX_CONCURRENT_SUBMISSIONS = _int_setting("MAX_CONCURRENT_SUBMISSIONS", 12)
+
+# How long a slot survives without being released, for the worker that is killed
+# mid-request and never releases its own. Must stay above the longest a request
+# can take -- `test_inflight_ttl_outlives_the_slowest_possible_request` pins it
+# to the timeouts it has to clear.
+_INFLIGHT_TTL_SECONDS = _int_setting("INFLIGHT_TTL_SECONDS", 60)
+
 # How long one probe result is reused. The rate limit above bounds how often one
 # address may ask; this bounds what the answer costs. Keep it well under the
 # synthetic monitor's period, or scheduled polls start grading a cached answer.
@@ -159,6 +172,24 @@ _CORS_ALLOWED_ORIGINS = {
     ).split(",")
     if item.strip()
 }
+
+
+@app.after_request
+def add_security_headers(response):
+    """The subset of the site's edge policy that means anything for a JSON API.
+
+    Set here rather than in an `.htaccess`, which is where ADR-0010 says edge
+    policy belongs: the API subdomain's docroot is not in this repo, so a header
+    added there would be untracked host state that no test or deploy can see.
+
+    HSTS matters most. The apex sends `includeSubDomains`, but that only reaches
+    a browser that has already been to the apex -- a client whose first contact
+    with the estate is this API is unprotected until it does. The rest of the
+    site's headers are about rendering documents and say nothing here.
+    """
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    return response
 
 
 @app.after_request
@@ -558,6 +589,43 @@ def _cross_site_response():
     return jsonify({"error": _REFUSED_SUBMISSION_MESSAGE}), 403
 
 
+_AT_CAPACITY_MESSAGE = "The site is busy right now. Please try again in a moment."
+
+# Advertised on the 503. A slot frees when a request finishes, so the honest
+# figure is seconds, not the minutes a rate-limit window needs.
+_AT_CAPACITY_RETRY_AFTER_SECONDS = 5
+
+
+def _at_capacity_response():
+    response = jsonify({"error": _AT_CAPACITY_MESSAGE})
+    response.status_code = 503
+    response.headers["Retry-After"] = str(_AT_CAPACITY_RETRY_AFTER_SECONDS)
+    return response
+
+
+def _within_capacity(endpoint_name: str, run):
+    """Run `run()` holding one of the concurrent-submission slots, or 503.
+
+    Released in a `finally` so a raising handler frees its slot; the store's TTL
+    covers the worker that dies without getting that far. See ADR-0018.
+    """
+    token = acquire_submission_slot(
+        limit=_MAX_CONCURRENT_SUBMISSIONS, ttl_seconds=_INFLIGHT_TTL_SECONDS
+    )
+    if token is None:
+        logger.warning(
+            "%s refused: %d submissions already in flight",
+            endpoint_name,
+            _MAX_CONCURRENT_SUBMISSIONS,
+        )
+        return _at_capacity_response()
+
+    try:
+        return run()
+    finally:
+        release_submission_slot(token)
+
+
 def _rate_limited_response(retry_after: int):
     response = jsonify({"error": "Too many requests. Please try again later."})
     response.status_code = 429
@@ -671,6 +739,12 @@ def health_check():
             "status": "ok",
             "path": request.path,
             "script_root": request.script_root,
+            # The value every per-IP control is keyed on, echoed for the same
+            # reason as `script_root`: to answer what the *deployed* app sees.
+            # ADR-0009/0014/0016 all assume this is the caller rather than
+            # something in front of it, and nothing had ever checked. A caller
+            # only learns their own address. See ADR-0018.
+            "client": _rate_limit_key(),
         }
     ), 200
 
@@ -790,16 +864,19 @@ def send_email():
     if retry_after is not None:
         return _rate_limited_response(retry_after)
 
-    return _handle_form_submission(
-        sheets_config=load_sheets_config(),
-        parse_request=_submission_from_request,
-        missing_fields_message=_missing_required_fields_message,
-        validate=validate_submission,
-        get_email=lambda submission: submission.email,
-        send_notification_email=send_submission_email,
-        send_confirmation_email_fn=send_confirmation_email,
-        to_sheet_row=lambda submission: submission.to_sheet_row(),
-        endpoint_name="/send-email",
+    return _within_capacity(
+        "/send-email",
+        lambda: _handle_form_submission(
+            sheets_config=load_sheets_config(),
+            parse_request=_submission_from_request,
+            missing_fields_message=_missing_required_fields_message,
+            validate=validate_submission,
+            get_email=lambda submission: submission.email,
+            send_notification_email=send_submission_email,
+            send_confirmation_email_fn=send_confirmation_email,
+            to_sheet_row=lambda submission: submission.to_sheet_row(),
+            endpoint_name="/send-email",
+        ),
     )
 
 
@@ -816,19 +893,22 @@ def yard_sign():
     if retry_after is not None:
         return _rate_limited_response(retry_after)
 
-    return _handle_form_submission(
-        sheets_config=load_sheets_config(
-            "GOOGLE_SHEETS_YARDSIGN_WORKSHEET", DEFAULT_YARDSIGN_SHEETS_WORKSHEET
+    return _within_capacity(
+        "/yard-sign",
+        lambda: _handle_form_submission(
+            sheets_config=load_sheets_config(
+                "GOOGLE_SHEETS_YARDSIGN_WORKSHEET", DEFAULT_YARDSIGN_SHEETS_WORKSHEET
+            ),
+            parse_request=_yard_sign_request_from_request,
+            missing_fields_message=_missing_required_yard_sign_fields_message,
+            validate=validate_yard_sign_request,
+            get_email=lambda yard_sign_request: yard_sign_request.email,
+            send_notification_email=send_yard_sign_request_email,
+            send_confirmation_email_fn=send_yard_sign_confirmation_email,
+            to_sheet_row=lambda yard_sign_request: yard_sign_request.to_sheet_row(),
+            endpoint_name="/yard-sign",
+            recipient_env="RECIPIENT_EMAIL_SIGNS",
         ),
-        parse_request=_yard_sign_request_from_request,
-        missing_fields_message=_missing_required_yard_sign_fields_message,
-        validate=validate_yard_sign_request,
-        get_email=lambda yard_sign_request: yard_sign_request.email,
-        send_notification_email=send_yard_sign_request_email,
-        send_confirmation_email_fn=send_yard_sign_confirmation_email,
-        to_sheet_row=lambda yard_sign_request: yard_sign_request.to_sheet_row(),
-        endpoint_name="/yard-sign",
-        recipient_env="RECIPIENT_EMAIL_SIGNS",
     )
 
 

@@ -1,0 +1,11 @@
+# How to report a security problem with voteforjulia.com.
+# https://www.rfc-editor.org/rfc/rfc9116
+#
+# Served at the canonical /.well-known/security.txt via a rewrite in
+# .htaccess; it lives here because the deploy's `dist/**` scp glob does not
+# match dotfiles.
+
+Contact: mailto:info@voteforjulia.com
+Expires: 2027-08-13T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://voteforjulia.com/.well-known/security.txt

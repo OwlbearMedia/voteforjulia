@@ -29,7 +29,12 @@ import pytest
 
 import api.app as app_module
 import api.rate_limit_store as rate_limit_store
-from api.config import EmailConfig, SheetsConfig
+from api.config import (
+    DEFAULT_SHEETS_TIMEOUT_SECONDS,
+    DEFAULT_SMTP_TIMEOUT_SECONDS,
+    EmailConfig,
+    SheetsConfig,
+)
 
 VALID_EMAIL_CONFIG = EmailConfig(
     smtp_server="mail.example.com",
@@ -1015,4 +1020,102 @@ def test_health_deep_allowance_fits_the_synthetic_monitor():
         f"({period.group(1)} x {len(locations.group(1).split(','))} locations), which leaves no "
         f"margin under an allowance of {app_module._HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS}/hour -- "
         "raise HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS or lengthen the period"
+    )
+
+
+# --- Concurrent-submission cap, ADR-0018 ------------------------------------
+
+
+@BOTH_ENDPOINTS
+def test_a_submission_is_refused_when_every_slot_is_held(
+    client, pipeline, monkeypatch, path, payload
+):
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 0)
+
+    response = client.post(path, json=payload)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == str(app_module._AT_CAPACITY_RETRY_AFTER_SECONDS)
+    # Refused before the work, not during it: no mail, no sheet row.
+    assert pipeline.notifications == []
+    assert pipeline.rows == []
+
+
+def test_a_finished_submission_gives_its_slot_back(client, pipeline, monkeypatch):
+    """Without a release, the cap would ratchet shut one submission at a time.
+
+    A single slot plus two sequential submissions is the smallest arrangement
+    that can tell "released" apart from "never taken": the second can only
+    succeed if the first gave its slot back.
+    """
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 1)
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+    assert len(pipeline.notifications) == 2
+
+
+def test_a_failed_submission_gives_its_slot_back(client, pipeline, monkeypatch):
+    """The `finally` clause, which is the half that matters under an outage.
+
+    A slow or failing SMTP server is exactly when the cap fills, so a slot
+    leaked on the error path would take the forms down for `INFLIGHT_TTL_SECONDS`
+    on top of whatever broke -- turning an upstream blip into a longer outage of
+    our own making.
+    """
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 1)
+    pipeline.notify_error = smtplib.SMTPException("mail server is down")
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 502
+
+    pipeline.notify_error = None
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+
+def test_the_cap_counts_submissions_not_rejected_requests(client, pipeline, monkeypatch):
+    """A request refused before the handler must not hold a slot.
+
+    Rate-limited and cross-site requests are refused ahead of this, so a flood
+    of them cannot exhaust the cap and lock out the submissions it exists to
+    protect. Uses a cap of 1 and a rejected request that would, if it consumed
+    a slot, leave nothing for the legitimate one behind it.
+    """
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 1)
+    monkeypatch.setattr(app_module, "_CORS_ALLOWED_ORIGINS", {SITE_ORIGIN})
+
+    for _ in range(5):
+        refused = client.post(
+            CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": "https://evil.example"}
+        )
+        assert refused.status_code == 403
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+
+def test_the_cap_fails_open_when_the_store_is_unusable(client, pipeline, monkeypatch, tmp_path):
+    """A disk problem must not be the reason a supporter cannot reach us."""
+    broken = tmp_path / "not-a-database"
+    broken.mkdir()
+    monkeypatch.setattr(rate_limit_store, "DEFAULT_DB_PATH", broken)
+
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD)
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+def test_inflight_ttl_outlives_the_slowest_possible_request():
+    """The TTL has to clear the worst case, or a slot is reused while in use.
+
+    Derived from the timeouts rather than restated, so raising
+    `SMTP_TIMEOUT_SECONDS` without raising the TTL fails here instead of
+    handing a second caller a slot the first is still working in.
+    """
+    slowest = 2 * DEFAULT_SMTP_TIMEOUT_SECONDS + DEFAULT_SHEETS_TIMEOUT_SECONDS
+
+    assert slowest < app_module._INFLIGHT_TTL_SECONDS, (
+        f"a submission can take {slowest}s (two SMTP connections plus the sheet append) "
+        f"but a slot expires after {app_module._INFLIGHT_TTL_SECONDS}s"
     )

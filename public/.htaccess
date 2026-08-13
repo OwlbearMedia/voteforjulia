@@ -5,6 +5,14 @@ DirectorySlash Off
 # Mark only fingerprinted Vite assets so immutable caching is limited to hashed filenames.
 RewriteRule ^assets/.+[-.][A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)?$ - [E=IS_VITE_ASSET:1]
 
+# security.txt (RFC 9116). The canonical location is under `.well-known/`, but
+# the file ships at the docroot and is rewritten here, because the deploy's
+# `dist/**` scp glob does not match dotfiles — the same reason .htaccess needs
+# its own upload step. A dot-directory would build locally and never leave the
+# runner. `.well-known` itself is reachable (it answers 404, where the host
+# denies `.git` and `.env` outright), so only the file placement is unusual.
+RewriteRule ^\.well-known/security\.txt$ /security.txt [L]
+
 # Strip trailing slashes (except root).
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.+)/$ /$1 [R=301,L]

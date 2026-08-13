@@ -7,6 +7,7 @@ from unittest.mock import patch
 from api.config import EmailConfig
 from api.models import Submission, YardSignRequest
 from api.services.email_service import (
+    _safe_greeting,
     send_confirmation_email,
     send_submission_email,
     send_yard_sign_confirmation_email,
@@ -501,3 +502,55 @@ class YardSignEmailServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SafeGreetingTests(unittest.TestCase):
+    """The confirmation greeting, ADR-0018.
+
+    It is the one piece of caller-supplied text in a message the campaign's
+    domain signs and sends to an address the caller also chose.
+    """
+
+    def test_real_names_are_untouched(self) -> None:
+        # The case that matters most: this runs on every genuine submission,
+        # and a filter that mangles names is worse than the problem it solves.
+        for name in ("Alex", "José", "Mary-Anne", "O'Brien", "李雷", "Ngozi Adichie"):
+            with self.subTest(name=name):
+                self.assertEqual(_safe_greeting(name, "there"), name)
+
+    def test_a_phone_number_cannot_reach_the_greeting(self) -> None:
+        self.assertNotIn("555", _safe_greeting("CALL 555-0142 NOW", "there"))
+
+    def test_a_domain_cannot_reach_the_greeting(self) -> None:
+        # The dot is the character that makes a domain a domain, and some mail
+        # clients turn one into a link.
+        self.assertNotIn(".", _safe_greeting("https://evil.example", "there"))
+
+    def test_a_long_name_is_truncated(self) -> None:
+        self.assertEqual(len(_safe_greeting("A" * 200, "there")), 30)
+
+    def test_nothing_usable_falls_back(self) -> None:
+        for empty in ("", "   ", "12345", "!!!"):
+            with self.subTest(value=empty):
+                self.assertEqual(_safe_greeting(empty, "there"), "there")
+
+    def test_the_campaign_still_sees_what_was_submitted(self) -> None:
+        """Only the greeting is sanitised, never the record.
+
+        A volunteer following up needs the name as typed, so the notification
+        email and the sheet row keep it verbatim. Sanitising those instead would
+        quietly corrupt the campaign's own data to solve an email problem.
+        """
+        hostile = "CALL 555-0142"
+        submission = Submission(
+            first_name=hostile,
+            last_name="",
+            name=hostile,
+            email="supporter@example.com",
+            phone="",
+            message="",
+            help_ways=[],
+        )
+
+        self.assertIn(hostile, submission.to_email_body())
+        self.assertIn(hostile, submission.to_sheet_row())

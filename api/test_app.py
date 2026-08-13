@@ -77,6 +77,73 @@ class AppCorsTests(unittest.TestCase):
         self.assertEqual(response.headers.get("Vary"), "Origin")
 
 
+class AppSecurityHeaderTests(unittest.TestCase):
+    """Headers the API sends on its own, ADR-0018.
+
+    The site's edge policy lives in `.htaccess` (ADR-0010), but the API
+    subdomain's docroot is not in this repo, so these are the API's to set and
+    the only place they can be tested.
+    """
+
+    def setUp(self) -> None:
+        self.client = app_module.app.test_client()
+
+    def test_hsts_and_nosniff_are_sent(self) -> None:
+        response = self.client.get("/health")
+
+        self.assertEqual(
+            response.headers.get("Strict-Transport-Security"),
+            "max-age=31536000; includeSubDomains",
+        )
+        self.assertEqual(response.headers.get("X-Content-Type-Options"), "nosniff")
+
+    def test_they_are_sent_on_error_responses_too(self) -> None:
+        # A 404 is rendered by the framework rather than a view, and an
+        # after_request hook is what keeps the two paths from disagreeing.
+        response = self.client.get("/no-such-endpoint")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("Strict-Transport-Security", response.headers)
+        self.assertEqual(response.headers.get("X-Content-Type-Options"), "nosniff")
+
+
+class AppClientKeyTests(unittest.TestCase):
+    """`/health` echoes the key the limiter derives, ADR-0018.
+
+    ADR-0009, 0014 and 0016 all assume `remote_addr` is the caller rather than
+    something in front of the app, and nothing had ever confirmed that on the
+    host. If it resolved to a proxy, every per-IP control would be one shared
+    bucket and a single caller could 429 the whole site.
+    """
+
+    def setUp(self) -> None:
+        self.client = app_module.app.test_client()
+
+    def test_health_reports_the_key_the_limiter_uses(self) -> None:
+        # Both sides derived from the same environment, so this pins "the
+        # endpoint reports what the limiter keys on" rather than restating the
+        # implementation -- plus the literal, so an echo of some other value
+        # that happened to agree would still fail.
+        environ = {"REMOTE_ADDR": "198.51.100.9"}
+
+        with app_module.app.test_request_context("/health", environ_base=environ):
+            expected = app_module._rate_limit_key()
+
+        reported = self.client.get("/health", environ_base=environ).get_json()["client"]
+
+        self.assertEqual(reported, expected)
+        self.assertEqual(reported, "198.51.100.9")
+
+    def test_it_follows_the_trusted_header_when_one_is_configured(self) -> None:
+        # The diagnostic has to reflect whatever `_rate_limit_key` actually
+        # does, including the ADR-0014 forwarding-header path, or reading it
+        # after putting Cloudflare in front would mislead.
+        with mock.patch.object(app_module, "_TRUSTED_CLIENT_IP_HEADER", "CF-Connecting-IP"):
+            response = self.client.get("/health", headers={"CF-Connecting-IP": "203.0.113.7"})
+
+        self.assertEqual(response.get_json()["client"], "203.0.113.7")
+
+
 class AppErrorShapeTests(unittest.TestCase):
     """Framework-raised errors come back as JSON, like the handlers' own do."""
 

@@ -17,6 +17,7 @@ Three kinds of drift are covered:
 """
 
 from pathlib import Path
+from unittest import mock
 
 import pytest
 import yaml
@@ -319,6 +320,36 @@ def test_health_deep_allowance_matches_the_spec():
     # `/health/deep` is documented as having its own, larger hourly allowance.
     description = SPEC["components"]["responses"]["RateLimited"]["description"]
     assert f"{app_module._HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS} per hour" in description
+
+
+def test_documented_concurrency_cap_matches_the_app():
+    # Quoted in prose, so a changed default would leave the spec describing a
+    # ceiling the API no longer has.
+    description = SPEC["components"]["responses"]["AtCapacity"]["description"]
+    assert f"Default cap {app_module._MAX_CONCURRENT_SUBMISSIONS}" in description
+
+
+@pytest.mark.parametrize("path", ["/send-email", "/yard-sign"])
+def test_at_capacity_returns_the_documented_status(path):
+    assert "503" in SPEC["paths"][path]["post"]["responses"]
+
+    with mock.patch.object(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 0):
+        response = app_module.app.test_client().post(
+            path, json={"firstName": "Alex", "email": "alex@example.com"}
+        )
+
+    assert response.status_code == 503
+    assert response.mimetype == "application/json"
+
+
+def test_documented_health_fields_match_the_app():
+    # `client` was added to answer an operational question; a spec that stopped
+    # listing it would make the endpoint look like it had gone back to being a
+    # bare liveness probe.
+    documented = set(SPEC["components"]["schemas"]["HealthStatus"]["required"])
+    returned = set(app_module.app.test_client().get("/health").get_json())
+
+    assert documented == returned
 
 
 def test_documented_deep_health_cache_matches_the_app():

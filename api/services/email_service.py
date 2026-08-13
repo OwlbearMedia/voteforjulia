@@ -19,6 +19,33 @@ _YARD_SIGN_CONFIRMATION_TEMPLATE = (
 )
 _SENDER_DISPLAY_NAME = "Julia Hamann"
 
+# The greeting is the one piece of caller-supplied text in a message the
+# campaign's own domain signs and sends to an address the caller also chose, so
+# it is the one place someone could put chosen words in front of a stranger
+# under Julia's name. Cut to a length and a character set that still fits every
+# real first name. See ADR-0018.
+_MAX_GREETING_LENGTH = 30
+
+# No `.`, deliberately: it is what lets a domain survive the filter
+# ("evil.example"), and some mail clients linkify one. The cost is that "J."
+# greets as "J", which no real supporter will notice.
+_GREETING_EXTRA_CHARS = frozenset(" '-")
+
+
+def _safe_greeting(raw: str, fallback: str) -> str:
+    """A first name fit to put after "Hi", or `fallback` if nothing survives.
+
+    `str.isalpha()` rather than an ASCII pattern, so accented and non-Latin
+    names pass unharmed; digits and punctuation do not, which is what stops a
+    phone number or a URL reaching the greeting line. Only the confirmation is
+    sanitised -- the notification to the campaign and the sheet row keep the
+    submitted value verbatim, because those are what a volunteer follows up on.
+    """
+    kept = "".join(ch for ch in raw if ch.isalpha() or ch in _GREETING_EXTRA_CHARS)
+    collapsed = " ".join(kept.split())[:_MAX_GREETING_LENGTH].strip(" '-")
+
+    return collapsed or fallback
+
 
 def _formatted_sender(email_address: str) -> str:
     return f"{_SENDER_DISPLAY_NAME} <{email_address}>"
@@ -60,7 +87,7 @@ def _build_submission_message(config: EmailConfig, submission: Submission) -> MI
 
 
 def _build_confirmation_content(submission: Submission) -> tuple[str, str]:
-    greeting_name = submission.first_name or "there"
+    greeting_name = _safe_greeting(submission.first_name, "there")
     plain_text_body = "\n".join(
         [
             f"Hi {greeting_name}!",
@@ -198,7 +225,7 @@ def _build_yard_sign_request_message(
 
 
 def _build_yard_sign_confirmation_content(yard_sign_request: YardSignRequest) -> tuple[str, str]:
-    greeting_name = yard_sign_request.first_name or "friend"
+    greeting_name = _safe_greeting(yard_sign_request.first_name, "friend")
     plain_text_body = "\n".join(
         [
             f"Thanks so much for your support, {greeting_name}!",
