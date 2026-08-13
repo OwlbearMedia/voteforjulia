@@ -327,6 +327,31 @@ Consequences worth knowing:
   machines and `comm` compares bytes, so a collation mismatch between the runner
   and the host would report live files as stale.
 
+### `remote_addr` is the real client, and this is how to re-check
+
+Nothing sits in front of the Python apps, so Flask sees the caller's own
+address. **Verified on the test environment 2026-08-13**: `/health` echoed
+`156.47.97.177` to a client whose egress address was `156.47.97.177`.
+
+That had been assumed since [ADR-0009](adr/0009-in-process-rate-limiting.md) and
+never checked, and it is load-bearing for every per-IP control — if it ever
+resolved to a fixed private address, all of them would be one shared bucket and
+a single caller could exhaust everybody's allowance while looking, from the
+logs, like ordinary traffic.
+
+```
+curl -s https://api.voteforjulia.com/health | jq -r .client   # should be your address
+curl -s https://api.ipify.org                                 # ...and this should match
+```
+
+Re-check it after anything that could interpose: a CDN, a proxy, a host
+migration. If they stop matching, the fix is `TRUSTED_CLIENT_IP_HEADER` — set it
+to the header the new thing overwrites, never to `X-Forwarded-For` on trust
+([ADR-0014](adr/0014-do-not-trust-forwarding-headers.md)).
+
+New Relic cannot answer this for you: the agent records a fixed allowlist of
+request headers, none of which carries a client address.
+
 ### Environment variables
 
 **This is the only deployment state with no representation in the checkout.**
