@@ -36,6 +36,17 @@ _GREETING_EXTRA_CHARS = frozenset(" '-")
 # other scripts the marks carry vowels, so dropping them rewrites the name.
 _GREETING_CHARACTER_CATEGORIES = frozenset("LM")
 
+# ZWNJ and ZWJ, allowed by codepoint rather than by category. They are `Cf`
+# (format), and Persian, Urdu and Indic names use them to control joining --
+# "علی‌رضا" renders as one word without the ZWNJ. Admitting the whole `Cf`
+# category instead would also admit the bidi overrides (U+202D/U+202E), which
+# exist to make text display in an order it is not written in.
+_GREETING_JOINERS = frozenset("\u200c\u200d")
+
+# Trimmed from the ends, where a joiner or a separator has nothing to join or
+# separate. Kept out of the middle, where they are part of the name.
+_GREETING_EDGE_CHARS = "".join(sorted(_GREETING_EXTRA_CHARS | _GREETING_JOINERS))
+
 
 def _safe_greeting(raw: str, fallback: str) -> str:
     """A first name fit to put after "Hi", or `fallback` if nothing survives.
@@ -64,8 +75,9 @@ def _safe_greeting(raw: str, fallback: str) -> str:
         for ch in normalized
         if unicodedata.category(ch)[0] in _GREETING_CHARACTER_CATEGORIES
         or ch in _GREETING_EXTRA_CHARS
+        or ch in _GREETING_JOINERS
     )
-    collapsed = " ".join(kept.split())[:_MAX_GREETING_LENGTH].strip(" '-")
+    collapsed = " ".join(kept.split())[:_MAX_GREETING_LENGTH].strip(_GREETING_EDGE_CHARS)
 
     # Truncation can land inside a combining sequence and leave a mark with
     # nothing to attach to, which renders as a stray glyph.

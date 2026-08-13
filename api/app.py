@@ -26,6 +26,7 @@ from api.config import (
     EmailConfig,
     env,
     env_bool,
+    env_positive_number,
     load_email_config,
     load_sheets_config,
 )
@@ -161,20 +162,64 @@ def _worst_case_submission_seconds(smtp_timeout: float, sheets_timeout: float) -
     )
 
 
+def _worst_case_probe_seconds(smtp_timeout: float, sheets_timeout: float) -> float:
+    """Upper bound on one `/health/deep` probe: one SMTP login, one sheet read."""
+    return _SMTP_OPERATIONS_PER_SESSION * smtp_timeout + sheets_timeout
+
+
+def _configured_timeouts() -> tuple[float, float]:
+    """The SMTP and Sheets timeouts the next request will actually run under.
+
+    Read here rather than taken from the DEFAULT_* constants, because both are
+    per-request cPanel settings: sizing a slot lifetime off the defaults means
+    raising `SMTP_TIMEOUT_SECONDS` silently breaks the guarantee below, while the
+    test that checks it only ever sees CI's environment. Caught in review.
+
+    Degrades to the default on an unusable value rather than raising, the same
+    trade `_int_setting` makes: this decides a safety margin, not the response,
+    so `_handle_form_submission` stays the thing that reports a bad config.
+    """
+
+    def timeout(name: str, default: float) -> float:
+        try:
+            return env_positive_number(name, default)
+        except ValueError:
+            logger.error("%s is unusable; sizing slot lifetime with %s instead", name, default)
+            return default
+
+    return (
+        timeout("SMTP_TIMEOUT_SECONDS", DEFAULT_SMTP_TIMEOUT_SECONDS),
+        timeout("SHEETS_TIMEOUT_SECONDS", DEFAULT_SHEETS_TIMEOUT_SECONDS),
+    )
+
+
+def _slot_ttl_seconds(worst_case: float) -> int:
+    """How long a slot survives unreleased: the work's worst case, or an override."""
+    return _INFLIGHT_TTL_OVERRIDE or ceil(worst_case)
+
+
+def _submission_slot_ttl_seconds() -> int:
+    return _slot_ttl_seconds(_worst_case_submission_seconds(*_configured_timeouts()))
+
+
+def _probe_slot_ttl_seconds() -> int:
+    return _slot_ttl_seconds(_worst_case_probe_seconds(*_configured_timeouts()))
+
+
 # How long a slot survives without being released, for the worker that is killed
 # mid-request and never gets to release its own.
 #
-# Derived rather than chosen, so raising a timeout raises this with it. Expiring
-# early is the failure that matters: it hands a live request's slot to someone
-# else and admits callers above the cap, in exactly the slow-upstream conditions
-# the cap exists for. Expiring late only delays reclaiming a slot after a crash,
-# which is rare and self-correcting -- so the bound is deliberately pessimistic.
-_INFLIGHT_TTL_SECONDS = _int_setting(
-    "INFLIGHT_TTL_SECONDS",
-    ceil(
-        _worst_case_submission_seconds(DEFAULT_SMTP_TIMEOUT_SECONDS, DEFAULT_SHEETS_TIMEOUT_SECONDS)
-    ),
-)
+# Derived per request from the configured timeouts, so raising a timeout raises
+# this with it -- deriving it once at import from the DEFAULT_* constants left
+# the guarantee unmet for exactly the deployments that changed a timeout, since
+# both are per-request cPanel settings and CI never sees them. Expiring early is
+# the failure that matters: it hands a live request's slot to someone else and
+# admits callers above the cap, in the slow-upstream conditions the cap exists
+# for. Expiring late only delays reclaiming a slot after a crash, which is rare
+# and self-correcting -- so the bound is deliberately pessimistic.
+#
+# Unset (0) derives; a value pins it instead.
+_INFLIGHT_TTL_OVERRIDE = _int_setting("INFLIGHT_TTL_SECONDS", 0)
 
 # How long one probe result is reused. The rate limit above bounds how often one
 # address may ask; this bounds what the answer costs. Keep it well under the
@@ -657,7 +702,7 @@ def _within_capacity(endpoint_name: str, run):
     token = acquire_submission_slot(
         _SUBMISSION_SLOT_SCOPE,
         limit=_MAX_CONCURRENT_SUBMISSIONS,
-        ttl_seconds=_INFLIGHT_TTL_SECONDS,
+        ttl_seconds=_submission_slot_ttl_seconds(),
     )
     if token is None:
         logger.warning(
@@ -873,10 +918,13 @@ def _run_deep_health_probes(produced_at: float) -> _DeepHealthResult:
 
 def _refresh_deep_health(now: float) -> _DeepHealthResult | None:
     """Probe under the health budget, or None if every probe slot is taken."""
+    # One SMTP session and one sheet read, so its own shorter bound: borrowing
+    # the submission figure would double the window in which a worker killed
+    # mid-probe leaves a cold cache answering 503.
     token = acquire_submission_slot(
         _HEALTH_PROBE_SLOT_SCOPE,
         limit=_MAX_CONCURRENT_HEALTH_PROBES,
-        ttl_seconds=_INFLIGHT_TTL_SECONDS,
+        ttl_seconds=_probe_slot_ttl_seconds(),
     )
     if token is None:
         logger.warning(

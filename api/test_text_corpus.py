@@ -50,6 +50,11 @@ REAL_NAMES = [
     pytest.param("मुहम्मद", id="devanagari-conjunct"),
     # Arabic harakat are marks too, and the script is right-to-left.
     pytest.param("مُحَمَّد", id="arabic-harakat"),
+    # ZWNJ is category Cf, not a letter or a mark, and without it these render
+    # as one joined word -- a different name. The corpus missed this when it was
+    # first written, and the survival property below missed it with them.
+    pytest.param("علی\u200cرضا", id="persian-zwnj"),
+    pytest.param("नि\u200cशा", id="devanagari-zwnj"),
     pytest.param("李雷", id="han"),
     pytest.param("김민준", id="hangul"),
     pytest.param("Ελένη", id="greek"),
@@ -66,10 +71,20 @@ HOSTILE_TEXT = [
     pytest.param("12345", id="digits-only"),
     pytest.param("!!!", id="punctuation-only"),
     pytest.param("́́́", id="combining-marks-only"),
+    # Bidi overrides: also Cf, and the reason the joiners are allowed by
+    # codepoint rather than by category. They make text display in an order it
+    # is not written in, which is a spoofing primitive, not a name.
+    pytest.param("\u202eevil", id="rtl-override"),
+    pytest.param("\u202devil", id="ltr-override"),
     pytest.param("", id="empty"),
     pytest.param("   ", id="whitespace-only"),
     pytest.param("A" * 500, id="very-long"),
 ]
+
+# Format characters that carry meaning in a name and must survive, as opposed to
+# the bidi overrides in HOSTILE_TEXT, which must not. Both are category `Cf`, so
+# a filter reasoning by category alone gets one of the two wrong.
+SIGNIFICANT_FORMAT_CHARS = frozenset("\u200c\u200d")
 
 # Every transformer that takes text from a stranger and renders it somewhere.
 # Adding one here is how it inherits the properties below.
@@ -101,7 +116,7 @@ def test_output_does_not_depend_on_unicode_normalisation(transform, name):
 @pytest.mark.parametrize("transform", TEXT_TRANSFORMERS)
 @pytest.mark.parametrize("name", REAL_NAMES)
 def test_a_real_name_survives_with_its_characters_intact(transform, name):
-    """No letter **or mark** is dropped from a name a supporter could have.
+    """No letter, mark **or joiner** is dropped from a name a supporter could have.
 
     Marks are half the point. An earlier draft of this property compared only
     category `L` and passed the very bug the corpus was written for: dropping
@@ -113,11 +128,12 @@ def test_a_real_name_survives_with_its_characters_intact(transform, name):
     collapse whitespace — but it fails the moment characters go missing from a
     name short enough that nothing should have been removed.
     """
-    kept = frozenset("LM")
 
     def significant(value: str) -> list[str]:
         return [
-            ch for ch in unicodedata.normalize("NFC", value) if unicodedata.category(ch)[0] in kept
+            ch
+            for ch in unicodedata.normalize("NFC", value)
+            if unicodedata.category(ch)[0] in "LM" or ch in SIGNIFICANT_FORMAT_CHARS
         ]
 
     assert significant(transform(name)) == significant(name)

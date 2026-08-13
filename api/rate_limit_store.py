@@ -57,19 +57,44 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     connection = sqlite3.connect(db_path, timeout=5.0, isolation_level=None)
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.execute("PRAGMA synchronous=NORMAL")
-    connection.executescript(_SCHEMA)
 
-    # `inflight` shipped without `scope`, and this file outlives a deploy -- it
-    # lives under `tmp/`, which the prune step leaves alone -- so
-    # CREATE TABLE IF NOT EXISTS silently leaves an old table as it was and
-    # every insert would fail against it. Cheap enough to check per connection.
-    columns = {row[1] for row in connection.execute("PRAGMA table_info(inflight)")}
-    if "scope" not in columns:
-        connection.execute("ALTER TABLE inflight ADD COLUMN scope TEXT NOT NULL DEFAULT ''")
+    # Anything below can raise, and an unclosed connection holds a file
+    # descriptor and its lock for as long as the worker lives.
+    try:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=NORMAL")
+        connection.executescript(_SCHEMA)
+        _add_scope_column_if_missing(connection)
+    except BaseException:
+        connection.close()
+        raise
 
     return connection
+
+
+def _add_scope_column_if_missing(connection: sqlite3.Connection) -> None:
+    """Bring a pre-`scope` `inflight` table up to date.
+
+    `inflight` shipped without this column, and the file outlives a deploy -- it
+    is under `tmp/`, which the prune step leaves alone -- so
+    CREATE TABLE IF NOT EXISTS finds the old table, leaves it as it was, and
+    every insert then fails against it.
+
+    The duplicate-column error is caught rather than prevented: two workers can
+    read `table_info` before either has altered the table, and on the first
+    request after a deploy that is a live race. Losing it is success, so
+    treating it as failure would fail the request open for no reason.
+    """
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(inflight)")}
+    if "scope" in columns:
+        return
+
+    try:
+        connection.execute("ALTER TABLE inflight ADD COLUMN scope TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column" not in str(exc).lower():
+            raise
+        logger.debug("Another worker added inflight.scope first")
 
 
 def consume(

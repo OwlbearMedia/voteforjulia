@@ -6,6 +6,6 @@
 # match dotfiles.
 
 Contact: mailto:info@voteforjulia.com
-Expires: 2027-08-13T00:00:00.000Z
+Expires: 2027-02-13T00:00:00.000Z
 Preferred-Languages: en
 Canonical: https://voteforjulia.com/.well-known/security.txt

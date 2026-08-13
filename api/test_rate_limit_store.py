@@ -19,7 +19,14 @@ from time import time
 
 import pytest
 
-from api.rate_limit_store import acquire, consume, release, reset
+import api.rate_limit_store as rate_limit_store
+from api.rate_limit_store import (
+    _add_scope_column_if_missing,
+    acquire,
+    consume,
+    release,
+    reset,
+)
 
 # The scope name is arbitrary here; what these tests exercise is the counting.
 SCOPE = "submission"
@@ -439,3 +446,56 @@ def test_a_table_created_before_scopes_existed_is_migrated(db_path):
     # And the pre-existing row survived the migration rather than being dropped.
     surviving = sqlite3.connect(db_path).execute("SELECT COUNT(*) FROM inflight").fetchone()[0]
     assert surviving == 2
+
+
+def test_two_workers_racing_the_scope_migration_both_succeed(db_path):
+    """The first request after a deploy is when this race is live.
+
+    Both workers can read `table_info` before either has altered the table, and
+    the loser gets `duplicate column name: scope`. Losing is success, so it must
+    not surface as a store failure -- which fails open and logs an exception
+    that reads like a real fault. Raised in review.
+    """
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy = sqlite3.connect(db_path)
+    legacy.execute("CREATE TABLE inflight (token TEXT PRIMARY KEY, started_at REAL NOT NULL)")
+    legacy.commit()
+    legacy.close()
+
+    # Two connections opened before either has migrated, which is the race.
+    first = sqlite3.connect(db_path)
+    second = sqlite3.connect(db_path)
+    try:
+        _add_scope_column_if_missing(first)
+        _add_scope_column_if_missing(second)
+    finally:
+        first.close()
+        second.close()
+
+    assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path) is not None
+
+
+def test_a_failed_connection_setup_does_not_leak_the_handle(db_path, monkeypatch):
+    """`_connect` owns the connection until it returns one."""
+    opened = []
+    real_connect = sqlite3.connect
+
+    def tracking_connect(*args, **kwargs):
+        connection = real_connect(*args, **kwargs)
+        opened.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", tracking_connect)
+    monkeypatch.setattr(rate_limit_store, "_add_scope_column_if_missing", _raise_operational_error)
+
+    with pytest.raises(sqlite3.OperationalError):
+        rate_limit_store._connect(db_path)
+
+    assert opened, "the test patched the wrong thing"
+    for connection in opened:
+        with pytest.raises(sqlite3.ProgrammingError):
+            connection.execute("SELECT 1")
+
+
+def _raise_operational_error(_connection) -> None:
+    raise sqlite3.OperationalError("disk I/O error")

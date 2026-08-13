@@ -27,18 +27,25 @@ that costs. From [../hosting.md](../hosting.md#watch-worker-memory):
 | Worker footprint      | 80–115MB PSS under load                    |
 | LVE physical memory   | 3GB, ~0.5GB observed, **zero faults** ever |
 | LVE process cap       | 300, ~10 observed                          |
-| Worst-case submission | ~35s (10s + 10s SMTP, 15s Sheets)          |
+| Worst-case submission | ~270s — see below                          |
 
 So memory is the binding constraint, not the process cap: roughly **30
 concurrent workers reaches 3GB**, and Passenger spawns them per request without
 capping them.
 
-**The attack is now expensive, and that is worth stating plainly.** After 0017,
-a browser-driven flood is refused on `Origin`, so this needs a scripted caller
-sending none — and those are bounded at 10/hour each. Holding 30 workers for an
-hour needs 108,000 worker-seconds against 350 per address, so roughly **309
-distinct IPs**. That is a real bar, and on its own it would not justify new
-machinery.
+**The worst case is ~270s, not the ~35s an earlier draft of this record
+claimed.** `SMTP_TIMEOUT_SECONDS` bounds each blocking socket operation, not the
+session, and a send is a dozen of them — so a server answering every command
+just inside the timeout drags one submission out to roughly 12 × the timeout per
+connection. The retracted figure came from summing the timeouts once.
+
+**That makes the attack cheaper than first stated.** After 0017 a browser-driven
+flood is refused on `Origin`, so this needs a scripted caller sending none, and
+those are bounded at 10/hour each. But each of those ten now buys 270 seconds of
+held worker rather than 35, so an address is worth 2,700 worker-seconds and
+holding 30 workers for an hour needs **about 40 addresses, not the 309 an
+earlier version of this record calculated**. Forty is within reach of a rented
+proxy pool, which strengthens the case for a cap rather than weakening it.
 
 **The likelier trigger is not an attacker at all.** Every one of those 35
 seconds is spent waiting on SMTP or Sheets. When the mail server is slow rather
@@ -119,12 +126,17 @@ returns `path` and `script_root` to answer "what does the deployed app see"; the
 client key is the same kind of question and had a sharper consequence. A caller
 only ever learns their own address.
 
-**3. The confirmation greeting is filtered to letters, spaces, apostrophes and
-hyphens, and truncated to 30 characters.** `str.isalpha()` rather than an ASCII
-pattern, so accented and non-Latin names pass unharmed. No `.`, because that is
-what lets a domain survive and some mail clients linkify one. **Only the
-greeting** — the notification to the campaign and the sheet row keep the
-submitted value verbatim, because those are what a volunteer follows up on.
+**3. The confirmation greeting is filtered and truncated to 30 characters.**
+What survives is Unicode letters (`L`), combining marks (`M`), the two joiners
+ZWNJ and ZWJ, and space, apostrophe and hyphen. Everything else goes, including
+digits, the `.` that would let a domain through, and the bidi overrides that
+make text display in an order it is not written in. **Only the greeting** — the
+notification to the campaign and the sheet row keep the submitted value
+verbatim, because those are what a volunteer follows up on.
+
+The category list is the whole difficulty, and both mistakes made here were the
+same mistake: reasoning about characters by the class the author had in mind
+rather than the one Unicode defines. See the Consequences below.
 
 **4. The API sets `Strict-Transport-Security` and `X-Content-Type-Options`**
 from an `after_request` hook rather than an `.htaccess`, against
@@ -154,12 +166,21 @@ dot-directory would build locally and never leave the runner.
   were independent knobs; the TTL has to clear their sum. The test says so when
   it stops being true.
 - **A name that is entirely digits or punctuation now greets as "there".** That
-  is the intended trade, and it is why the sanitiser keeps Unicode letters
-  **and combining marks** rather than matching an ASCII name pattern. Marks are
-  not decoration: `str.isalpha()` is false for one, so the first version of this
-  filter turned decomposed "José" into "Jose" and "अनुराधा" into "अनरध", which is
-  not a spelling of anything. Copilot caught it on PR #138; the original test
-  passed only because Python source literals are NFC by default.
+  is the intended trade, and it is why the sanitiser reasons in Unicode
+  categories rather than matching an ASCII name pattern. It took two goes:
+  - `str.isalpha()` is false for a combining mark, so the first version turned
+    decomposed "José" into "Jose" and "अनुराधा" into "अनरध" — not a spelling of
+    anything. Copilot caught it; the original test passed only because Python
+    source literals are NFC by default.
+  - Keeping `L` and `M` still dropped ZWNJ, which is `Cf`, so "علی‌رضا" rendered
+    as one joined word. Caught in review. The joiners are now allowed **by
+    codepoint**, because admitting all of `Cf` would also admit the bidi
+    overrides — two characters in one category, one of which must survive and
+    one of which must not.
+
+  The corpus in `api/test_text_corpus.py` exists so the third version of this
+  mistake is caught by a test rather than by a reviewer.
+
 - **`inflight` gained a `scope` column after shipping to the test host.** The
   file lives under `tmp/`, which the deploy's prune step leaves alone, so
   `CREATE TABLE IF NOT EXISTS` would have found the old table and left it — and
