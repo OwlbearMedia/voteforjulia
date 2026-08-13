@@ -7,6 +7,7 @@ from time import monotonic
 from unittest import mock
 
 import api.app as app_module
+import api.rate_limit_store as rate_limit_store
 from api.config import EmailConfig, SheetsConfig
 from api.models import (
     MAX_EMAIL_LENGTH,
@@ -998,6 +999,74 @@ class AppDeepHealthTests(unittest.TestCase):
         self._age_the_cache(5)
 
         self.assertEqual(self._get().headers.get("Age"), "5")
+
+    def test_a_probe_flood_cannot_exhaust_the_submission_budget(self) -> None:
+        """The probe has its own slots, ADR-0018.
+
+        Raised by Copilot on PR #138: the cap shipped covering submissions only,
+        while `/health/deep` did the same expensive I/O on a cache miss under a
+        *larger* per-client allowance (30/hour against the forms' 10). Counted
+        together it would have been an uncapped path to the exhaustion the cap
+        exists to prevent; counted apart, a probe flood cannot close the forms.
+        """
+        counts = self._count_probes()
+        app_module._RATE_LIMIT_MAX_REQUESTS = 50
+
+        # Hold every probe slot, as a flood of cold-cache probes would.
+        held = [
+            rate_limit_store.acquire(
+                app_module._HEALTH_PROBE_SLOT_SCOPE,
+                limit=app_module._MAX_CONCURRENT_HEALTH_PROBES,
+                ttl_seconds=60,
+            )
+            for _ in range(app_module._MAX_CONCURRENT_HEALTH_PROBES)
+        ]
+        self.assertTrue(all(held))
+
+        try:
+            # Nothing cached yet, so there is nothing truthful to serve.
+            self.assertEqual(self._get().status_code, 503)
+            self.assertEqual(counts, {"smtp": 0, "sheets": 0}, "no probe ran")
+
+            # A submission's budget is untouched.
+            submission = rate_limit_store.acquire(
+                app_module._SUBMISSION_SLOT_SCOPE,
+                limit=app_module._MAX_CONCURRENT_SUBMISSIONS,
+                ttl_seconds=60,
+            )
+            self.assertIsNotNone(submission)
+        finally:
+            for token in held:
+                rate_limit_store.release(token)
+
+    def test_a_deferred_probe_serves_the_stale_answer_rather_than_refusing(self) -> None:
+        """A monitor gets an honest old answer instead of a false alarm.
+
+        A 503 here trips the synthetic alert as though a dependency had broken,
+        so under a flood the page would describe the wrong problem. The `Age`
+        header is what keeps the stale answer honest.
+        """
+        self._count_probes()
+        self.assertEqual(self._get().status_code, 200)
+
+        self._age_the_cache(app_module._HEALTH_DEEP_CACHE_SECONDS + 1)
+
+        held = [
+            rate_limit_store.acquire(
+                app_module._HEALTH_PROBE_SLOT_SCOPE,
+                limit=app_module._MAX_CONCURRENT_HEALTH_PROBES,
+                ttl_seconds=60,
+            )
+            for _ in range(app_module._MAX_CONCURRENT_HEALTH_PROBES)
+        ]
+        try:
+            response = self._get()
+        finally:
+            for token in held:
+                rate_limit_store.release(token)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertGreater(int(response.headers["Age"]), app_module._HEALTH_DEEP_CACHE_SECONDS)
 
     def test_is_rate_limited(self) -> None:
         # Each call opens an SMTP connection and hits the Sheets API, so an

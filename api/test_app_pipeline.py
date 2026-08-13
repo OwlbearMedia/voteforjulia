@@ -29,12 +29,7 @@ import pytest
 
 import api.app as app_module
 import api.rate_limit_store as rate_limit_store
-from api.config import (
-    DEFAULT_SHEETS_TIMEOUT_SECONDS,
-    DEFAULT_SMTP_TIMEOUT_SECONDS,
-    EmailConfig,
-    SheetsConfig,
-)
+from api.config import EmailConfig, SheetsConfig, load_email_config, load_sheets_config
 
 VALID_EMAIL_CONFIG = EmailConfig(
     smtp_server="mail.example.com",
@@ -1109,13 +1104,23 @@ def test_the_cap_fails_open_when_the_store_is_unusable(client, pipeline, monkeyp
 def test_inflight_ttl_outlives_the_slowest_possible_request():
     """The TTL has to clear the worst case, or a slot is reused while in use.
 
-    Derived from the timeouts rather than restated, so raising
-    `SMTP_TIMEOUT_SECONDS` without raising the TTL fails here instead of
-    handing a second caller a slot the first is still working in.
-    """
-    slowest = 2 * DEFAULT_SMTP_TIMEOUT_SECONDS + DEFAULT_SHEETS_TIMEOUT_SECONDS
+    Read from the **configured** timeouts, not the defaults, which is the whole
+    point: an environment that raises `SMTP_TIMEOUT_SECONDS` moves the worst
+    case, and this has to move with it. Copilot raised exactly that on PR #138
+    against an earlier version that summed the default constants.
 
-    assert slowest < app_module._INFLIGHT_TTL_SECONDS, (
-        f"a submission can take {slowest}s (two SMTP connections plus the sheet append) "
-        f"but a slot expires after {app_module._INFLIGHT_TTL_SECONDS}s"
+    The bound itself lives in `app.py` because the shipped default is derived
+    from it; asserting it here against live config is what stops the two
+    drifting apart.
+    """
+    email_config = load_email_config()
+    sheets_config = load_sheets_config()
+
+    slowest = app_module._worst_case_submission_seconds(
+        email_config.timeout_seconds, sheets_config.timeout_seconds
+    )
+
+    assert slowest <= app_module._INFLIGHT_TTL_SECONDS, (
+        f"a submission can take {slowest}s under the configured timeouts, but a slot "
+        f"expires after {app_module._INFLIGHT_TTL_SECONDS}s -- raise INFLIGHT_TTL_SECONDS"
     )

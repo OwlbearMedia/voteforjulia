@@ -41,7 +41,8 @@ CREATE INDEX IF NOT EXISTS ix_hits_key_ts ON hits (key, ts);
 
 CREATE TABLE IF NOT EXISTS inflight (
     token      TEXT PRIMARY KEY,
-    started_at REAL NOT NULL
+    started_at REAL NOT NULL,
+    scope      TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS ix_inflight_started_at ON inflight (started_at);
 """
@@ -59,6 +60,15 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA synchronous=NORMAL")
     connection.executescript(_SCHEMA)
+
+    # `inflight` shipped without `scope`, and this file outlives a deploy -- it
+    # lives under `tmp/`, which the prune step leaves alone -- so
+    # CREATE TABLE IF NOT EXISTS silently leaves an old table as it was and
+    # every insert would fail against it. Cheap enough to check per connection.
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(inflight)")}
+    if "scope" not in columns:
+        connection.execute("ALTER TABLE inflight ADD COLUMN scope TEXT NOT NULL DEFAULT ''")
+
     return connection
 
 
@@ -122,13 +132,17 @@ def consume(
 
 
 def acquire(
+    scope: str,
     *,
     limit: int,
     ttl_seconds: float,
     db_path: Path | None = None,
     now: float | None = None,
 ) -> str | None:
-    """Take one of `limit` concurrent slots, or return None if all are taken.
+    """Take one of `scope`'s `limit` concurrent slots, or None if all are taken.
+
+    Scopes are counted separately, so the deep health probe cannot consume the
+    budget a supporter's submission needs, or the other way round.
 
     The caller must pass the returned token to `release`. Fails open: a store it
     cannot reach yields a token, so the request proceeds.
@@ -152,16 +166,21 @@ def acquire(
     try:
         with connection:
             connection.execute("BEGIN IMMEDIATE")
+            # Every scope, not just this one: the prune is the only thing
+            # bounding the table.
             connection.execute(
                 "DELETE FROM inflight WHERE started_at <= ?", (current - ttl_seconds,)
             )
 
-            (count,) = connection.execute("SELECT COUNT(*) FROM inflight").fetchone()
+            (count,) = connection.execute(
+                "SELECT COUNT(*) FROM inflight WHERE scope = ?", (scope,)
+            ).fetchone()
             if count >= limit:
                 return None
 
             connection.execute(
-                "INSERT INTO inflight (token, started_at) VALUES (?, ?)", (token, current)
+                "INSERT INTO inflight (token, started_at, scope) VALUES (?, ?, ?)",
+                (token, current, scope),
             )
             return token
     except (sqlite3.Error, OSError):

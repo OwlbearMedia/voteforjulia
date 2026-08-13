@@ -20,6 +20,8 @@ except Exception:  # pragma: no cover - fallback for environments without google
 
 from api.config import (
     DEFAULT_MAX_REQUEST_BYTES,
+    DEFAULT_SHEETS_TIMEOUT_SECONDS,
+    DEFAULT_SMTP_TIMEOUT_SECONDS,
     DEFAULT_YARDSIGN_SHEETS_WORKSHEET,
     EmailConfig,
     env,
@@ -125,11 +127,54 @@ _HEALTH_DEEP_SCOPE = "health-deep"
 # work can run at all, which is what an upstream slowdown turns into.
 _MAX_CONCURRENT_SUBMISSIONS = _int_setting("MAX_CONCURRENT_SUBMISSIONS", 12)
 
+# `/health/deep` needs its own, much smaller budget for the same reason it needs
+# a cache: on a miss it does the same expensive I/O a submission does, so
+# without one it is an uncapped path to the exhaustion the cap above prevents --
+# and at 30/hour per client it is cheaper to abuse than the forms. Two, because
+# the only legitimate caller is a monitor polling from two locations.
+# Caught by Copilot on PR #138.
+_MAX_CONCURRENT_HEALTH_PROBES = _int_setting("MAX_CONCURRENT_HEALTH_PROBES", 2)
+
+# The scopes the concurrency budgets are counted under, kept apart so a flood of
+# probes cannot spend the allowance a supporter's submission needs.
+_SUBMISSION_SLOT_SCOPE = "submission"
+_HEALTH_PROBE_SLOT_SCOPE = "health-probe"
+
+# `SMTP_TIMEOUT_SECONDS` bounds each blocking socket operation, not the session,
+# and one send is a dozen or so of them: connect, banner, EHLO, (STARTTLS,
+# EHLO), AUTH, MAIL, RCPT, DATA, the body, QUIT. A server that answers every
+# command just inside the timeout drags a submission out to that multiple of it.
+# Caught by Copilot on PR #138 -- the first version summed the timeouts once and
+# was short by an order of magnitude.
+_SMTP_OPERATIONS_PER_SESSION = 12
+_SMTP_SESSIONS_PER_SUBMISSION = 2
+
+# The Sheets client can refresh its token before the append itself.
+_SHEETS_OPERATIONS_PER_SUBMISSION = 2
+
+
+def _worst_case_submission_seconds(smtp_timeout: float, sheets_timeout: float) -> float:
+    """Upper bound on one submission, given the timeouts it will run under."""
+    return (
+        _SMTP_SESSIONS_PER_SUBMISSION * _SMTP_OPERATIONS_PER_SESSION * smtp_timeout
+        + _SHEETS_OPERATIONS_PER_SUBMISSION * sheets_timeout
+    )
+
+
 # How long a slot survives without being released, for the worker that is killed
-# mid-request and never releases its own. Must stay above the longest a request
-# can take -- `test_inflight_ttl_outlives_the_slowest_possible_request` pins it
-# to the timeouts it has to clear.
-_INFLIGHT_TTL_SECONDS = _int_setting("INFLIGHT_TTL_SECONDS", 60)
+# mid-request and never gets to release its own.
+#
+# Derived rather than chosen, so raising a timeout raises this with it. Expiring
+# early is the failure that matters: it hands a live request's slot to someone
+# else and admits callers above the cap, in exactly the slow-upstream conditions
+# the cap exists for. Expiring late only delays reclaiming a slot after a crash,
+# which is rare and self-correcting -- so the bound is deliberately pessimistic.
+_INFLIGHT_TTL_SECONDS = _int_setting(
+    "INFLIGHT_TTL_SECONDS",
+    ceil(
+        _worst_case_submission_seconds(DEFAULT_SMTP_TIMEOUT_SECONDS, DEFAULT_SHEETS_TIMEOUT_SECONDS)
+    ),
+)
 
 # How long one probe result is reused. The rate limit above bounds how often one
 # address may ask; this bounds what the answer costs. Keep it well under the
@@ -610,7 +655,9 @@ def _within_capacity(endpoint_name: str, run):
     covers the worker that dies without getting that far. See ADR-0018.
     """
     token = acquire_submission_slot(
-        limit=_MAX_CONCURRENT_SUBMISSIONS, ttl_seconds=_INFLIGHT_TTL_SECONDS
+        _SUBMISSION_SLOT_SCOPE,
+        limit=_MAX_CONCURRENT_SUBMISSIONS,
+        ttl_seconds=_INFLIGHT_TTL_SECONDS,
     )
     if token is None:
         logger.warning(
@@ -824,6 +871,26 @@ def _run_deep_health_probes(produced_at: float) -> _DeepHealthResult:
     )
 
 
+def _refresh_deep_health(now: float) -> _DeepHealthResult | None:
+    """Probe under the health budget, or None if every probe slot is taken."""
+    token = acquire_submission_slot(
+        _HEALTH_PROBE_SLOT_SCOPE,
+        limit=_MAX_CONCURRENT_HEALTH_PROBES,
+        ttl_seconds=_INFLIGHT_TTL_SECONDS,
+    )
+    if token is None:
+        logger.warning(
+            "/health/deep probe deferred: %d probes already running",
+            _MAX_CONCURRENT_HEALTH_PROBES,
+        )
+        return None
+
+    try:
+        return _run_deep_health_probes(now)
+    finally:
+        release_submission_slot(token)
+
+
 @app.route("/health/deep", methods=["GET"])
 def deep_health_check():
     global _deep_health_cache
@@ -839,8 +906,18 @@ def deep_health_check():
     if cached is None or now - cached.produced_at >= _HEALTH_DEEP_CACHE_SECONDS:
         # Failures too: caching only successes would restore the amplifier
         # exactly when a dependency is already in trouble.
-        cached = _run_deep_health_probes(now)
-        _deep_health_cache = cached
+        refreshed = _refresh_deep_health(now)
+
+        if refreshed is None:
+            # Every probe slot is busy. A stale answer with an honest `Age` is
+            # worth more to a monitor than a refusal -- and it keeps a flood
+            # from paging as though a dependency had failed. With nothing
+            # cached at all there is nothing truthful to say.
+            if cached is None:
+                return _at_capacity_response()
+        else:
+            cached = refreshed
+            _deep_health_cache = cached
 
     response = jsonify(cached.payload)
     response.status_code = cached.status

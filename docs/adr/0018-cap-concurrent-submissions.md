@@ -85,10 +85,31 @@ would read 0 or 1 forever and bound nothing.
 **Slots expire.** A worker killed mid-request never reaches its `release`, and
 without a TTL those slots would accumulate until the cap was permanently full
 and every submission returned 503 — an outage of our own making that a restart
-would not clear, because the count is on disk. The TTL is 60s against a 35s
-worst case, and a test derives that worst case from the timeout settings rather
-than restating it, so raising `SMTP_TIMEOUT_SECONDS` without raising the TTL
-fails the build instead of handing a live slot to a second caller.
+would not clear, because the count is on disk.
+
+**The TTL is derived, not chosen** (270s by default), and the arithmetic behind
+it is the part worth knowing. `SMTP_TIMEOUT_SECONDS` bounds each blocking socket
+operation, **not the session** — and one send is a dozen or so operations
+(connect, banner, EHLO, STARTTLS, EHLO, AUTH, MAIL, RCPT, DATA, body, QUIT), so
+a server answering every command just inside the timeout drags a submission out
+to that multiple of it. The first version of this record put the worst case at
+35s by summing the timeouts once; Copilot pointed out on PR #138 that this is
+short by an order of magnitude, and that a slot reclaimed while its request is
+still running admits callers _above_ the cap in exactly the slow-upstream
+conditions the cap exists for. Expiring late is the cheaper mistake — it only
+delays reclaiming a slot after a crash — so the bound is deliberately
+pessimistic, and the test checks it against the **configured** timeouts rather
+than the default constants.
+
+**`/health/deep` gets its own budget** (`MAX_CONCURRENT_HEALTH_PROBES`, 2),
+counted under a separate scope. Also from Copilot's review: the cap as first
+written covered submissions only, while the probe does the same expensive I/O on
+a cache miss under a _larger_ per-client allowance (30/hour against the forms' 10) — an uncapped path to the exhaustion the cap exists to prevent, and a
+cheaper one per address than the forms. Separate scopes mean neither kind of
+work can spend the other's allowance. When every probe slot is busy and a
+cached result exists, that result is served with an honest `Age` rather than a
+refusal: a stale answer is worth more to a monitor than a 503, which would page
+as though a dependency had broken.
 
 **It fails open**, like the tier beside it. A store that cannot be reached
 admits the request.
@@ -133,8 +154,18 @@ dot-directory would build locally and never leave the runner.
   were independent knobs; the TTL has to clear their sum. The test says so when
   it stops being true.
 - **A name that is entirely digits or punctuation now greets as "there".** That
-  is the intended trade, and it is why the sanitiser is generous about letters
-  in any script rather than matching an ASCII name pattern.
+  is the intended trade, and it is why the sanitiser keeps Unicode letters
+  **and combining marks** rather than matching an ASCII name pattern. Marks are
+  not decoration: `str.isalpha()` is false for one, so the first version of this
+  filter turned decomposed "José" into "Jose" and "अनुराधा" into "अनरध", which is
+  not a spelling of anything. Copilot caught it on PR #138; the original test
+  passed only because Python source literals are NFC by default.
+- **`inflight` gained a `scope` column after shipping to the test host.** The
+  file lives under `tmp/`, which the deploy's prune step leaves alone, so
+  `CREATE TABLE IF NOT EXISTS` would have found the old table and left it — and
+  every insert would then have failed, failing open forever and silently. There
+  is now a guarded `ALTER TABLE` in `_connect`, which is this repo's first
+  schema migration and the pattern for the next one.
 
 ## Alternatives considered
 

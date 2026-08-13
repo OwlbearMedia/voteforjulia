@@ -1,4 +1,5 @@
 import smtplib
+import unicodedata
 import unittest
 from email import message_from_string
 from email.message import Message
@@ -517,6 +518,33 @@ class SafeGreetingTests(unittest.TestCase):
         for name in ("Alex", "José", "Mary-Anne", "O'Brien", "李雷", "Ngozi Adichie"):
             with self.subTest(name=name):
                 self.assertEqual(_safe_greeting(name, "there"), name)
+
+    def test_names_carrying_combining_marks_are_untouched(self) -> None:
+        """The case the first version of this got wrong, caught by Copilot.
+
+        A combining mark is category `M`, and `str.isalpha()` is false for it,
+        so a letters-only filter deletes it. That is invisible for composed
+        Latin text and catastrophic elsewhere: in Indic scripts the marks are
+        the vowels, so "अनुराधा" came out as "अनरध". Composed "José" passed the
+        original test purely because Python source is NFC by default.
+        """
+        for name in (
+            unicodedata.normalize("NFD", "José"),
+            unicodedata.normalize("NFD", "Ólafsdóttir"),
+            "अनुराधा",
+            "সুমিত",
+            "பிரியா",
+            "مُحَمَّد",
+        ):
+            with self.subTest(name=name):
+                # NFC on both sides: the greeting normalises, so a decomposed
+                # name comes back composed rather than changed.
+                self.assertEqual(_safe_greeting(name, "there"), unicodedata.normalize("NFC", name))
+
+    def test_bare_combining_marks_do_not_count_as_a_name(self) -> None:
+        # Marks are kept, so something has to stop a string of nothing else
+        # from being greeted -- it renders as stray glyphs on a stray letter.
+        self.assertEqual(_safe_greeting("\u0301\u0301\u0301", "there"), "there")
 
     def test_a_phone_number_cannot_reach_the_greeting(self) -> None:
         self.assertNotIn("555", _safe_greeting("CALL 555-0142 NOW", "there"))

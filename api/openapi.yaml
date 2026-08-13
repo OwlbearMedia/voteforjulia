@@ -130,14 +130,27 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
-          description: At least one dependency failed.
+          description: |
+            Either a dependency failed (`DeepHealthStatus`, with `Age`), or
+            every probe slot was busy and nothing had been cached yet
+            (`ErrorResponse`, no `Age`).
+
+            The probe holds one of `MAX_CONCURRENT_HEALTH_PROBES` slots (2 by
+            default) while it runs, counted separately from submissions so a
+            probe flood cannot close the forms and vice versa. When the slots
+            are full **and** a cached result exists, the cached one is served
+            with a `200`/`503` and an honest `Age` rather than this — a stale
+            answer is worth more to a monitor than a refusal, and it keeps a
+            flood from paging as though a dependency had broken. See ADR-0018.
           headers:
             Age:
               $ref: '#/components/headers/Age'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeepHealthStatus'
+                oneOf:
+                  - $ref: '#/components/schemas/DeepHealthStatus'
+                  - $ref: '#/components/schemas/ErrorResponse'
 
   /send-email:
     post:
@@ -683,7 +696,9 @@ components:
       description: |
         Too many submissions are already in flight, across every worker, so this
         one was refused before any work started. Default cap 12
-        (`MAX_CONCURRENT_SUBMISSIONS`).
+        (`MAX_CONCURRENT_SUBMISSIONS`). `/health/deep` has a separate, smaller
+        budget of its own (`MAX_CONCURRENT_HEALTH_PROBES`), so neither kind of
+        work can spend the other's allowance.
 
         Distinct from `429`, and the distinction is the point. Rate limiting
         bounds how often *one client* may ask; this bounds how much work runs at
