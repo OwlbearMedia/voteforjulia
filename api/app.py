@@ -20,10 +20,13 @@ except Exception:  # pragma: no cover - fallback for environments without google
 
 from api.config import (
     DEFAULT_MAX_REQUEST_BYTES,
+    DEFAULT_SHEETS_TIMEOUT_SECONDS,
+    DEFAULT_SMTP_TIMEOUT_SECONDS,
     DEFAULT_YARDSIGN_SHEETS_WORKSHEET,
     EmailConfig,
     env,
     env_bool,
+    env_positive_number,
     load_email_config,
     load_sheets_config,
 )
@@ -35,7 +38,9 @@ from api.models import (
     validate_submission,
     validate_yard_sign_request,
 )
+from api.rate_limit_store import acquire as acquire_submission_slot
 from api.rate_limit_store import consume as consume_persistent_rate_limit
+from api.rate_limit_store import release as release_submission_slot
 from api.services.email_service import (
     send_confirmation_email,
     send_submission_email,
@@ -118,6 +123,104 @@ _HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS = _int_setting("HEALTH_LONG_RATE_LIMIT_MAX_
 
 _HEALTH_DEEP_SCOPE = "health-deep"
 
+# How many submissions may be in flight at once, across every worker (ADR-0018).
+# The rate limit tiers bound how often one client may ask; this bounds how much
+# work can run at all, which is what an upstream slowdown turns into.
+_MAX_CONCURRENT_SUBMISSIONS = _int_setting("MAX_CONCURRENT_SUBMISSIONS", 12)
+
+# `/health/deep` needs its own, much smaller budget for the same reason it needs
+# a cache: on a miss it does the same expensive I/O a submission does, so
+# without one it is an uncapped path to the exhaustion the cap above prevents --
+# and at 30/hour per client it is cheaper to abuse than the forms. Two, because
+# the only legitimate caller is a monitor polling from two locations.
+# Caught by Copilot on PR #138.
+_MAX_CONCURRENT_HEALTH_PROBES = _int_setting("MAX_CONCURRENT_HEALTH_PROBES", 2)
+
+# The scopes the concurrency budgets are counted under, kept apart so a flood of
+# probes cannot spend the allowance a supporter's submission needs.
+_SUBMISSION_SLOT_SCOPE = "submission"
+_HEALTH_PROBE_SLOT_SCOPE = "health-probe"
+
+# `SMTP_TIMEOUT_SECONDS` bounds each blocking socket operation, not the session,
+# and one send is a dozen or so of them: connect, banner, EHLO, (STARTTLS,
+# EHLO), AUTH, MAIL, RCPT, DATA, the body, QUIT. A server that answers every
+# command just inside the timeout drags a submission out to that multiple of it.
+# Caught by Copilot on PR #138 -- the first version summed the timeouts once and
+# was short by an order of magnitude.
+_SMTP_OPERATIONS_PER_SESSION = 12
+_SMTP_SESSIONS_PER_SUBMISSION = 2
+
+# The Sheets client can refresh its token before the append itself.
+_SHEETS_OPERATIONS_PER_SUBMISSION = 2
+
+
+def _worst_case_submission_seconds(smtp_timeout: float, sheets_timeout: float) -> float:
+    """Upper bound on one submission, given the timeouts it will run under."""
+    return (
+        _SMTP_SESSIONS_PER_SUBMISSION * _SMTP_OPERATIONS_PER_SESSION * smtp_timeout
+        + _SHEETS_OPERATIONS_PER_SUBMISSION * sheets_timeout
+    )
+
+
+def _worst_case_probe_seconds(smtp_timeout: float, sheets_timeout: float) -> float:
+    """Upper bound on one `/health/deep` probe: one SMTP login, one sheet read."""
+    return _SMTP_OPERATIONS_PER_SESSION * smtp_timeout + sheets_timeout
+
+
+def _configured_timeouts() -> tuple[float, float]:
+    """The SMTP and Sheets timeouts the next request will actually run under.
+
+    Read here rather than taken from the DEFAULT_* constants, because both are
+    per-request cPanel settings: sizing a slot lifetime off the defaults means
+    raising `SMTP_TIMEOUT_SECONDS` silently breaks the guarantee below, while the
+    test that checks it only ever sees CI's environment. Caught in review.
+
+    Degrades to the default on an unusable value rather than raising, the same
+    trade `_int_setting` makes: this decides a safety margin, not the response,
+    so `_handle_form_submission` stays the thing that reports a bad config.
+    """
+
+    def timeout(name: str, default: float) -> float:
+        try:
+            return env_positive_number(name, default)
+        except ValueError:
+            logger.error("%s is unusable; sizing slot lifetime with %s instead", name, default)
+            return default
+
+    return (
+        timeout("SMTP_TIMEOUT_SECONDS", DEFAULT_SMTP_TIMEOUT_SECONDS),
+        timeout("SHEETS_TIMEOUT_SECONDS", DEFAULT_SHEETS_TIMEOUT_SECONDS),
+    )
+
+
+def _slot_ttl_seconds(worst_case: float) -> int:
+    """How long a slot survives unreleased: the work's worst case, or an override."""
+    return _INFLIGHT_TTL_OVERRIDE or ceil(worst_case)
+
+
+def _submission_slot_ttl_seconds() -> int:
+    return _slot_ttl_seconds(_worst_case_submission_seconds(*_configured_timeouts()))
+
+
+def _probe_slot_ttl_seconds() -> int:
+    return _slot_ttl_seconds(_worst_case_probe_seconds(*_configured_timeouts()))
+
+
+# How long a slot survives without being released, for the worker that is killed
+# mid-request and never gets to release its own.
+#
+# Derived per request from the configured timeouts, so raising a timeout raises
+# this with it -- deriving it once at import from the DEFAULT_* constants left
+# the guarantee unmet for exactly the deployments that changed a timeout, since
+# both are per-request cPanel settings and CI never sees them. Expiring early is
+# the failure that matters: it hands a live request's slot to someone else and
+# admits callers above the cap, in the slow-upstream conditions the cap exists
+# for. Expiring late only delays reclaiming a slot after a crash, which is rare
+# and self-correcting -- so the bound is deliberately pessimistic.
+#
+# Unset (0) derives; a value pins it instead.
+_INFLIGHT_TTL_OVERRIDE = _int_setting("INFLIGHT_TTL_SECONDS", 0)
+
 # How long one probe result is reused. The rate limit above bounds how often one
 # address may ask; this bounds what the answer costs. Keep it well under the
 # synthetic monitor's period, or scheduled polls start grading a cached answer.
@@ -159,6 +262,24 @@ _CORS_ALLOWED_ORIGINS = {
     ).split(",")
     if item.strip()
 }
+
+
+@app.after_request
+def add_security_headers(response):
+    """The subset of the site's edge policy that means anything for a JSON API.
+
+    Set here rather than in an `.htaccess`, which is where ADR-0010 says edge
+    policy belongs: the API subdomain's docroot is not in this repo, so a header
+    added there would be untracked host state that no test or deploy can see.
+
+    HSTS matters most. The apex sends `includeSubDomains`, but that only reaches
+    a browser that has already been to the apex -- a client whose first contact
+    with the estate is this API is unprotected until it does. The rest of the
+    site's headers are about rendering documents and say nothing here.
+    """
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    return response
 
 
 @app.after_request
@@ -558,6 +679,45 @@ def _cross_site_response():
     return jsonify({"error": _REFUSED_SUBMISSION_MESSAGE}), 403
 
 
+_AT_CAPACITY_MESSAGE = "The site is busy right now. Please try again in a moment."
+
+# Advertised on the 503. A slot frees when a request finishes, so the honest
+# figure is seconds, not the minutes a rate-limit window needs.
+_AT_CAPACITY_RETRY_AFTER_SECONDS = 5
+
+
+def _at_capacity_response():
+    response = jsonify({"error": _AT_CAPACITY_MESSAGE})
+    response.status_code = 503
+    response.headers["Retry-After"] = str(_AT_CAPACITY_RETRY_AFTER_SECONDS)
+    return response
+
+
+def _within_capacity(endpoint_name: str, run):
+    """Run `run()` holding one of the concurrent-submission slots, or 503.
+
+    Released in a `finally` so a raising handler frees its slot; the store's TTL
+    covers the worker that dies without getting that far. See ADR-0018.
+    """
+    token = acquire_submission_slot(
+        _SUBMISSION_SLOT_SCOPE,
+        limit=_MAX_CONCURRENT_SUBMISSIONS,
+        ttl_seconds=_submission_slot_ttl_seconds(),
+    )
+    if token is None:
+        logger.warning(
+            "%s refused: %d submissions already in flight",
+            endpoint_name,
+            _MAX_CONCURRENT_SUBMISSIONS,
+        )
+        return _at_capacity_response()
+
+    try:
+        return run()
+    finally:
+        release_submission_slot(token)
+
+
 def _rate_limited_response(retry_after: int):
     response = jsonify({"error": "Too many requests. Please try again later."})
     response.status_code = 429
@@ -671,6 +831,12 @@ def health_check():
             "status": "ok",
             "path": request.path,
             "script_root": request.script_root,
+            # The value every per-IP control is keyed on, echoed for the same
+            # reason as `script_root`: to answer what the *deployed* app sees.
+            # ADR-0009/0014/0016 all assume this is the caller rather than
+            # something in front of it, and nothing had ever checked. A caller
+            # only learns their own address. See ADR-0018.
+            "client": _rate_limit_key(),
         }
     ), 200
 
@@ -750,6 +916,29 @@ def _run_deep_health_probes(produced_at: float) -> _DeepHealthResult:
     )
 
 
+def _refresh_deep_health(now: float) -> _DeepHealthResult | None:
+    """Probe under the health budget, or None if every probe slot is taken."""
+    # One SMTP session and one sheet read, so its own shorter bound: borrowing
+    # the submission figure would double the window in which a worker killed
+    # mid-probe leaves a cold cache answering 503.
+    token = acquire_submission_slot(
+        _HEALTH_PROBE_SLOT_SCOPE,
+        limit=_MAX_CONCURRENT_HEALTH_PROBES,
+        ttl_seconds=_probe_slot_ttl_seconds(),
+    )
+    if token is None:
+        logger.warning(
+            "/health/deep probe deferred: %d probes already running",
+            _MAX_CONCURRENT_HEALTH_PROBES,
+        )
+        return None
+
+    try:
+        return _run_deep_health_probes(now)
+    finally:
+        release_submission_slot(token)
+
+
 @app.route("/health/deep", methods=["GET"])
 def deep_health_check():
     global _deep_health_cache
@@ -765,8 +954,18 @@ def deep_health_check():
     if cached is None or now - cached.produced_at >= _HEALTH_DEEP_CACHE_SECONDS:
         # Failures too: caching only successes would restore the amplifier
         # exactly when a dependency is already in trouble.
-        cached = _run_deep_health_probes(now)
-        _deep_health_cache = cached
+        refreshed = _refresh_deep_health(now)
+
+        if refreshed is None:
+            # Every probe slot is busy. A stale answer with an honest `Age` is
+            # worth more to a monitor than a refusal -- and it keeps a flood
+            # from paging as though a dependency had failed. With nothing
+            # cached at all there is nothing truthful to say.
+            if cached is None:
+                return _at_capacity_response()
+        else:
+            cached = refreshed
+            _deep_health_cache = cached
 
     response = jsonify(cached.payload)
     response.status_code = cached.status
@@ -790,16 +989,19 @@ def send_email():
     if retry_after is not None:
         return _rate_limited_response(retry_after)
 
-    return _handle_form_submission(
-        sheets_config=load_sheets_config(),
-        parse_request=_submission_from_request,
-        missing_fields_message=_missing_required_fields_message,
-        validate=validate_submission,
-        get_email=lambda submission: submission.email,
-        send_notification_email=send_submission_email,
-        send_confirmation_email_fn=send_confirmation_email,
-        to_sheet_row=lambda submission: submission.to_sheet_row(),
-        endpoint_name="/send-email",
+    return _within_capacity(
+        "/send-email",
+        lambda: _handle_form_submission(
+            sheets_config=load_sheets_config(),
+            parse_request=_submission_from_request,
+            missing_fields_message=_missing_required_fields_message,
+            validate=validate_submission,
+            get_email=lambda submission: submission.email,
+            send_notification_email=send_submission_email,
+            send_confirmation_email_fn=send_confirmation_email,
+            to_sheet_row=lambda submission: submission.to_sheet_row(),
+            endpoint_name="/send-email",
+        ),
     )
 
 
@@ -816,19 +1018,22 @@ def yard_sign():
     if retry_after is not None:
         return _rate_limited_response(retry_after)
 
-    return _handle_form_submission(
-        sheets_config=load_sheets_config(
-            "GOOGLE_SHEETS_YARDSIGN_WORKSHEET", DEFAULT_YARDSIGN_SHEETS_WORKSHEET
+    return _within_capacity(
+        "/yard-sign",
+        lambda: _handle_form_submission(
+            sheets_config=load_sheets_config(
+                "GOOGLE_SHEETS_YARDSIGN_WORKSHEET", DEFAULT_YARDSIGN_SHEETS_WORKSHEET
+            ),
+            parse_request=_yard_sign_request_from_request,
+            missing_fields_message=_missing_required_yard_sign_fields_message,
+            validate=validate_yard_sign_request,
+            get_email=lambda yard_sign_request: yard_sign_request.email,
+            send_notification_email=send_yard_sign_request_email,
+            send_confirmation_email_fn=send_yard_sign_confirmation_email,
+            to_sheet_row=lambda yard_sign_request: yard_sign_request.to_sheet_row(),
+            endpoint_name="/yard-sign",
+            recipient_env="RECIPIENT_EMAIL_SIGNS",
         ),
-        parse_request=_yard_sign_request_from_request,
-        missing_fields_message=_missing_required_yard_sign_fields_message,
-        validate=validate_yard_sign_request,
-        get_email=lambda yard_sign_request: yard_sign_request.email,
-        send_notification_email=send_yard_sign_request_email,
-        send_confirmation_email_fn=send_yard_sign_confirmation_email,
-        to_sheet_row=lambda yard_sign_request: yard_sign_request.to_sheet_row(),
-        endpoint_name="/yard-sign",
-        recipient_env="RECIPIENT_EMAIL_SIGNS",
     )
 
 

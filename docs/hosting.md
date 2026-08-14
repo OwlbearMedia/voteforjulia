@@ -327,6 +327,31 @@ Consequences worth knowing:
   machines and `comm` compares bytes, so a collation mismatch between the runner
   and the host would report live files as stale.
 
+### `remote_addr` is the real client, and this is how to re-check
+
+Nothing sits in front of the Python apps, so Flask sees the caller's own
+address. **Verified on the test environment 2026-08-13**: `/health` echoed
+`156.47.97.177` to a client whose egress address was `156.47.97.177`.
+
+That had been assumed since [ADR-0009](adr/0009-in-process-rate-limiting.md) and
+never checked, and it is load-bearing for every per-IP control — if it ever
+resolved to a fixed private address, all of them would be one shared bucket and
+a single caller could exhaust everybody's allowance while looking, from the
+logs, like ordinary traffic.
+
+```
+curl -s https://api.voteforjulia.com/health | jq -r .client   # should be your address
+curl -s https://api.ipify.org                                 # ...and this should match
+```
+
+Re-check it after anything that could interpose: a CDN, a proxy, a host
+migration. If they stop matching, the fix is `TRUSTED_CLIENT_IP_HEADER` — set it
+to the header the new thing overwrites, never to `X-Forwarded-For` on trust
+([ADR-0014](adr/0014-do-not-trust-forwarding-headers.md)).
+
+New Relic cannot answer this for you: the agent records a fixed allowlist of
+request headers, none of which carries a client address.
+
 ### Environment variables
 
 **This is the only deployment state with no representation in the checkout.**
@@ -373,19 +398,22 @@ Google Sheets — per request, no restart:
 
 Abuse controls — read at import, **restart required**:
 
-| Variable                              | Default                                     | Notes                                                                                                                                                                           |
-| ------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ORIGIN_ENFORCED`                     | `true`                                      | `false` logs cross-site posts without refusing them. [ADR-0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md)                                                       |
-| `HONEYPOT_ENFORCED`                   | `true`                                      | `false` logs a filled honeypot without refusing it. [ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md)                                                              |
-| `CORS_ALLOWED_ORIGINS`                | apex, www, test, test-api, `localhost:5173` | Comma-separated. Since ADR-0017 this also decides who may _submit_, not only who may read a response.                                                                           |
-| `RATE_LIMIT_MAX_REQUESTS`             | `5`                                         | Burst tier, per client per endpoint.                                                                                                                                            |
-| `RATE_LIMIT_WINDOW_SECONDS`           | `60`                                        |                                                                                                                                                                                 |
-| `LONG_RATE_LIMIT_MAX_REQUESTS`        | `10`                                        | Sustained tier, counted in SQLite.                                                                                                                                              |
-| `LONG_RATE_LIMIT_WINDOW_SECONDS`      | `3600`                                      |                                                                                                                                                                                 |
-| `HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS` | `30`                                        | `/health/deep` only. Raise before shortening the monitor's period.                                                                                                              |
-| `RATE_LIMIT_MAX_BUCKETS`              | `10000`                                     | Memory backstop; crossing it resets allowances, failing open.                                                                                                                   |
-| `TRUSTED_CLIENT_IP_HEADER`            | _unset_                                     | **Leave unset unless something really does front the app.** Setting it lets any caller mint a fresh bucket per request. [ADR-0014](adr/0014-do-not-trust-forwarding-headers.md) |
-| `MAX_REQUEST_BYTES`                   | `65536`                                     | Bodies above this are refused with 413 before parsing.                                                                                                                          |
+| Variable                              | Default                                     | Notes                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ORIGIN_ENFORCED`                     | `true`                                      | `false` logs cross-site posts without refusing them. [ADR-0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md)                                                                                                                                                                                                                                                                                           |
+| `HONEYPOT_ENFORCED`                   | `true`                                      | `false` logs a filled honeypot without refusing it. [ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md)                                                                                                                                                                                                                                                                                                  |
+| `CORS_ALLOWED_ORIGINS`                | apex, www, test, test-api, `localhost:5173` | Comma-separated. Since ADR-0017 this also decides who may _submit_, not only who may read a response.                                                                                                                                                                                                                                                                                                               |
+| `RATE_LIMIT_MAX_REQUESTS`             | `5`                                         | Burst tier, per client per endpoint.                                                                                                                                                                                                                                                                                                                                                                                |
+| `RATE_LIMIT_WINDOW_SECONDS`           | `60`                                        |                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `LONG_RATE_LIMIT_MAX_REQUESTS`        | `10`                                        | Sustained tier, counted in SQLite.                                                                                                                                                                                                                                                                                                                                                                                  |
+| `LONG_RATE_LIMIT_WINDOW_SECONDS`      | `3600`                                      |                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS` | `30`                                        | `/health/deep` only. Raise before shortening the monitor's period.                                                                                                                                                                                                                                                                                                                                                  |
+| `RATE_LIMIT_MAX_BUCKETS`              | `10000`                                     | Memory backstop; crossing it resets allowances, failing open.                                                                                                                                                                                                                                                                                                                                                       |
+| `TRUSTED_CLIENT_IP_HEADER`            | _unset_                                     | **Leave unset unless something really does front the app.** Setting it lets any caller mint a fresh bucket per request. [ADR-0014](adr/0014-do-not-trust-forwarding-headers.md)                                                                                                                                                                                                                                     |
+| `MAX_CONCURRENT_SUBMISSIONS`          | `12`                                        | Submissions served at once, across all workers; the overflow gets a 503. Sized against the LVE memory cap, not the process cap. [ADR-0018](adr/0018-cap-concurrent-submissions.md)                                                                                                                                                                                                                                  |
+| `MAX_CONCURRENT_HEALTH_PROBES`        | `2`                                         | `/health/deep`'s own slot budget, counted separately so a probe flood cannot close the forms.                                                                                                                                                                                                                                                                                                                       |
+| `INFLIGHT_TTL_SECONDS`                | unset (derives; `270` on default timeouts)  | How long a slot survives unreleased, for a worker killed mid-request. Derived **per request** from the configured timeouts, so raising `SMTP_TIMEOUT_SECONDS` raises this automatically — it bounds each socket operation, not the session, and a session is a dozen of them. Set a value only to pin it; leave it unset to derive. `/health/deep` gets a shorter bound of its own, since a probe is half the work. |
+| `MAX_REQUEST_BYTES`                   | `65536`                                     | Bodies above this are refused with 413 before parsing.                                                                                                                                                                                                                                                                                                                                                              |
 
 Ops — read at import, **restart required**:
 

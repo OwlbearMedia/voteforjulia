@@ -43,6 +43,17 @@ info:
     allowlist never gets a say in whether it is made — it governs only who may
     read the response. That is what the origin check exists to cover; see
     ADR-0017.
+
+    A cap on **concurrent** submissions (`503`) sits alongside them, answering a
+    different question again: not who is asking or how often, but how much work
+    may run at once. See ADR-0018.
+
+    ### Response headers
+
+    Every response carries `Strict-Transport-Security` and
+    `X-Content-Type-Options: nosniff`. They are set by the app rather than by an
+    `.htaccess` because the API subdomain's docroot is not in the repo, so a
+    header added there would be untracked host state.
   contact:
     name: Vote for Julia
     email: info@voteforjulia.com
@@ -119,14 +130,27 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
-          description: At least one dependency failed.
+          description: |
+            Either a dependency failed (`DeepHealthStatus`, with `Age`), or
+            every probe slot was busy and nothing had been cached yet
+            (`ErrorResponse`, no `Age`).
+
+            The probe holds one of `MAX_CONCURRENT_HEALTH_PROBES` slots (2 by
+            default) while it runs, counted separately from submissions so a
+            probe flood cannot close the forms and vice versa. When the slots
+            are full **and** a cached result exists, the cached one is served
+            with a `200`/`503` and an honest `Age` rather than this — a stale
+            answer is worth more to a monitor than a refusal, and it keeps a
+            flood from paging as though a dependency had broken. See ADR-0018.
           headers:
             Age:
               $ref: '#/components/headers/Age'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeepHealthStatus'
+                oneOf:
+                  - $ref: '#/components/schemas/DeepHealthStatus'
+                  - $ref: '#/components/schemas/ErrorResponse'
 
   /send-email:
     post:
@@ -190,6 +214,8 @@ paths:
           $ref: '#/components/responses/ServerMisconfigured'
         '502':
           $ref: '#/components/responses/UpstreamFailed'
+        '503':
+          $ref: '#/components/responses/AtCapacity'
     options:
       tags: [Forms]
       summary: CORS preflight
@@ -253,6 +279,8 @@ paths:
           $ref: '#/components/responses/ServerMisconfigured'
         '502':
           $ref: '#/components/responses/UpstreamFailed'
+        '503':
+          $ref: '#/components/responses/AtCapacity'
     options:
       tags: [Forms]
       summary: CORS preflight
@@ -265,7 +293,7 @@ components:
   schemas:
     HealthStatus:
       type: object
-      required: [status, path, script_root]
+      required: [status, path, script_root, client]
       properties:
         status:
           type: string
@@ -278,10 +306,24 @@ components:
           type: string
           description: WSGI `SCRIPT_ROOT` — the prefix the app is mounted under.
           examples: ['']
+        client:
+          type: string
+          description: |
+            The key every per-IP control is counted against, for this request.
+
+            Echoed for the same reason as `script_root`: to answer what the
+            *deployed* app sees rather than what the code appears to do. Rate
+            limiting assumes this is the caller and not something in front of
+            the app — if it ever reads as a fixed private address, every client
+            shares one bucket and one caller can exhaust everybody's allowance.
+            Follows `TRUSTED_CLIENT_IP_HEADER` when set (ADR-0014). A caller
+            only ever learns their own address. See ADR-0018.
+          examples: ['203.0.113.7']
       examples:
         - status: ok
           path: /health
           script_root: ''
+          client: 203.0.113.7
 
     DeepHealthStatus:
       type: object
@@ -649,6 +691,47 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
           example:
             error: Too many requests. Please try again later.
+
+    AtCapacity:
+      description: |
+        Too many submissions are already in flight, across every worker, so this
+        one was refused before any work started. Default cap 12
+        (`MAX_CONCURRENT_SUBMISSIONS`). `/health/deep` has a separate, smaller
+        budget of its own (`MAX_CONCURRENT_HEALTH_PROBES`), so neither kind of
+        work can spend the other's allowance.
+
+        Distinct from `429`, and the distinction is the point. Rate limiting
+        bounds how often *one client* may ask; this bounds how much work runs at
+        all, whoever asked for it. A submission holds a worker for as long as
+        two SMTP connections and a Sheets write take, so the case this exists
+        for is not really an attacker — it is an upstream slowdown turning every
+        legitimate submission into a held worker until the host's memory limit
+        is reached.
+
+        Retried automatically by nobody, so `Retry-After` is seconds rather than
+        the minutes a rate-limit window needs: a slot frees as soon as a
+        submission finishes.
+
+        Fails open. If the store backing the count cannot be reached, the
+        submission proceeds — refusing a supporter is the worse failure. See
+        ADR-0018.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+            minimum: 1
+          example: 5
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: The site is busy right now. Please try again in a moment.
 
     ServerMisconfigured:
       description: |

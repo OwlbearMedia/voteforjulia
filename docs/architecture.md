@@ -121,6 +121,7 @@ sequenceDiagram
     B->>A: POST /send-email (JSON, cross-origin)
     A->>A: Origin on the allowlist? (403 if not, before any cost)
     A->>A: rate-limit bucket, per IP per endpoint
+    A->>A: take one of 12 in-flight slots (503 if none free)
     A->>A: parse + validate, then log field NAMES only
     A->>M: notification email to the campaign
     M-->>A: accepted
@@ -240,6 +241,16 @@ form-encoded POST is a CORS simple request, so it is sent with no preflight and
 CORS only ever decided who could read the reply. An absent `Origin` is allowed,
 because the callers that send none are the ones rate limiting does bound.
 
+Above all of them sits a cap on **concurrent** submissions
+([ADR-0018](adr/0018-cap-concurrent-submissions.md)): twelve at a time across
+every worker, counted in the same SQLite store, with the overflow refused as
+`503`. The others bound who may ask and how often; this bounds how much work
+runs at once, which is a different question with a different trigger. A
+submission holds a worker for as long as two SMTP connections and a sheet write
+take, so the case it is really for is an upstream slowdown — where every holder
+is a legitimate supporter and no rate limit is anywhere near being reached —
+piling workers up against the host's memory cap.
+
 **Observability.** New Relic Browser for client errors and Core Web Vitals, GA4
 for traffic ([ADR-0011](adr/0011-browser-side-observability.md)), and the New
 Relic Python agent in the Passenger app
@@ -287,5 +298,6 @@ than by discipline.
 | [0015](adr/0015-performance-budgets-in-ci.md)                    | Gate CI on performance budgets                                  | Accepted                                                                                                                         |
 | [0016](adr/0016-second-tier-rate-limiting-and-honeypot.md)       | Add a persistent long-window rate limit and a form honeypot     | Accepted                                                                                                                         |
 | [0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md) | Refuse cross-site submissions, and cache the deep health probe  | Accepted                                                                                                                         |
+| [0018](adr/0018-cap-concurrent-submissions.md)                   | Cap concurrent submissions, and close three smaller gaps        | Accepted                                                                                                                         |
 
 New ADRs: see [adr/README.md](adr/README.md).

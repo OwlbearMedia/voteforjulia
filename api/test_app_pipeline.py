@@ -29,7 +29,13 @@ import pytest
 
 import api.app as app_module
 import api.rate_limit_store as rate_limit_store
-from api.config import EmailConfig, SheetsConfig
+from api.config import (
+    DEFAULT_SMTP_TIMEOUT_SECONDS,
+    EmailConfig,
+    SheetsConfig,
+    load_email_config,
+    load_sheets_config,
+)
 
 VALID_EMAIL_CONFIG = EmailConfig(
     smtp_server="mail.example.com",
@@ -1016,3 +1022,152 @@ def test_health_deep_allowance_fits_the_synthetic_monitor():
         f"margin under an allowance of {app_module._HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS}/hour -- "
         "raise HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS or lengthen the period"
     )
+
+
+# --- Concurrent-submission cap, ADR-0018 ------------------------------------
+
+
+@BOTH_ENDPOINTS
+def test_a_submission_is_refused_when_every_slot_is_held(
+    client, pipeline, monkeypatch, path, payload
+):
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 0)
+
+    response = client.post(path, json=payload)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == str(app_module._AT_CAPACITY_RETRY_AFTER_SECONDS)
+    # Refused before the work, not during it: no mail, no sheet row.
+    assert pipeline.notifications == []
+    assert pipeline.rows == []
+
+
+def test_a_finished_submission_gives_its_slot_back(client, pipeline, monkeypatch):
+    """Without a release, the cap would ratchet shut one submission at a time.
+
+    A single slot plus two sequential submissions is the smallest arrangement
+    that can tell "released" apart from "never taken": the second can only
+    succeed if the first gave its slot back.
+    """
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 1)
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+    assert len(pipeline.notifications) == 2
+
+
+def test_a_failed_submission_gives_its_slot_back(client, pipeline, monkeypatch):
+    """The `finally` clause, which is the half that matters under an outage.
+
+    A slow or failing SMTP server is exactly when the cap fills, so a slot
+    leaked on the error path would take the forms down for `INFLIGHT_TTL_SECONDS`
+    on top of whatever broke -- turning an upstream blip into a longer outage of
+    our own making.
+    """
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 1)
+    pipeline.notify_error = smtplib.SMTPException("mail server is down")
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 502
+
+    pipeline.notify_error = None
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+
+def test_the_cap_counts_submissions_not_rejected_requests(client, pipeline, monkeypatch):
+    """A request refused before the handler must not hold a slot.
+
+    Rate-limited and cross-site requests are refused ahead of this, so a flood
+    of them cannot exhaust the cap and lock out the submissions it exists to
+    protect. Uses a cap of 1 and a rejected request that would, if it consumed
+    a slot, leave nothing for the legitimate one behind it.
+    """
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 1)
+    monkeypatch.setattr(app_module, "_CORS_ALLOWED_ORIGINS", {SITE_ORIGIN})
+
+    for _ in range(5):
+        refused = client.post(
+            CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": "https://evil.example"}
+        )
+        assert refused.status_code == 403
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+
+def test_the_cap_fails_open_when_the_store_is_unusable(client, pipeline, monkeypatch, tmp_path):
+    """A disk problem must not be the reason a supporter cannot reach us."""
+    broken = tmp_path / "not-a-database"
+    broken.mkdir()
+    monkeypatch.setattr(rate_limit_store, "DEFAULT_DB_PATH", broken)
+
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD)
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+def test_inflight_ttl_outlives_the_slowest_possible_request():
+    """The TTL has to clear the worst case, or a slot is reused while in use.
+
+    Read from the **configured** timeouts, not the defaults, which is the whole
+    point: an environment that raises `SMTP_TIMEOUT_SECONDS` moves the worst
+    case, and this has to move with it. Copilot raised exactly that on PR #138
+    against an earlier version that summed the default constants.
+
+    The bound itself lives in `app.py` because the shipped default is derived
+    from it; asserting it here against live config is what stops the two
+    drifting apart.
+    """
+    email_config = load_email_config()
+    sheets_config = load_sheets_config()
+
+    slowest = app_module._worst_case_submission_seconds(
+        email_config.timeout_seconds, sheets_config.timeout_seconds
+    )
+    ttl = app_module._submission_slot_ttl_seconds()
+
+    assert slowest <= ttl, (
+        f"a submission can take {slowest}s under the configured timeouts, but a slot "
+        f"expires after {ttl}s -- raise INFLIGHT_TTL_SECONDS or lower the timeouts"
+    )
+
+
+@pytest.mark.parametrize("smtp_timeout", ["10", "30", "90"])
+def test_the_slot_ttl_tracks_the_configured_timeouts(monkeypatch, smtp_timeout):
+    """Raising a timeout must raise the TTL, in production and not just in CI.
+
+    The first version derived the TTL once at import from the DEFAULT_*
+    constants while the test read the configured values -- so the guarantee held
+    exactly where it was tested and nowhere else, since `SMTP_TIMEOUT_SECONDS`
+    is a per-request cPanel setting CI never sets. Caught in review.
+    """
+    monkeypatch.setenv("SMTP_TIMEOUT_SECONDS", smtp_timeout)
+
+    smtp, sheets = app_module._configured_timeouts()
+
+    assert smtp == float(smtp_timeout)
+    assert app_module._worst_case_submission_seconds(smtp, sheets) <= (
+        app_module._submission_slot_ttl_seconds()
+    )
+
+
+def test_a_probe_slot_expires_sooner_than_a_submission_slot():
+    """A probe is half the work, so it should not borrow the longer bound.
+
+    Using the submission figure doubled the window in which a worker killed
+    mid-probe leaves a cold cache answering 503 -- which pages as a dependency
+    failure. Raised in review.
+    """
+    assert app_module._probe_slot_ttl_seconds() < app_module._submission_slot_ttl_seconds()
+
+
+def test_an_unusable_timeout_does_not_break_slot_sizing(monkeypatch, caplog):
+    """A typo in cPanel must not take the forms down before the handler reports it."""
+    monkeypatch.setenv("SMTP_TIMEOUT_SECONDS", "1O")
+
+    with caplog.at_level(logging.ERROR):
+        smtp, _ = app_module._configured_timeouts()
+
+    assert smtp == DEFAULT_SMTP_TIMEOUT_SECONDS
+    assert "SMTP_TIMEOUT_SECONDS" in caplog.text

@@ -38,7 +38,10 @@ problem.
 
 ## Decision
 
-What we do, in the present tense.
+What we do, in the present tense. If it adds a control, name every entry point
+that shares the property it addresses and say which are covered — a guard put on
+the case in front of you, while a sibling path keeps the hole open, is the
+easiest mistake to make here and the hardest to see afterwards.
 
 ## Consequences
 

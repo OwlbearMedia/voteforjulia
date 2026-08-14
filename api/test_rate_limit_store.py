@@ -15,10 +15,21 @@ import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+from time import time
 
 import pytest
 
-from api.rate_limit_store import consume, reset
+import api.rate_limit_store as rate_limit_store
+from api.rate_limit_store import (
+    _add_scope_column_if_missing,
+    acquire,
+    consume,
+    release,
+    reset,
+)
+
+# The scope name is arbitrary here; what these tests exercise is the counting.
+SCOPE = "submission"
 
 
 @pytest.fixture
@@ -269,3 +280,222 @@ def test_concurrent_workers_cannot_both_take_the_last_slot(db_path):
     )
     # And the losers got a usable Retry-After rather than a bare refusal.
     assert all(1 <= result <= 3600 for result in results if result is not None)
+
+
+# --- The concurrent-submission cap, ADR-0018 --------------------------------
+
+
+def test_slots_up_to_the_cap_are_granted(db_path):
+    tokens = [acquire(SCOPE, limit=3, ttl_seconds=60, db_path=db_path) for _ in range(3)]
+
+    assert all(tokens)
+    assert len(set(tokens)) == 3, "each holder needs a distinct token to release its own slot"
+
+
+def test_the_request_past_the_cap_is_refused(db_path):
+    for _ in range(3):
+        acquire(SCOPE, limit=3, ttl_seconds=60, db_path=db_path)
+
+    assert acquire(SCOPE, limit=3, ttl_seconds=60, db_path=db_path) is None
+
+
+def test_releasing_a_slot_frees_it_for_the_next_caller(db_path):
+    held = [acquire(SCOPE, limit=2, ttl_seconds=60, db_path=db_path) for _ in range(2)]
+    assert acquire(SCOPE, limit=2, ttl_seconds=60, db_path=db_path) is None
+
+    release(held[0], db_path=db_path)
+
+    assert acquire(SCOPE, limit=2, ttl_seconds=60, db_path=db_path) is not None
+
+
+def test_a_slot_expires_so_a_killed_worker_cannot_leak_it(db_path):
+    """The property that makes this safe without a cleanup job.
+
+    Passenger reaps workers, and a worker killed mid-request never reaches its
+    `release`. Without expiry those slots would accumulate until the cap was
+    permanently full and every submission 503'd -- a self-inflicted outage that
+    a restart would not even clear, because the count is on disk.
+    """
+    for _ in range(2):
+        acquire(SCOPE, limit=2, ttl_seconds=60, db_path=db_path, now=1000.0)
+
+    # Still held one second before the TTL is up.
+    assert acquire(SCOPE, limit=2, ttl_seconds=60, db_path=db_path, now=1059.0) is None
+
+    assert acquire(SCOPE, limit=2, ttl_seconds=60, db_path=db_path, now=1061.0) is not None
+
+
+def test_releasing_an_unknown_token_is_harmless(db_path):
+    """A slot reclaimed by expiry is released by its holder afterwards."""
+    acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path)
+
+    release("a-token-that-was-never-issued", db_path=db_path)
+
+    assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path) is None, (
+        "nothing else was freed"
+    )
+
+
+def test_an_unusable_database_lets_the_submission_through(tmp_path, caplog):
+    """Fails open, like `consume`: an unreachable store must not refuse a form.
+
+    The cost of the opposite is the whole point -- a store that failed closed
+    would turn a disk problem into "no supporter can contact the campaign".
+    """
+    occupied = tmp_path / "rate-limit.sqlite3"
+    occupied.mkdir()
+
+    assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=occupied) is not None
+    assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=occupied) is not None
+    assert "Concurrency store" in caplog.text
+
+
+def test_release_survives_an_unusable_database(tmp_path, caplog):
+    occupied = tmp_path / "rate-limit.sqlite3"
+    occupied.mkdir()
+
+    release("token", db_path=occupied)
+
+    assert "Concurrency store" in caplog.text
+
+
+def test_reset_clears_held_slots(db_path):
+    acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path)
+
+    reset(db_path=db_path)
+
+    assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path) is not None
+
+
+def _acquire_at_barrier(db_path: str, barrier, queue, limit: int) -> None:
+    """One worker's single `acquire`, released simultaneously with the rest.
+
+    Module level and importable by name for the same reason as
+    `_attempt_at_barrier`: `spawn` re-imports this module in the child.
+    """
+    from api.rate_limit_store import acquire as acquire_slot
+
+    barrier.wait(timeout=60)
+    queue.put(bool(acquire_slot(SCOPE, limit=limit, ttl_seconds=60, db_path=Path(db_path))))
+
+
+def test_concurrent_workers_cannot_both_take_the_last_inflight_slot(db_path):
+    """The cap has to hold across processes or it is not a cap at all.
+
+    Same shape as the `consume` test above, and here for the same reason: the
+    count-then-insert in `acquire` is a read-modify-write, and the whole value
+    of putting this in SQLite rather than in memory is that separate Passenger
+    workers see one shared number. Threads would not exercise it -- POSIX
+    advisory locks are per process.
+    """
+    workers = 8
+    limit = 4
+
+    for _ in range(limit - 1):
+        assert acquire(SCOPE, limit=limit, ttl_seconds=60, db_path=db_path) is not None
+
+    context = multiprocessing.get_context("spawn")
+    barrier = context.Barrier(workers)
+    queue = context.Queue()
+    processes = [
+        context.Process(target=_acquire_at_barrier, args=(str(db_path), barrier, queue, limit))
+        for _ in range(workers)
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=60)
+
+    granted = [queue.get(timeout=10) for _ in range(workers)]
+
+    assert sum(granted) == 1, f"exactly one worker should get the last slot, got {sum(granted)}"
+
+
+def test_scopes_have_separate_budgets(db_path):
+    """A flood of one kind of work must not spend another kind's allowance.
+
+    `/health/deep` and the form endpoints both hold slots while they do the
+    same expensive I/O. Counted together, an uncapped probe flood would close
+    the forms -- which is the outage the cap exists to prevent, arrived at from
+    the other direction. Raised by Copilot on PR #138.
+    """
+    assert acquire("health-probe", limit=1, ttl_seconds=60, db_path=db_path) is not None
+    assert acquire("health-probe", limit=1, ttl_seconds=60, db_path=db_path) is None
+
+    assert acquire("submission", limit=1, ttl_seconds=60, db_path=db_path) is not None
+
+
+def test_a_table_created_before_scopes_existed_is_migrated(db_path):
+    """The `inflight` table shipped without `scope`, and the file outlives a deploy.
+
+    It lives under `tmp/`, which the deploy's prune step leaves alone, so
+    `CREATE TABLE IF NOT EXISTS` finds the old table and leaves it as it was --
+    and every insert against it would fail, silently failing open forever.
+    """
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy = sqlite3.connect(db_path)
+    legacy.execute("CREATE TABLE inflight (token TEXT PRIMARY KEY, started_at REAL NOT NULL)")
+    # Recent, so the prune inside `acquire` does not simply expire it and make
+    # the survival check below pass for the wrong reason.
+    legacy.execute("INSERT INTO inflight (token, started_at) VALUES ('old', ?)", (time(),))
+    legacy.commit()
+    legacy.close()
+
+    assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path) is not None
+
+    # And the pre-existing row survived the migration rather than being dropped.
+    surviving = sqlite3.connect(db_path).execute("SELECT COUNT(*) FROM inflight").fetchone()[0]
+    assert surviving == 2
+
+
+def test_two_workers_racing_the_scope_migration_both_succeed(db_path):
+    """The first request after a deploy is when this race is live.
+
+    Both workers can read `table_info` before either has altered the table, and
+    the loser gets `duplicate column name: scope`. Losing is success, so it must
+    not surface as a store failure -- which fails open and logs an exception
+    that reads like a real fault. Raised in review.
+    """
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy = sqlite3.connect(db_path)
+    legacy.execute("CREATE TABLE inflight (token TEXT PRIMARY KEY, started_at REAL NOT NULL)")
+    legacy.commit()
+    legacy.close()
+
+    # Two connections opened before either has migrated, which is the race.
+    first = sqlite3.connect(db_path)
+    second = sqlite3.connect(db_path)
+    try:
+        _add_scope_column_if_missing(first)
+        _add_scope_column_if_missing(second)
+    finally:
+        first.close()
+        second.close()
+
+    assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path) is not None
+
+
+def test_a_failed_connection_setup_does_not_leak_the_handle(db_path, monkeypatch):
+    """`_connect` owns the connection until it returns one."""
+    opened = []
+    real_connect = sqlite3.connect
+
+    def tracking_connect(*args, **kwargs):
+        connection = real_connect(*args, **kwargs)
+        opened.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", tracking_connect)
+    monkeypatch.setattr(rate_limit_store, "_add_scope_column_if_missing", _raise_operational_error)
+
+    with pytest.raises(sqlite3.OperationalError):
+        rate_limit_store._connect(db_path)
+
+    assert opened, "the test patched the wrong thing"
+    for connection in opened:
+        with pytest.raises(sqlite3.ProgrammingError):
+            connection.execute("SELECT 1")
+
+
+def _raise_operational_error(_connection) -> None:
+    raise sqlite3.OperationalError("disk I/O error")
