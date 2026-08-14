@@ -64,6 +64,11 @@ function resolveApiBaseUrl(env: CypressEnv): string {
   return (configured ?? DEFAULT_API_BASE_URL).replace(/\/+$/, '');
 }
 
+// Set by the first `probeApi` of a run so the baseline is printed once rather
+// than once per spec file. Deliberately module state in the Node process, which
+// spans every spec, unlike anything in the browser.
+let hasProbedApi = false;
+
 /** What the API returns when the API is what answered. */
 interface ProbeExpectation {
   status: number;
@@ -231,9 +236,29 @@ export default defineConfig({
          * Same process as the browser, so same source IP — which is what makes
          * this able to see an IP-reputation challenge at all.
          */
-        async probeApi({ origin }: { origin: string }): Promise<null> {
+        async probeApi({
+          origin,
+          when,
+          force = false
+        }: {
+          origin: string;
+          when: string;
+          force?: boolean;
+        }): Promise<null> {
+          // The baseline fires from a `before` hook, which Cypress runs once per
+          // spec file — three times a run here. This task lives in the Node
+          // process, which outlives them all, so it is the right place to hold
+          // the "already done" flag. A failure probe passes `force` because a
+          // reading taken when something actually broke is worth repeating for.
+          if (hasProbedApi && !force) {
+            return null;
+          }
+          hasProbedApi = true;
+
           const apiBaseUrl = resolveApiBaseUrl(env);
-          const lines = [`[diagnostics] API origin ${apiBaseUrl}, probed from the runner:`];
+          const lines = [
+            `[diagnostics] API origin ${apiBaseUrl} (${when}), probed from the runner:`
+          ];
 
           // `expected` is what the API itself returns, and is the whole basis of
           // the verdict — see summarizeProbe. Keep these in step with app.py:
