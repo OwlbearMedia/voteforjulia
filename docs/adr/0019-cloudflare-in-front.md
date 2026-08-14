@@ -92,11 +92,22 @@ Three changes outside DNS:
   campaign emails volunteers on every submission, so losing SPF, DKIM or the MX
   in the migration is an outage of the thing the site exists to do — and one
   that looks, from our side, like nothing at all.
-- **Proxying changes what SPF's `a` mechanism means.** The record is
-  `v=spf1 a mx include:relay.mailchannels.net ~all`. `a` authorises whatever the
-  root A record resolves to, which after proxying is Cloudflare, not the origin.
-  Delivery then rests entirely on `mx` — which is another reason `mail` must
-  stay unproxied, and a reason not to "tidy" `mx` out of the SPF record later.
+- **Proxying does not affect outbound mail, because outbound mail never
+  egresses from the origin.** Verified against a real confirmation email on
+  2026-08-14, after the test zone was proxied: the host hands the message to
+  **MailChannels**, which delivers it, so the receiving server sees
+  `23.83.219.16` (`relay.mailchannels.net`) rather than `208.115.234.114`. SPF
+  therefore passes on the `include:relay.mailchannels.net` mechanism, and the
+  `a` and `mx` mechanisms in `v=spf1 a mx include:relay.mailchannels.net ~all`
+  are not what carries it.
+
+  An earlier draft of this record claimed the opposite — that proxying the root
+  A record would repoint `a` at Cloudflare and leave delivery resting on `mx`.
+  That was reasoned from the SPF record without checking the delivery path, and
+  the headers disprove it. The practical consequence is that **the mail risk in
+  this migration is entirely about DNS records surviving the move**, not about
+  which records are proxied.
+
 - **The origin stays reachable directly, so this is a filter and not a wall.**
   `mail.voteforjulia.com` cannot be proxied and resolves to the same
   `208.115.234.114` as the website, so the origin IP is readable from the MX

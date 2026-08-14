@@ -257,6 +257,22 @@ curl -s https://api.ipify.org                                 # must match
   so a misaligned message is refused by other receivers even when it reaches an
   inbox you control. Sending to a Gmail address and using "Show original" is the
   quickest way to read that.
+
+  Verified on 2026-08-14 with the test zone proxied:
+
+  ```
+  spf=pass   (designates 23.83.219.16 as permitted sender)
+  dkim=pass  header.i=@voteforjulia.com header.s=default
+  dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=voteforjulia.com
+  ```
+
+  **Outbound mail leaves through MailChannels, not the origin.** The chain is
+  app → Exim on the host → `relay.mailchannels.net` → recipient, so the
+  delivering address is MailChannels' and SPF passes on the `include:`, not on
+  `a` or `mx`. Cloudflare is nowhere in that path — which is why proxying does
+  not endanger mail, and why the only real mail risk in the migration is a
+  record being lost when the zone moves.
+
 - **No CSP violations.** Load the site **in a browser** with devtools open, and
   read the console. Several Cloudflare features inject script that the CSP
   blocks — see [Leave these off](#leave-these-off) — and a violation appears
