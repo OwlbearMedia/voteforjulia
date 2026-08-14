@@ -147,6 +147,174 @@ one synthetic location failing while others pass. See
 [monitoring.md](monitoring.md#is-it-real), which uses exactly that split to tell
 a WAF challenge from a real outage.
 
+## Migrating DNS to Cloudflare
+
+Why, and what it does and does not buy, is
+[ADR-0019](adr/0019-cloudflare-in-front.md). **Not done yet** — this is the
+sequence to follow when it is.
+
+The order matters more than any individual step. Two of them can break the site
+for real visitors, and neither fails loudly.
+
+### Before touching DNS
+
+**Set `TRUSTED_CLIENT_IP_HEADER=CF-Connecting-IP` on both cPanel apps and
+restart them.** Do this first, while the site is still direct. It is read at
+import, so it needs a Passenger restart, and until it is in place a proxied site
+sees every visitor as a Cloudflare address — one shared rate-limit bucket, and
+0009's five-per-sixty-seconds starts refusing real supporters.
+
+Setting it early does mean the header is briefly forgeable, which is what
+[ADR-0014](adr/0014-do-not-trust-forwarding-headers.md) warns about. That is the
+right way round: the cost is a limiter the bot could bypass — which it already
+bypasses by rotating addresses — against the alternative of turning away
+volunteers.
+
+Record what the client address looks like now, because this is the check that
+catches the failure:
+
+```
+curl -s https://api.voteforjulia.com/health | jq -r .client   # your address
+curl -s https://api.ipify.org                                 # must match
+```
+
+### The sequence
+
+1. **Add the domain in Cloudflare, let it import DNS, then diff the import
+   against cPanel → Zone Editor by hand.**
+
+   **Cloudflare's importer guesses.** It cannot do a zone transfer, so it probes
+   common labels and imports whatever answers. On this zone it missed
+   `test-api`, which is a real A record. Anything it misses simply stops
+   resolving when the nameservers change, and nothing warns you.
+
+   The records that must be present afterwards, and how they should be set:
+
+   | Record                                | Type    | Proxy    |
+   | ------------------------------------- | ------- | -------- |
+   | `voteforjulia.com`                    | A       | orange   |
+   | `www`                                 | A/CNAME | orange   |
+   | `api`, `test`, `test-api`             | A       | orange   |
+   | `mail`                                | A       | **grey** |
+   | `cpanel`, `webmail`, `webdisk`, `ftp` | A       | **grey** |
+   | `autodiscover`, `autoconfig`          | A       | **grey** |
+   | `@` → `mail`                          | MX      | n/a      |
+   | SPF (`v=spf1 …`)                      | TXT     | n/a      |
+   | DKIM (`default._domainkey`)           | TXT     | n/a      |
+   | DMARC (`_dmarc`)                      | TXT     | n/a      |
+
+   Confirm each one resolves the same before and after. This snapshot is the
+   before:
+
+   ```
+   for h in "" www. api. test. test-api. mail. cpanel. webmail. webdisk. ftp. autodiscover. autoconfig.; do
+     printf '%-16s %s\n' "$h" "$(dig +short A ${h}voteforjulia.com | head -1)"
+   done
+   dig +short MX voteforjulia.com
+   dig +short TXT voteforjulia.com | grep -i spf
+   dig +short TXT default._domainkey.voteforjulia.com
+   dig +short TXT _dmarc.voteforjulia.com
+   ```
+
+   **The mail records are the ones to be paranoid about.** DMARC is published as
+   `p=reject` with strict alignment, so a lost or altered SPF/DKIM/MX record does
+   not send mail to spam — receivers refuse it. Every form on the site emails
+   somebody, so that is a silent outage of the site's whole purpose.
+
+2. **Grey-cloud `mail.voteforjulia.com`.** Cloudflare proxies HTTP(S) only, so
+   an orange cloud on that record breaks SMTP on 465, which breaks every form on
+   the site. `/health` stays green throughout, so nothing tells you.
+3. **Orange-cloud `test` and `test-api` only.** Leave production grey.
+4. **Change nameservers at the registrar.** This is the slow, hard-to-reverse
+   step; do it when you can watch. Everything is still direct except test.
+5. **Verify against test** (below). Do not proceed until all four pass.
+6. **Orange-cloud production**: root, `www`, `api`.
+7. **Verify against production**, same four checks.
+8. **Move the IP blocks into Cloudflare IP Access Rules**, then delete the
+   `deny from` lines from every docroot — they match nothing once traffic
+   arrives via Cloudflare, and a rule that enforces nothing while looking like
+   protection is worse than none. See
+   [the blocklist section](#cpanels-ip-blocklist-and-how-the-deploy-carries-it-across)
+   for where the copies live.
+
+### Verify, after each of steps 5 and 7
+
+- **The client address still resolves to the visitor.** This is the one that
+  silently refuses supporters:
+
+  ```
+  curl -s https://api.voteforjulia.com/health | jq -r .client
+  curl -s https://api.ipify.org      # must still match
+  ```
+
+  A Cloudflare address here means `TRUSTED_CLIENT_IP_HEADER` is not in effect.
+  Fix it before anything else.
+
+- **Mail still sends _and still authenticates_.** Submit the form on the test
+  site and confirm both the notification and the confirmation arrive. Then open
+  the received message's headers and check `Authentication-Results` shows
+  `spf=pass` and `dkim=pass`. Arrival alone is not enough: DMARC is `p=reject`,
+  so a misaligned message is refused by other receivers even when it reaches an
+  inbox you control. Sending to a Gmail address and using "Show original" is the
+  quickest way to read that.
+- **No CSP violations.** Load the site **in a browser** with devtools open, and
+  read the console. Several Cloudflare features inject script that the CSP
+  blocks — see [Leave these off](#leave-these-off) — and a violation appears
+  nowhere but the console.
+
+  **A clean result from one place is not a clean rollout.** Cloudflare setting
+  changes propagate per PoP, so the same URL can inject the beacon from one
+  location and not another for a while after the switch is flipped — observed
+  2026-08-12, clean from one network while `ORD` still injected. Re-check from
+  more than one place, and after a delay, before calling it fixed.
+
+  This is _not_ caching, and purging will not help: `cf-cache-status: DYNAMIC`
+  on every one of those responses means Cloudflare built each one fresh from the
+  origin. What is stale is the injection config at the edge, not the HTML.
+
+  **`curl` will not find these.** Cloudflare injects its beacon only for
+  browser-shaped requests, so a plain `curl` of the same URL comes back clean
+  and proves nothing. To check from the shell, ask like a browser:
+
+  ```
+  curl -sL https://test.voteforjulia.com/ \
+    -H 'Accept: text/html' -H 'User-Agent: Mozilla/5.0 (Macintosh) Chrome/131' \
+    | grep -o 'cloudflareinsights[^"]*'
+  ```
+
+- **The e2e suite passes.** Cypress runs against `test.voteforjulia.com` from
+  GitHub's Azure ranges. If a Cloudflare bot setting challenges those, the suite
+  dies exactly the way it did under
+  [Imunify360](#imunify360-waf-disabled) — and a challenge returns `200` with a
+  splash body, so nothing goes red on its own.
+
+### Rolling back
+
+**Toggle the orange cloud off.** Once the nameservers are Cloudflare's, that is
+a DNS change inside Cloudflare and takes effect in seconds — it is the fast
+rollback for anything the proxy causes, and the one to reach for first.
+
+Reverting the nameservers at the registrar is the slow rollback, for problems
+with Cloudflare's DNS itself rather than its proxy. Budget for propagation.
+
+`TRUSTED_CLIENT_IP_HEADER` should be cleared if you roll all the way back,
+because with nothing in front of the app it is a header any caller can forge.
+
+### Leave these off
+
+- **Rocket Loader** and **Email Obfuscation** — both inject inline script; see
+  the CSP check above.
+- **Web Analytics / Browser Insights** — injects
+  `static.cloudflareinsights.com/beacon.min.js`, which the CSP blocks. Observed
+  on the test zone 2026-08-12. It is also redundant here (New Relic Browser
+  already reports Core Web Vitals and client errors, per
+  [ADR-0013](adr/0013-server-side-apm.md)) and, worse, **invisible to the CI
+  performance budget** — that budget measures `dist/`, and an edge-injected
+  script never appears there. See [performance.md](performance.md).
+- **Bot Fight Mode**, at least until the e2e suite and the synthetic monitors
+  have been observed passing with it on. It challenges by IP reputation, and
+  both run from cloud ranges.
+
 ## Deploy workflow changes cannot be tested from a PR
 
 Both deploy workflows trigger on `workflow_run`, and GitHub always executes the
@@ -348,6 +516,14 @@ Re-check it after anything that could interpose: a CDN, a proxy, a host
 migration. If they stop matching, the fix is `TRUSTED_CLIENT_IP_HEADER` — set it
 to the header the new thing overwrites, never to `X-Forwarded-For` on trust
 ([ADR-0014](adr/0014-do-not-trust-forwarding-headers.md)).
+
+**This section stops being true the moment Cloudflare goes in front**
+([ADR-0019](adr/0019-cloudflare-in-front.md)). `remote_addr` becomes a
+Cloudflare address and `CF-Connecting-IP` carries the caller, which is why the
+migration sets `TRUSTED_CLIENT_IP_HEADER` before proxying anything. The two
+commands above stay the check — they just stop proving the same thing about
+`remote_addr`, and start proving the variable is in effect. See
+[the runbook](#migrating-dns-to-cloudflare).
 
 New Relic cannot answer this for you: the agent records a fixed allowlist of
 request headers, none of which carries a client address.
