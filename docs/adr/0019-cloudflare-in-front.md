@@ -123,7 +123,10 @@ Three changes outside DNS:
   bypasses Cloudflare entirely. It stops the bot in front of us, which targets
   the hostname; it does not stop anyone who reads DNS. Closing that needs the
   origin restricted to Cloudflare's ranges, which is a separate decision and is
-  **not** part of this one.
+  **not** part of this one — tracked as
+  [#141](https://github.com/OwlbearMedia/voteforjulia/issues/141). Removing the
+  `deny from` lines widened this path rather than leaving it as drafted: the
+  hostname is now better defended than the address behind it.
 - ~~**The access logs stop identifying visitors.**~~ **Wrong — the host does
   restore the real client address.** Measured after the cutover: of every client
   address in the origin's access log, **zero** were in Cloudflare's ranges, and
