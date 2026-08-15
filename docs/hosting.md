@@ -75,9 +75,17 @@ LiteSpeed will emit.
 
 ## Imunify360 WAF (disabled)
 
-**The host disabled Imunify360 for the whole site on 2026-08-01**, at our
-request, after it made the Cypress suite unrunnable. Nothing should challenge
-requests now.
+**The host disabled Imunify360 on 2026-08-01**, at our request, after it made the
+Cypress suite unrunnable — and **not for the whole account, which this page
+claimed until 2026-08-15.** The exclusion covered `test.voteforjulia.com` only.
+`test-api.voteforjulia.com` was never in it, and WebShield went on challenging
+GitHub's runners there for two weeks, failing the e2e suite intermittently and
+passing on a re-run whenever a different runner address was drawn. The host
+disabled it for the remaining hostnames on 2026-08-15.
+
+**Ask which hostnames an exclusion covers, not whether one exists.** A per-host
+exclusion and an account-wide one look identical from the one hostname you
+happened to test.
 
 Kept here because it is not gone, only switched off — a host-side setting we do
 not control, on an account where it was on by default. If the symptoms below
@@ -150,11 +158,23 @@ a WAF challenge from a real outage.
 ## Migrating DNS to Cloudflare
 
 Why, and what it does and does not buy, is
-[ADR-0019](adr/0019-cloudflare-in-front.md). **Not done yet** — this is the
-sequence to follow when it is.
+[ADR-0019](adr/0019-cloudflare-in-front.md). **Done on 2026-08-15** — every web
+hostname is proxied, `mail` is not. The sequence below is what was executed, kept
+because it is also the sequence for the next zone and because the verification
+steps are the ones to re-run whenever anything about the edge changes.
 
 The order matters more than any individual step. Two of them can break the site
 for real visitors, and neither fails loudly.
+
+**Verified after the cutover**, all against production:
+
+| Check                                         | Result                                               |
+| --------------------------------------------- | ---------------------------------------------------- |
+| `/health` reports the visitor, not Cloudflare | real address — `TRUSTED_CLIENT_IP_HEADER` live       |
+| Mail authenticates                            | `spf=pass dkim=pass dmarc=pass` under `p=reject`     |
+| Origin access log identifies visitors         | yes — **0** Cloudflare-range client addresses        |
+| Cypress against the proxied test zone         | clean run, baseline probe `answered by our API: yes` |
+| CSP violations                                | none; the Web Analytics beacon is off                |
 
 ### Before touching DNS
 
@@ -230,12 +250,29 @@ curl -s https://api.ipify.org                                 # must match
 5. **Verify against test** (below). Do not proceed until all four pass.
 6. **Orange-cloud production**: root, `www`, `api`.
 7. **Verify against production**, same four checks.
-8. **Move the IP blocks into Cloudflare IP Access Rules**, then delete the
-   `deny from` lines from every docroot — they match nothing once traffic
-   arrives via Cloudflare, and a rule that enforces nothing while looking like
-   protection is worse than none. See
-   [the blocklist section](#cpanels-ip-blocklist-and-how-the-deploy-carries-it-across)
-   for where the copies live.
+8. **Add the IP blocks to Cloudflare.** Then decide, deliberately, what to do
+   with the `deny from` lines — the reasoning is not what it looks like.
+
+   An earlier draft said to delete them because Apache would only ever see
+   Cloudflare's addresses once proxied. **That is not what happens here**: the
+   host restores the real client address, so `.htaccess` still matches and those
+   rules still enforce. Measured after the cutover — zero Cloudflare-range
+   client addresses in the origin's access log.
+
+   So they are a real second layer, not dead weight. **They were removed anyway
+   on 2026-08-15**, on the grounds that Cloudflare covers every caller who
+   targets a hostname, while a growing origin blocklist carries its own failure
+   mode: addresses get reassigned, and a stale `deny` refuses a real supporter
+   silently and with no diagnostic.
+
+   What that trades away is direct-to-address traffic, which Cloudflare cannot
+   see. Nothing has ever arrived that way here — the spammer targets the
+   hostname — but if anything does, this is the layer to restore. See
+   [the blocklist section](#cpanels-ip-blocklist-and-how-the-deploy-carries-it-across).
+
+   **A rollback resurrects them.** `public_html_prev` still holds the old file,
+   deny lines included, so swapping it back reinstates whatever was blocked at
+   the time.
 
 ### Verify, after each of steps 5 and 7
 
@@ -315,6 +352,58 @@ with Cloudflare's DNS itself rather than its proxy. Budget for propagation.
 
 `TRUSTED_CLIENT_IP_HEADER` should be cleared if you roll all the way back,
 because with nothing in front of the app it is a header any caller can forge.
+
+### The firewall rules, and how they were derived
+
+Two custom rules block the form spammer at the edge, added 2026-08-15. **These
+live only in Cloudflare's dashboard — nothing in this repo enforces them, and
+nothing warns you if they are edited or deleted.** Same silent-drift problem as
+[monitoring/](../monitoring/), and worth reading back before assuming they are
+still there.
+
+```
+(ip.src in {80.94.95.0/24 141.98.11.0/24 158.173.74.0/24})
+or (http.request.version eq "HTTP/1.0" and http.user_agent contains "Chrome/")
+or (ip.src.asnum eq 204428)
+```
+
+**Do not escape the quotes inside `contains`.** Written as
+`contains "\"Chrome/\""` the rule looks for a literal `"Chrome/"` _including the
+quote characters_, which no User-Agent contains — the clause then matches
+nothing and the rule silently degrades to its IP terms. That happened on the
+first version of this rule and was invisible in Security Events, because every
+block up to that point came from an address the IP terms already covered.
+
+`ip.src.asnum eq 204428` also makes the `80.94.95.0/24` term redundant, since
+that range belongs to the same provider. Left in deliberately: it keeps working
+if the ASN lookup ever changes underneath.
+
+The protocol term is the durable one. **Chrome has never spoken HTTP/1.0**, so a
+request claiming `Chrome/131` over HTTP/1.0 is self-contradicting no matter how
+the User-Agent is rotated — it is the only term here that survives the operator
+changing hosting provider. Validated against 97,967 real requests to this origin
+before it was enabled:
+
+| Protocol | Requests |
+| -------- | -------- |
+| HTTP/2   | 64,373   |
+| HTTP/3   | 23,949   |
+| HTTP/1.1 | 9,628    |
+| HTTP/1.0 | **17**   |
+
+All 17 were crawlers — `archive.org_bot`, `NetcraftSurveyAgent`, and one Firefox
+UA from a hosting range. **Matches for HTTP/1.0 _and_ a Chrome UA: zero.** The
+Chrome conjunct is load-bearing: a bare HTTP/1.0 rule would block the Internet
+Archive.
+
+Rule 2 covers the provider (SS-Net, Romania) the operator rents from, so a fresh
+address there is refused before it is ever seen. Both observed addresses,
+`80.94.95.173` and `80.94.95.202`, sit in `80.94.95.0/24` — that narrower range
+is the option if blocking a whole ASN ever feels too broad.
+
+**Scope them to the zone, not the apex.** The spammer posts a fixed field list
+and does not need the homepage, so a rule covering only `voteforjulia.com` would
+leave `api.voteforjulia.com` open.
 
 ### Leave these off
 

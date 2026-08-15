@@ -84,6 +84,22 @@ volunteer is the worse failure.
 `display: none`; a submission that arrives with it non-empty is refused with
 `400` before any mail is sent. This is the part that survives an IP change.
 
+> **Tested 2026-08-14 against the actual spammer, and it does not catch it.**
+> The block was lifted deliberately and six submissions were allowed through.
+> Each one fetched the homepage — which by then carried the field — and posted
+> one second later with the same five fields it has used since 2026-08-10, no
+> `referralCode` among them. It works from a fixed field list and does not read
+> the form, so every signal that pointed the other way (filling optional fields,
+> skipping `type="hidden"`, skipping checkboxes) was consistent with a hardcoded
+> list that happened to match this form.
+>
+> The honeypot stays: it costs nothing, and it still catches anything that
+> enumerates a form rather than replaying a list. But it is not the control
+> holding this operator off. That is Cloudflare
+> ([0019](0019-cloudflare-in-front.md)) — see
+> [../hosting.md](../hosting.md#the-firewall-rules-and-how-they-were-derived)
+> for the two rules and the traffic they were validated against.
+
 Three details of the honeypot are deliberate, and all three exist to protect the
 same person:
 

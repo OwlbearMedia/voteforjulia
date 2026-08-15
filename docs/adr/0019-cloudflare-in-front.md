@@ -3,9 +3,12 @@
 **Status:** Accepted
 **Date:** 2026-08-12
 
-> **Recorded before the migration. Nothing below is live yet** — the DNS change
-> has not been made. [../hosting.md](../hosting.md#migrating-dns-to-cloudflare)
-> carries the runbook and the verification steps; this record is the reasoning.
+> **Migrated 2026-08-15.** Every web hostname is proxied and `mail` is not; the
+> verification results are in
+> [../hosting.md](../hosting.md#migrating-dns-to-cloudflare), which also carries
+> the runbook this was executed from. Two consequences below were written before
+> the move and turned out to be wrong; both are marked and corrected in place
+> rather than quietly deleted, because the mistake is the useful part.
 
 Amends [0010](0010-edge-policy-in-htaccess.md), which put all edge policy in
 `.htaccess`. Header, caching and URL policy stay there. What moves is the part
@@ -75,10 +78,15 @@ Three changes outside DNS:
   exactly this moment. Without it `request.remote_addr` is a Cloudflare address
   and every visitor collapses into one rate-limit bucket, so 0009's 5-per-60s
   burst limit starts refusing real supporters.
-- **IP blocks move to Cloudflare IP Access Rules**, and the `deny from` lines
-  come out of every docroot. Once traffic arrives via Cloudflare they match
-  nothing, and a rule that looks like protection but enforces nothing is worse
-  than no rule.
+- **IP blocking moves to Cloudflare.** The original plan also deleted the
+  `deny from` lines on the theory that they would match nothing once traffic
+  arrived via Cloudflare. That theory was wrong — the host restores the real
+  client address, so they do still enforce — but they were removed anyway, on
+  2026-08-15, for a different and better reason: Cloudflare covers every caller
+  that targets a hostname, and an origin blocklist that only grows will
+  eventually refuse a real supporter whose address was reassigned. The cost is
+  that direct-to-address traffic is now unfiltered; see the consequence below on
+  why that path exists at all.
 - **Rocket Loader and Email Obfuscation stay off.** Both inject inline script.
   The CSP in [public/.htaccess](../../public/.htaccess) allows scripts only from
   `'self'` and a named allowlist, with no `unsafe-inline`, so the browser
@@ -116,10 +124,16 @@ Three changes outside DNS:
   the hostname; it does not stop anyone who reads DNS. Closing that needs the
   origin restricted to Cloudflare's ranges, which is a separate decision and is
   **not** part of this one.
-- **The access logs stop identifying visitors.** Every request will show a
-  Cloudflare address unless the host runs `mod_remoteip`, so the per-IP analysis
-  used throughout this incident moves to Cloudflare's dashboard. `CF-Connecting-IP`
-  still reaches the application, so the API's own logging is unaffected.
+- ~~**The access logs stop identifying visitors.**~~ **Wrong — the host does
+  restore the real client address.** Measured after the cutover: of every client
+  address in the origin's access log, **zero** were in Cloudflare's ranges, and
+  the log still shows individual visitors including IPv6. So the per-IP forensics
+  used throughout this incident keeps working exactly as before, and Cloudflare's
+  dashboard is an addition rather than a replacement.
+
+  This one was written from "unless the host runs `mod_remoteip`" and then
+  asserted the branch that had not been checked.
+
 - **A new dependency sits in the request path.** Previously only the host could
   take the site down. Now a Cloudflare misconfiguration or outage can too, and
   the recovery is a DNS change with propagation delay rather than a deploy.
