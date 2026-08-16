@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# A captured wire-format message: CRLF is required by RFC 5322 and is what any
+# DKIM signature in it canonicalizes over, so normalising corrupts it.
+api/email/reference-headers.eml -text
