@@ -64,8 +64,55 @@ function resolveApiBaseUrl(env: CypressEnv): string {
   return (configured ?? DEFAULT_API_BASE_URL).replace(/\/+$/, '');
 }
 
+// Set by the first `probeApi` of a run so the baseline is printed once rather
+// than once per spec file. Deliberately module state in the Node process, which
+// spans every spec, unlike anything in the browser.
+let hasProbedApi = false;
+
+/** What the API returns when the API is what answered. */
+interface ProbeExpectation {
+  status: number;
+  bodyIncludes?: string;
+}
+
 /**
- * One line per signal that distinguishes a real response from a WAF challenge.
+ * Name the thing in front of the origin, when it can be named.
+ *
+ * Best-effort and deliberately allowed to say "unknown". Attribution is not
+ * what the caller acts on — `servedByApp` is — and a confident wrong name costs
+ * more than no name, which is how a run on 2026-08-14 came to blame Imunify360
+ * for a hostname that was by then behind Cloudflare too.
+ */
+function identifyInterceptor(headers: Headers, body: string): string {
+  const cookies = headers.get('set-cookie') ?? '';
+
+  // Imunify360's WebShield: its splash sets this cookie, and the page reads
+  // "One moment, please..." (docs/hosting.md#imunify360-waf-disabled).
+  if (/wssplashchk/i.test(cookies) || /One moment, please/i.test(body)) {
+    return 'Imunify360 WebShield (wssplashchk cookie / splash body)';
+  }
+
+  // Cloudflare's own challenge. `cf-mitigated` is set when it acts on a
+  // request; the body markers cover the interstitial itself.
+  if (headers.has('cf-mitigated') || /challenge-platform|__cf_chl|Just a moment/i.test(body)) {
+    return 'Cloudflare challenge (cf-mitigated / challenge-platform)';
+  }
+
+  return 'unknown — check Cloudflare Security Events and probe the origin directly';
+}
+
+/**
+ * One line per signal that distinguishes our API's response from anything else.
+ *
+ * **Asserts what the app returns rather than what a challenge looks like.** The
+ * previous version keyed on `server: openresty`, which stopped working the day
+ * the hostname went behind Cloudflare: the proxy rewrites `server` to
+ * `cloudflare` on every response, so the tell could never fire again and the
+ * check silently lost half its sensitivity. Splash pages also vary per vendor,
+ * and there is no reason to keep a catalogue of them.
+ *
+ * What does not vary is our own response, so that is what gets checked. `server`
+ * is still printed because it is useful once you know it is not proof.
  *
  * Returns the verdict alongside the text so the caller can act on it without
  * re-deriving it or, worse, grepping its own output.
@@ -74,24 +121,29 @@ function summarizeProbe(
   label: string,
   status: number,
   headers: Headers,
-  body: string
-): { text: string; challenged: boolean } {
+  body: string,
+  expected: ProbeExpectation
+): { text: string; intercepted: boolean } {
   const server = headers.get('server') ?? '(none)';
   const allowOrigin = headers.get('access-control-allow-origin') ?? '(none)';
-  // The tells are documented in docs/hosting.md#imunify360-waf-disabled: the
-  // challenge answers 200 from openresty with a ~12 kB splash, so neither the
-  // status code nor `server: LiteSpeed` on a good day proves anything.
-  const challenged = /openresty/i.test(server) || /One moment, please/i.test(body);
 
-  return {
-    text: [
-      `  ${label} -> ${status}`,
-      `    server: ${server}`,
-      `    access-control-allow-origin: ${allowOrigin}`,
-      `    WAF challenge: ${challenged ? 'YES — see docs/hosting.md#imunify360-waf-disabled' : 'no'}`
-    ].join('\n'),
-    challenged
-  };
+  const statusMatches = status === expected.status;
+  const bodyMatches = !expected.bodyIncludes || body.includes(expected.bodyIncludes);
+  const servedByApp = statusMatches && bodyMatches;
+
+  const lines = [
+    `  ${label} -> ${status}${statusMatches ? '' : ` (expected ${expected.status})`}`,
+    `    server: ${server}`,
+    `    access-control-allow-origin: ${allowOrigin}`,
+    `    answered by our API: ${servedByApp ? 'yes' : 'NO — something else replied'}`
+  ];
+
+  if (!servedByApp) {
+    lines.push(`    likely source: ${identifyInterceptor(headers, body)}`);
+    lines.push(`    body (first 200 chars): ${body.slice(0, 200).replace(/\s+/g, ' ')}`);
+  }
+
+  return { text: lines.join('\n'), intercepted: !servedByApp };
 }
 
 /**
@@ -105,17 +157,23 @@ function summarizeProbe(
  * Only in Actions: the syntax means nothing to a local `pnpm test:e2e`, where
  * it would just be a confusing extra line under a readable report.
  */
-function annotateWafChallenge(apiBaseUrl: string): void {
+function annotateInterception(apiBaseUrl: string, source: string): void {
   if (process.env.GITHUB_ACTIONS !== 'true') return;
 
   // Must stay on one line — GitHub ends the command at the first newline.
   console.log(
-    `::warning title=Imunify360 WAF is challenging this runner::` +
-      `${apiBaseUrl} answered through openresty instead of LiteSpeed, so the host's WAF is active for this runner's IP ` +
-      `and the response carries no CORS headers. Every form post fails in the browser as "Failed to fetch" with nothing ` +
-      `reaching Flask, so the API logs will be empty. This is the WAF, not the site or the tests. ` +
-      `It was disabled site-wide on 2026-08-01 (docs/hosting.md#imunify360-waf-disabled), so its return means the disable ` +
-      `no longer covers this hostname. Re-running may pass simply by drawing a different runner IP.`
+    `::warning title=Form posts are being intercepted before they reach the API::` +
+      `A request to ${apiBaseUrl} was answered by something other than Flask, and the reply carried no CORS headers. ` +
+      `Every form post therefore fails in the browser as "Failed to fetch" with nothing reaching the app, so the API logs ` +
+      `will be empty. This is not the site or the tests. Likely source: ${source}. ` +
+      `Two things can do this now: the host's Imunify360 WebShield (disabled site-wide 2026-08-01, so its return means the ` +
+      `disable no longer covers this hostname — docs/hosting.md#imunify360-waf-disabled) and Cloudflare, which has fronted ` +
+      `these hostnames since 2026-08-14 (docs/hosting.md#migrating-dns-to-cloudflare). ` +
+      `Attribute it before acting: Cloudflare rewrites "server" to cloudflare on every response, so that header no longer ` +
+      `distinguishes them. Check Cloudflare Security Events for this timestamp, and probe the origin directly with ` +
+      `--resolve ${apiBaseUrl.replace('https://', '')}:443:208.115.234.114 to see what the host alone returns. ` +
+      `Re-running may pass by drawing a different runner IP, but only if the challenge is keyed to the runner — behind ` +
+      `Cloudflare the origin sees Cloudflare's addresses, not GitHub's, so do not assume it.`
   );
 }
 
@@ -178,11 +236,40 @@ export default defineConfig({
          * Same process as the browser, so same source IP — which is what makes
          * this able to see an IP-reputation challenge at all.
          */
-        async probeApi({ origin }: { origin: string }): Promise<null> {
-          const apiBaseUrl = resolveApiBaseUrl(env);
-          const lines = [`[diagnostics] API origin ${apiBaseUrl}, probed from the runner:`];
+        async probeApi({
+          origin,
+          when,
+          force = false
+        }: {
+          origin: string;
+          when: string;
+          force?: boolean;
+        }): Promise<null> {
+          // The baseline fires from a `before` hook, which Cypress runs once per
+          // spec file — three times a run here. This task lives in the Node
+          // process, which outlives them all, so it is the right place to hold
+          // the "already done" flag. A failure probe passes `force` because a
+          // reading taken when something actually broke is worth repeating for.
+          if (hasProbedApi && !force) {
+            return null;
+          }
+          hasProbedApi = true;
 
-          const probes: { label: string; url: string; init: RequestInit }[] = [
+          const apiBaseUrl = resolveApiBaseUrl(env);
+          const lines = [
+            `[diagnostics] API origin ${apiBaseUrl} (${when}), probed from the runner:`
+          ];
+
+          // `expected` is what the API itself returns, and is the whole basis of
+          // the verdict — see summarizeProbe. Keep these in step with app.py:
+          // `/health` returns 200 with `"status": "ok"`, and the OPTIONS
+          // short-circuit returns 204 with an empty body.
+          const probes: {
+            label: string;
+            url: string;
+            init: RequestInit;
+            expected: ProbeExpectation;
+          }[] = [
             {
               label: 'GET /health',
               url: `${apiBaseUrl}/health`,
@@ -190,7 +277,12 @@ export default defineConfig({
               // `add_cors_headers` only emits Access-Control-Allow-Origin when
               // it is present, so without it every probe would report the
               // header as missing and the one line that matters would be noise.
-              init: { method: 'GET', headers: { Origin: origin } }
+              init: { method: 'GET', headers: { Origin: origin } },
+              // No space after the colon: Flask's `jsonify` emits compact JSON,
+              // and a string copied from pretty-printed output never matches.
+              // The same trap is documented for the synthetic monitor's
+              // validation string in docs/monitoring.md.
+              expected: { status: 200, bodyIncludes: '"status":"ok"' }
             },
             {
               // The preflight is the request that actually breaks: the browser
@@ -205,18 +297,29 @@ export default defineConfig({
                   'Access-Control-Request-Method': 'POST',
                   'Access-Control-Request-Headers': 'content-type'
                 }
-              }
+              },
+              expected: { status: 204 }
             }
           ];
 
-          let challenged = false;
+          let intercepted = false;
+          let interceptor = 'unknown';
 
-          for (const { label, url, init } of probes) {
+          for (const { label, url, init, expected } of probes) {
             try {
               const response = await fetch(url, { ...init, redirect: 'manual' });
               const body = await response.text().catch(() => '');
-              const probe = summarizeProbe(label, response.status, response.headers, body);
-              challenged = challenged || probe.challenged;
+              const probe = summarizeProbe(
+                label,
+                response.status,
+                response.headers,
+                body,
+                expected
+              );
+              if (probe.intercepted && !intercepted) {
+                interceptor = identifyInterceptor(response.headers, body);
+              }
+              intercepted = intercepted || probe.intercepted;
               lines.push(probe.text);
             } catch (error) {
               // A rejection here is the interesting case, not an error to raise:
@@ -234,8 +337,8 @@ export default defineConfig({
 
           console.log(lines.join('\n'));
 
-          if (challenged) {
-            annotateWafChallenge(apiBaseUrl);
+          if (intercepted) {
+            annotateInterception(apiBaseUrl, interceptor);
           }
 
           return null;

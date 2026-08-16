@@ -299,5 +299,6 @@ than by discipline.
 | [0016](adr/0016-second-tier-rate-limiting-and-honeypot.md)       | Add a persistent long-window rate limit and a form honeypot     | Accepted                                                                                                                         |
 | [0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md) | Refuse cross-site submissions, and cache the deep health probe  | Accepted                                                                                                                         |
 | [0018](adr/0018-cap-concurrent-submissions.md)                   | Cap concurrent submissions, and close three smaller gaps        | Accepted                                                                                                                         |
+| [0019](adr/0019-cloudflare-in-front.md)                          | Put Cloudflare in front of the web hostnames                    | Accepted                                                                                                                         |
 
 New ADRs: see [adr/README.md](adr/README.md).
