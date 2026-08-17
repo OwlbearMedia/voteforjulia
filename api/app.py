@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import smtplib
 from collections import deque
@@ -582,6 +583,81 @@ def _origin_rejected(endpoint_name: str) -> bool:
         origin[:_MAX_LOGGED_ORIGIN_CHARS],
     )
     return _ORIGIN_ENFORCED
+
+
+# The edge trust boundary (ADR-0020). Cloudflare stamps every proxied request
+# with this header; a caller that read the origin address off the MX record and
+# connected straight to it does not carry one. Distinct from the origin check
+# above, which asks which page sent the request -- this only asks whether the
+# request came through the edge at all.
+_EDGE_TOKEN_HEADER = "X-Origin-Token"
+_EDGE_TOKEN = env("EDGE_SHARED_TOKEN", "").strip()
+
+# Attacker-chosen text on its way to a log line, same as the origin above.
+_MAX_LOGGED_PATH_CHARS = 128
+
+# Defaults to OFF. Arming this before the Transform Rule is live refuses every
+# caller including the synthetic monitors, so the ordering has to be: create the
+# rule, confirm the header arrives, then switch this on. A token that is unset
+# cannot enforce at all, which is the second guard on the same mistake.
+_EDGE_TOKEN_ENFORCED = env_bool("EDGE_TOKEN_ENFORCED", False)
+
+_UNPROXIED_MESSAGE = "This endpoint is not reachable directly."
+
+# One line per window, carrying the count it stands for. A caller refused here
+# never reached the edge's rate limiting, so nothing bounds how fast it can
+# retry -- and an unbounded WARNING per refusal makes the log the cheapest thing
+# to attack on the whole origin. The count is what keeps this a signal: silence
+# and a flood have to stay distinguishable, which is what the rollout's audit
+# step reads. See ADR-0020.
+_EDGE_LOG_WINDOW_SECONDS = _int_setting("EDGE_LOG_WINDOW_SECONDS", 60)
+_EDGE_LOG_STATE = {"next_at": 0.0, "suppressed": 0}
+
+
+def _log_unproxied_request(path: str) -> None:
+    """Warn about an unproxied caller, at most once per window."""
+    now = monotonic()
+    if now < _EDGE_LOG_STATE["next_at"]:
+        _EDGE_LOG_STATE["suppressed"] += 1
+        return
+
+    suppressed = _EDGE_LOG_STATE["suppressed"]
+    _EDGE_LOG_STATE["suppressed"] = 0
+    _EDGE_LOG_STATE["next_at"] = now + _EDGE_LOG_WINDOW_SECONDS
+    logger.warning(
+        "%r reached the origin without a valid %s header (%d more suppressed)",
+        path[:_MAX_LOGGED_PATH_CHARS],
+        _EDGE_TOKEN_HEADER,
+        suppressed,
+    )
+
+
+@app.before_request
+def _reject_unproxied_request():
+    """Refuse requests that did not arrive through Cloudflare. See ADR-0020.
+
+    A `before_request` rather than a per-route guard, because every route shares
+    the property and a route added later should not have to remember it. This
+    also runs for paths that match no route, so a scanner sweeping the origin
+    gets the same answer everywhere.
+    """
+    if not _EDGE_TOKEN:
+        return None
+
+    # Compared as bytes: `compare_digest` raises TypeError on a str holding any
+    # non-ASCII character, and a header byte >= 0x80 decodes to exactly that --
+    # so the str form turns a hostile header into a 500 instead of a 403.
+    # Constant-time because the token is a secret and a direct caller can retry
+    # without limit, never having reached the edge's rate limiting.
+    presented = request.headers.get(_EDGE_TOKEN_HEADER, "").encode("utf-8", "replace")
+    if hmac.compare_digest(presented, _EDGE_TOKEN.encode("utf-8")):
+        return None
+
+    _log_unproxied_request(request.path)
+    if not _EDGE_TOKEN_ENFORCED:
+        return None
+
+    return jsonify({"error": _UNPROXIED_MESSAGE}), 403
 
 
 def _honeypot_value() -> str:

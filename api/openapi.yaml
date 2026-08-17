@@ -89,6 +89,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
+        '403':
+          $ref: '#/components/responses/Unproxied'
 
   /health/deep:
     get:
@@ -127,6 +129,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeepHealthStatus'
+        '403':
+          $ref: '#/components/responses/Unproxied'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -223,6 +227,8 @@ paths:
       responses:
         '204':
           $ref: '#/components/responses/Preflight'
+        '403':
+          $ref: '#/components/responses/Unproxied'
 
   /yard-sign:
     post:
@@ -288,6 +294,8 @@ paths:
       responses:
         '204':
           $ref: '#/components/responses/Preflight'
+        '403':
+          $ref: '#/components/responses/Unproxied'
 
 components:
   schemas:
@@ -585,6 +593,11 @@ components:
         the one the honeypot uses, because the useful advice is the same and the
         response should not say which control fired. Set `ORIGIN_ENFORCED=false`
         to log without refusing.
+
+        A `403` on these two endpoints has a second possible cause this schema
+        does not distinguish: the edge check refuses an unproxied caller with
+        the same status and a different body, before this one runs. See
+        `Unproxied`.
       headers:
         Vary:
           $ref: '#/components/headers/Vary'
@@ -598,6 +611,33 @@ components:
             error: >-
               We could not process this submission. Please email
               info@voteforjulia.com and we will follow up personally.
+
+    Unproxied:
+      description: |
+        The request did not arrive through Cloudflare, so it was refused before
+        routing — this is the only `403` that applies to every path, including
+        paths that match no route at all.
+
+        Cloudflare stamps every proxied request with `X-Origin-Token`. A caller
+        that read the origin's address off the MX record and connected straight
+        to it does not carry one, which is what this refuses. Distinct from the
+        `403` on the form endpoints: that one asks which page sent the request,
+        this one asks whether the request reached the edge at all.
+
+        Not something a legitimate client can encounter or correct — a browser
+        cannot set this header cross-origin, and does not need to, because the
+        edge sets it. Seeing this from a real user means the Transform Rule is
+        gone.
+
+        Off unless both `EDGE_SHARED_TOKEN` and `EDGE_TOKEN_ENFORCED` are set;
+        with the token set and enforcement off, the refusal is logged and the
+        request proceeds. See ADR-0020.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: This endpoint is not reachable directly.
 
     PayloadTooLarge:
       description: |
