@@ -499,9 +499,21 @@ so the allowlist refuses the proxy too.
 
 **The token has to agree in three places**, and none of them is the checkout:
 the Cloudflare Transform Rule, the `EDGE_SHARED_TOKEN` GitHub Actions secret,
-and `EDGE_SHARED_TOKEN` on both cPanel apps. **Alphanumeric only** — the deploy
-interpolates it into a `sed` replacement and then a `RewriteCond` regex, and
-refuses a value containing anything else.
+and `EDGE_SHARED_TOKEN` on both cPanel apps. Generate it, never choose it:
+
+```
+openssl rand -hex 32
+```
+
+**Alphanumeric, and at least 32 characters** — the deploy refuses anything else
+and aborts before the swap. The character set is a mechanical constraint: the
+value is interpolated into a `sed` replacement and then a `RewriteCond` regex,
+where a metacharacter would corrupt the file or silently change what the rule
+matches. The length is the security one. A refused caller is by definition one
+the edge's rate limiting never saw, so the 403 is an unmetered oracle to guess
+against — and guessing the token is the whole attack, since carrying it is the
+only thing the origin checks. A memorable value is the failure here, not a
+short one chosen on purpose.
 
 The order is what keeps this from being an outage. Every step fails open, so
 stopping halfway leaves the site working and the gap merely still open.

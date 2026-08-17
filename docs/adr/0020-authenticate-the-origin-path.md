@@ -181,6 +181,14 @@ create the Transform Rule, confirm the header arrives, then enforce.
   the token can bypass the edge again. It defends against a scanner that read the
   MX record, which is the actual threat; it does not defend against someone who
   has read the deploy logs or the cPanel environment.
+- **Guessing the token is the whole attack, and the origin meters nothing.**
+  Carrying the header is the only thing checked, and a caller refused here never
+  reached the edge, so the 403 answers guesses as fast as the origin will serve
+  them. That makes the token's entropy the control, not the check around it: the
+  deploy enforces at least 32 alphanumeric characters and
+  [hosting.md](../hosting.md#closing-the-direct-to-origin-path) gives the
+  generation command, because the realistic failure is a value someone chose to
+  be memorable rather than one deliberately made short.
 - **`Require` directives cannot be trusted on this host at all.** The finding
   generalises past this decision: anything written in `mod_authz_core` spelling
   is a silent no-op here. Recorded in

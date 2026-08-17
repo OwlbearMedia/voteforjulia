@@ -201,6 +201,12 @@ jobs:
                   exit 1
                   ;;
               esac
+              # See production: the 403 is an unmetered oracle, so the token
+              # needs a length floor and the character-set check is not one.
+              if [ "${#EDGE_TOKEN}" -lt 32 ]; then
+                echo "EDGE_SHARED_TOKEN must be at least 32 characters; got ${#EDGE_TOKEN}. Aborting." >&2
+                exit 1
+              fi
               # See production for why the count and the line are both pinned
               # before substituting. This environment shares production's token,
               # so a second placeholder here would publish the production secret.

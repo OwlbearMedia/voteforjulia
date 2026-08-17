@@ -190,6 +190,15 @@ jobs:
                   exit 1
                   ;;
               esac
+              # A guessed token is as good as a leaked one, and refused callers
+              # are the ones the edge's rate limiting never saw -- so the 403
+              # is an unmetered oracle to guess against. Nothing else here sets
+              # a floor: the character-set check above passes a one-character
+              # token. Generation command in docs/hosting.md.
+              if [ "${#EDGE_TOKEN}" -lt 32 ]; then
+                echo "EDGE_SHARED_TOKEN must be at least 32 characters; got ${#EDGE_TOKEN}. Aborting." >&2
+                exit 1
+              fi
               # Pin the substitution to exactly one placeholder, on exactly the
               # gate condition, before touching the file. Two distinct failures
               # need this and the "survived" guard below catches neither:
