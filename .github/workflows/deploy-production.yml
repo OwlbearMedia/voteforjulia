@@ -148,6 +148,78 @@ jobs:
           overwrite: true
           strip_components: 1
 
+      # The staged file ships with a placeholder rather than the token, because
+      # the repo is public. Substituted here rather than at build time so the
+      # secret never lands on the runner's filesystem or in an artifact.
+      #
+      # An unset secret DELETES the gate instead of leaving the placeholder.
+      # Left literal, the rule demands a header no caller can send and refuses
+      # every visitor — so a missing secret has to fail open, not closed. The
+      # API's own check defaults off for the same reason. See ADR-0020.
+      - name: Substitute the edge token into the staged .htaccess
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: EDGE_TOKEN
+          script: |
+            set -euo pipefail
+            staged=./public_html_next/.htaccess
+
+            if [ ! -s "$staged" ]; then
+              echo "Staged $staged is missing or empty; aborting before the swap." >&2
+              exit 1
+            fi
+
+            if [ -z "${EDGE_TOKEN:-}" ]; then
+              sed -i '/# BEGIN EDGE GATE/,/# END EDGE GATE/d' "$staged"
+              echo "EDGE_SHARED_TOKEN unset; edge gate removed, origin left open."
+            else
+              # Alphanumeric only. The value is interpolated into a sed
+              # replacement and then into a RewriteCond regex, and a
+              # metacharacter would either corrupt the file or quietly change
+              # what the rule matches.
+              case "$EDGE_TOKEN" in
+                *[!A-Za-z0-9]*)
+                  echo "EDGE_SHARED_TOKEN must be alphanumeric; aborting." >&2
+                  exit 1
+                  ;;
+              esac
+              # `sed` reports success when it substitutes nothing, so without
+              # this the step prints "armed" over a file with no gate in it --
+              # true while this step is merged ahead of the gate block per
+              # ADR-0020, and true again if the block is ever dropped. The
+              # second case is a silently reopened origin.
+              if ! grep -q '@@EDGE_TOKEN@@' "$staged"; then
+                echo "EDGE_SHARED_TOKEN is set but $staged carries no @@EDGE_TOKEN@@ placeholder; aborting rather than reporting a gate that is not there." >&2
+                exit 1
+              fi
+              sed -i "s/@@EDGE_TOKEN@@/$EDGE_TOKEN/" "$staged"
+              echo "Edge gate armed."
+            fi
+
+            # Neither branch may leave a placeholder behind: that is the shape
+            # of the total-outage failure, so it is worth failing the deploy for.
+            if grep -q '@@EDGE_TOKEN@@' "$staged"; then
+              echo "Placeholder survived substitution; aborting before the swap." >&2
+              exit 1
+            fi
+
+            # The range delete above runs to EOF if the END marker is ever lost,
+            # truncating this file to its first few lines. Neither guard above
+            # catches that: the placeholder is gone either way and the file is
+            # still non-empty. Assert something from the far end of the file
+            # instead -- losing the CSP silently is what ADR-0010 warns about.
+            if ! grep -q 'Content-Security-Policy' "$staged"; then
+              echo "Staged $staged lost its CSP; aborting before the swap." >&2
+              exit 1
+            fi
+
       # cPanel's IP Blocker appends `deny from` lines to the .htaccess of EVERY
       # document root on the account, and renders its UI list from
       # public_html/.htaccess alone. Replacing that file wholesale therefore

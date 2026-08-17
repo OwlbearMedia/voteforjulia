@@ -24,6 +24,89 @@ The one that has already bitten us:
 **Never use backslash escapes in `.htaccess`.** When a header value needs
 embedded double quotes, delimit the argument with single quotes.
 
+### `Require` is silently ignored
+
+The same parser difference reaches access control, and this one has no visible
+symptom at all. **`Require` directives — the `mod_authz_core` spelling every
+current Apache document recommends — do nothing on this host.** The old
+`mod_access_compat` spelling is what enforces, which is why cPanel's IP Blocker
+writes `deny from`.
+
+Measured 2026-08-16 against a throwaway directory on the test docroot:
+
+| Rule                                | Result                        |
+| ----------------------------------- | ----------------------------- |
+| `Require ip <some range>`           | **not enforced** — serves 200 |
+| `Require all denied`                | **not enforced** — serves 200 |
+| `deny from all`                     | 403                           |
+| `Order allow,deny` + `Allow from …` | enforced                      |
+
+A `Require` rule fails open and looks correct in the file, so nothing about it
+reads as broken — the review passes, the deploy succeeds, and the door is open.
+Write access rules in the `Order`/`Allow`/`Deny` form, or use a `RewriteRule`
+with `[F]`, and verify against the deployed site rather than locally.
+
+#### Probing an `.htaccess` question safely
+
+Nothing about this host's parser can be settled by reading documentation, and a
+rule under test does not need to be tested on the live docroot. Put it in a
+throwaway subdirectory instead — `.htaccess` applies per-directory, so the blast
+radius is one path nothing links to:
+
+```
+ssh vfj 'mkdir -p ~/public_html_test/probe && echo ok > ~/public_html_test/probe/index.html'
+scp rule.htaccess vfj:public_html_test/probe/.htaccess
+curl -so /dev/null -w '%{http_code}\n' https://test.voteforjulia.com/probe/
+curl -so /dev/null -w '%{http_code}\n' \
+  --resolve test.voteforjulia.com:443:208.115.234.114 https://test.voteforjulia.com/probe/
+ssh vfj 'rm -rf ~/public_html_test/probe'
+```
+
+The two `curl`s are the pair worth running every time: through the edge, and
+direct to the origin. Two traps, both of which produce a confident wrong answer:
+
+- **`%{REQUEST_URI}` is the full path**, so a docroot-shaped condition like
+  `!^/\.well-known/` never matches inside `/probe/`. Re-scope the condition to
+  the probe path, or the exception looks broken when it is fine.
+- **`mail.` falls through to the _production_ docroot**, not the test one, so a
+  probe under `public_html_test` is invisible to it and answers 404. Test
+  host-scoping by inverting it — scope the rule to a host you are not sending —
+  rather than by trying to reach the probe as `mail.`.
+
+Use `--resolve`, never a `Host:` header against the IP: the mismatched SNI
+serves a different vhost and reports a misleading result.
+
+### `[NC]` breaks a negated `RewriteCond`
+
+Measured 2026-08-16, on the same probe. A negated condition with the
+case-insensitive flag stops excluding what it names, and the rule it guards
+fires anyway:
+
+| Condition                                          | Exempts the path? |
+| -------------------------------------------------- | ----------------- |
+| `RewriteCond %{REQUEST_URI} !^/autodiscover/`      | yes               |
+| `RewriteCond %{REQUEST_URI} !^/autodiscover/ [NC]` | **no**            |
+
+It fails **closed**, which is the dangerous direction for an exemption — the
+path you meant to let through gets refused. Use a character class instead
+(`!^/[Aa]utodiscover/`) and do not "tidy" it back to `[NC]`. This is why
+[public/.htaccess](../public/.htaccess) spells the autodiscover exemption that
+way; without it, Outlook's setup probe is refused.
+
+### Access control sees the visitor's address, not Cloudflare's
+
+The host restores the real client address before anything at the origin reads
+it — logging and access control alike. Consequences, both counter-intuitive:
+
+- A `deny from <address>` still refuses that visitor while proxied. The cPanel
+  blocklist is a real second layer, not dead weight.
+- **An allowlist of Cloudflare's IP ranges refuses everyone**, including
+  Cloudflare. Measured: `Allow from <our own address>` succeeds _through the
+  proxy_, `Allow from <Cloudflare's ranges>` is refused through it. This is why
+  [ADR-0020](adr/0020-authenticate-the-origin-path.md) authenticates the edge
+  with a shared secret instead, and why [#141](https://github.com/OwlbearMedia/voteforjulia/issues/141)'s
+  original proposal would have taken the site down.
+
 ### App env vars must not contain `$`
 
 The same parser handles the `SetEnv` lines cPanel generates for the Python apps'

@@ -167,6 +167,65 @@ jobs:
           overwrite: true
           strip_components: 1
 
+      # Same substitution as production — see the comment there for why an unset
+      # secret deletes the gate rather than leaving the placeholder. Test shares
+      # production's token: one Transform Rule covers the whole zone, and the
+      # `.htaccess` rule matches the test hostname too. See ADR-0020.
+      - name: Substitute the edge token into the staged .htaccess
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: EDGE_TOKEN
+          script: |
+            set -euo pipefail
+            staged=./public_html_test_next/.htaccess
+
+            if [ ! -s "$staged" ]; then
+              echo "Staged $staged is missing or empty; aborting before the swap." >&2
+              exit 1
+            fi
+
+            if [ -z "${EDGE_TOKEN:-}" ]; then
+              sed -i '/# BEGIN EDGE GATE/,/# END EDGE GATE/d' "$staged"
+              echo "EDGE_SHARED_TOKEN unset; edge gate removed, origin left open."
+            else
+              case "$EDGE_TOKEN" in
+                *[!A-Za-z0-9]*)
+                  echo "EDGE_SHARED_TOKEN must be alphanumeric; aborting." >&2
+                  exit 1
+                  ;;
+              esac
+              # See production for why a missing placeholder aborts rather than
+              # substituting nothing and calling it armed.
+              if ! grep -q '@@EDGE_TOKEN@@' "$staged"; then
+                echo "EDGE_SHARED_TOKEN is set but $staged carries no @@EDGE_TOKEN@@ placeholder; aborting rather than reporting a gate that is not there." >&2
+                exit 1
+              fi
+              sed -i "s/@@EDGE_TOKEN@@/$EDGE_TOKEN/" "$staged"
+              echo "Edge gate armed."
+            fi
+
+            if grep -q '@@EDGE_TOKEN@@' "$staged"; then
+              echo "Placeholder survived substitution; aborting before the swap." >&2
+              exit 1
+            fi
+
+            # The range delete above runs to EOF if the END marker is ever lost,
+            # truncating this file to its first few lines. Neither guard above
+            # catches that: the placeholder is gone either way and the file is
+            # still non-empty. Assert something from the far end of the file
+            # instead -- losing the CSP silently is what ADR-0010 warns about.
+            if ! grep -q 'Content-Security-Policy' "$staged"; then
+              echo "Staged $staged lost its CSP; aborting before the swap." >&2
+              exit 1
+            fi
+
       # Same carry-over as production — see the long comment in
       # [deploy-production.yml](deploy-production.yml) for why this exists at
       # all. Test pairs its own two docroots (public_html_test + api_test) and
