@@ -539,11 +539,30 @@ it, rather than reporting a gate it did not install.
    restart, then submit through the test site and read the app log. A warning
    naming `X-Origin-Token` means the rule is not reaching the API; silence means
    it is.
-3. **Add the `EDGE_SHARED_TOKEN` repository secret**, then deploy. Until it
+3. **Pin the SSH host key first**, as `SSH_HOST_FINGERPRINT`. The substitution
+   step is the only place either workflow sends a secret over SSH, and
+   `appleboy`'s actions skip host verification entirely when `fingerprint` is
+   empty — `scp-action` documents the default as "skip verification", and
+   `easyssh-proxy` uses `ssh.InsecureIgnoreHostKey()`. Unpinned, anything that
+   can answer for the host reads the token straight out of the session. Read the
+   value over a session you already trust, rather than trusting a scan:
+
+   ```
+   ssh vfj 'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'
+   ssh-keyscan -p <port> -t ed25519 <host> | ssh-keygen -lf -   # must agree
+   ```
+
+   Store the `SHA256:…` field. If the deploy later fails with a fingerprint
+   mismatch, the server presented a different key type — take that type's
+   fingerprint from the first command rather than pasting whatever the error
+   reports. **The deploy refuses to run once `EDGE_SHARED_TOKEN` is set and this
+   is not**, so the ordering is enforced rather than remembered.
+
+4. **Add the `EDGE_SHARED_TOKEN` repository secret**, then deploy. Until it
    exists the deploy strips the gate out of `.htaccess` entirely rather than
    leaving the placeholder — a literal `@@EDGE_TOKEN@@` would demand a header
    nobody can send and refuse every visitor.
-4. **Verify the frontend gate on test**, which is where a mistake is survivable:
+5. **Verify the frontend gate on test**, which is where a mistake is survivable:
 
    ```
    curl -so /dev/null -w '%{http_code}\n' https://test.voteforjulia.com/
@@ -555,7 +574,7 @@ it, rather than reporting a gate it did not install.
    IP — the mismatched SNI serves a different vhost and reports a misleading
    result.
 
-5. **Check the second front door is shut, and the mail paths are not.**
+6. **Check the second front door is shut, and the mail paths are not.**
    `mail.voteforjulia.com` serves the whole site from `public_html` and is never
    proxied, so it is the bypass — not, as an earlier version of this page had it,
    a hostname to keep working:
@@ -583,8 +602,8 @@ it, rather than reporting a gate it did not install.
    which is why the exemption is spelled `[Aa]utodiscover` and does not need
    widening to `[Aa]uto[Dd]iscover`.
 
-6. **Arm the API**: set `EDGE_TOKEN_ENFORCED=true` on `api_test`, restart,
-   re-run the Cypress suite, then repeat 3–6 for production and `api`.
+7. **Arm the API**: set `EDGE_TOKEN_ENFORCED=true` on `api_test`, restart,
+   re-run the Cypress suite, then repeat 4–7 for production and `api`.
 
 **Rolling back** is clearing `EDGE_TOKEN_ENFORCED` and restarting for the API,
 or deleting the repository secret and redeploying for the frontend. Deleting the
@@ -611,7 +630,7 @@ being down is the worse of the two:
    gate block is stripped from `.htaccess`, and the frontend serves everyone.
 3. Change the Transform Rule to the new value.
 4. Set the new secret, deploy, set the new `EDGE_SHARED_TOKEN` on both apps,
-   restart, then re-arm `EDGE_TOKEN_ENFORCED` — steps 3–6 above, in order.
+   restart, then re-arm `EDGE_TOKEN_ENFORCED` — steps 4–7 above, in order.
 
 Accepting both an old and a new token for an overlap would remove the window
 entirely, and is

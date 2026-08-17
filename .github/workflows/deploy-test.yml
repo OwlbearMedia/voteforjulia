@@ -171,6 +171,19 @@ jobs:
       # secret deletes the gate rather than leaving the placeholder. Test shares
       # production's token: one Transform Rule covers the whole zone, and the
       # `.htaccess` rule matches the test hostname too. See ADR-0020.
+      # See production: unpinned, the host key is not verified at all, and this
+      # step sends production's token. Refused on the runner before connecting.
+      - name: Require a pinned host key before sending the edge token
+        env:
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+          HOST_FINGERPRINT: ${{ secrets.SSH_HOST_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${EDGE_TOKEN:-}" ] && [ -z "${HOST_FINGERPRINT:-}" ]; then
+            echo "EDGE_SHARED_TOKEN is set but SSH_HOST_FINGERPRINT is not, so the token would be sent to an unverified host. Aborting." >&2
+            exit 1
+          fi
+
       - name: Substitute the edge token into the staged .htaccess
         uses: appleboy/ssh-action@v1.2.5
         env:
@@ -181,6 +194,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           envs: EDGE_TOKEN
           script: |
             set -euo pipefail
@@ -207,14 +221,21 @@ jobs:
                 echo "EDGE_SHARED_TOKEN must be at least 32 characters; got ${#EDGE_TOKEN}. Aborting." >&2
                 exit 1
               fi
-              # See production for why the count and the line are both pinned
-              # before substituting. This environment shares production's token,
-              # so a second placeholder here would publish the production secret.
-              gate='RewriteCond %{HTTP:X-Origin-Token} !^@@EDGE_TOKEN@@$'
+              # See production for why the whole stanza is compared rather than
+              # the placeholder's line. This environment shares production's
+              # token, so a second placeholder here would publish it.
+              expected='RewriteCond %{REQUEST_URI} !^/\.well-known/|RewriteCond %{REQUEST_URI} !^/[Aa]utodiscover/|RewriteCond %{HTTP:X-Origin-Token} !^@@EDGE_TOKEN@@$|RewriteRule ^ - [F]|'
+              actual=$(sed -n '/^# BEGIN EDGE GATE$/,/^# END EDGE GATE$/p' "$staged" | sed '1d;$d' | tr '\n' '|')
               occurrences=$(grep -o '@@EDGE_TOKEN@@' "$staged" | wc -l | tr -d '[:space:]' || true)
-              gate_lines=$(grep -F -x "$gate" "$staged" | wc -l | tr -d '[:space:]' || true)
-              if [ "$occurrences" != "1" ] || [ "$gate_lines" != "1" ]; then
-                echo "Expected exactly one @@EDGE_TOKEN@@ in $staged, on the gate RewriteCond; found $occurrences occurrence(s) and $gate_lines gate line(s). Aborting before the swap." >&2
+              if [ "$actual" != "$expected" ]; then
+                echo "Staged gate stanza is not the expected block. Aborting before the swap." >&2
+                echo "  expected: $expected" >&2
+                echo "  actual:   $actual" >&2
+                echo "If public/.htaccess changed the gate on purpose, update this step to match." >&2
+                exit 1
+              fi
+              if [ "$occurrences" != "1" ]; then
+                echo "Expected exactly one @@EDGE_TOKEN@@ in $staged; found $occurrences. Aborting before the swap." >&2
                 exit 1
               fi
               sed -i "s/@@EDGE_TOKEN@@/$EDGE_TOKEN/" "$staged"

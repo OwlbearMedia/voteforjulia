@@ -181,6 +181,14 @@ create the Transform Rule, confirm the header arrives, then enforce.
   the token can bypass the edge again. It defends against a scanner that read the
   MX record, which is the actual threat; it does not defend against someone who
   has read the deploy logs or the cPanel environment.
+- **The token has to cross the deploy's SSH channel, which was never verified.**
+  It cannot be avoided: `.htaccess` cannot read an environment variable, so the
+  value has to reach the file on the host, and this is the first thing either
+  workflow sends over that connection. `appleboy`'s actions skip host-key
+  verification when no fingerprint is given, so the deploy now pins one and
+  refuses to run with a token configured and no fingerprint. The other twenty
+  SSH and SCP steps remain unpinned — they carry no secret, but they do carry
+  what gets deployed, which is a separate decision worth taking on its own.
 - **Guessing the token is the whole attack, and the origin meters nothing.**
   Carrying the header is the only thing checked, and a caller refused here never
   reached the edge, so the 403 answers guesses as fast as the origin will serve
