@@ -91,7 +91,9 @@ It fails **closed**, which is the dangerous direction for an exemption — the
 path you meant to let through gets refused. Use a character class instead
 (`!^/[Aa]utodiscover/`) and do not "tidy" it back to `[NC]`. This is why
 [public/.htaccess](../public/.htaccess) spells the autodiscover exemption that
-way; without it, Outlook's setup probe is refused.
+way. The autodiscover path is the example rather than the stake — cPanel
+answers the canonical one above the docroot — but the flag is general, so any
+negated condition written with it excludes nothing.
 
 ### Access control sees the visitor's address, not Cloudflare's
 
