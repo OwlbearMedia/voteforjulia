@@ -190,13 +190,24 @@ jobs:
                   exit 1
                   ;;
               esac
-              # `sed` reports success when it substitutes nothing, so without
-              # this the step prints "armed" over a file with no gate in it --
-              # true while this step is merged ahead of the gate block per
-              # ADR-0020, and true again if the block is ever dropped. The
-              # second case is a silently reopened origin.
-              if ! grep -q '@@EDGE_TOKEN@@' "$staged"; then
-                echo "EDGE_SHARED_TOKEN is set but $staged carries no @@EDGE_TOKEN@@ placeholder; aborting rather than reporting a gate that is not there." >&2
+              # Pin the substitution to exactly one placeholder, on exactly the
+              # gate condition, before touching the file. Two distinct failures
+              # need this and the "survived" guard below catches neither:
+              #
+              #   - No placeholder at all. `sed` succeeds having replaced
+              #     nothing, so the step reports a gate it did not install --
+              #     true while this step is merged ahead of the gate block per
+              #     ADR-0020, and true again if the block is ever dropped.
+              #   - A SECOND placeholder somewhere else. `sed` substitutes the
+              #     first match on EVERY line, so a copied gate block or a
+              #     `Header set` naming the placeholder gets the token too, and
+              #     nothing is left over for the guard below to notice. That
+              #     publishes the secret in a served response header.
+              gate='RewriteCond %{HTTP:X-Origin-Token} !^@@EDGE_TOKEN@@$'
+              occurrences=$(grep -o '@@EDGE_TOKEN@@' "$staged" | wc -l | tr -d '[:space:]' || true)
+              gate_lines=$(grep -F -x "$gate" "$staged" | wc -l | tr -d '[:space:]' || true)
+              if [ "$occurrences" != "1" ] || [ "$gate_lines" != "1" ]; then
+                echo "Expected exactly one @@EDGE_TOKEN@@ in $staged, on the gate RewriteCond; found $occurrences occurrence(s) and $gate_lines gate line(s). Aborting before the swap." >&2
                 exit 1
               fi
               sed -i "s/@@EDGE_TOKEN@@/$EDGE_TOKEN/" "$staged"

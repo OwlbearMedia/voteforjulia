@@ -490,6 +490,136 @@ is the option if blocking a whole ASN ever feels too broad.
 and does not need the homepage, so a rule covering only `voteforjulia.com` would
 leave `api.voteforjulia.com` open.
 
+### Closing the direct-to-origin path
+
+Why a shared secret rather than an IP allowlist is
+[ADR-0020](adr/0020-authenticate-the-origin-path.md) — the short version is that
+[access control sees the visitor's address](#access-control-sees-the-visitors-address-not-cloudflares),
+so the allowlist refuses the proxy too.
+
+**The token has to agree in three places**, and none of them is the checkout:
+the Cloudflare Transform Rule, the `EDGE_SHARED_TOKEN` GitHub Actions secret,
+and `EDGE_SHARED_TOKEN` on both cPanel apps. **Alphanumeric only** — the deploy
+interpolates it into a `sed` replacement and then a `RewriteCond` regex, and
+refuses a value containing anything else.
+
+The order is what keeps this from being an outage. Every step fails open, so
+stopping halfway leaves the site working and the gap merely still open.
+
+**Step 0 is a merge, and it is not optional.** The `.htaccess` gate ships as a
+placeholder that the deploy substitutes, and
+[the deploy runs `main`'s workflow](#deploy-workflow-changes-cannot-be-tested-from-a-pr) —
+so the substitution step has to be on `main` before the branch carrying the gate
+is deployed by it. Skipped once already: the combined branch put the literal
+`@@EDGE_TOKEN@@` on the test docroot, where it matched no real header and 403'd
+every path. Do not set the repository secret until the gate block is on `main`
+either; the substitution step aborts a deploy whose build has no placeholder in
+it, rather than reporting a gate it did not install.
+
+1. **Create the Transform Rule** (Rules → Transform Rules → Modify Request
+   Header), setting `X-Origin-Token` to the token on every request. **Scope it
+   to the zone, not the apex** — same trap as
+   [the firewall rules](#the-firewall-rules-and-how-they-were-derived): a rule
+   matching only `voteforjulia.com` leaves `api.voteforjulia.com` unstamped, and
+   the API is what the spam bot posts to.
+2. **Confirm the header actually arrives**, before anything enforces. Set
+   `EDGE_SHARED_TOKEN` on `api_test` only, leave `EDGE_TOKEN_ENFORCED` unset,
+   restart, then submit through the test site and read the app log. A warning
+   naming `X-Origin-Token` means the rule is not reaching the API; silence means
+   it is.
+3. **Add the `EDGE_SHARED_TOKEN` repository secret**, then deploy. Until it
+   exists the deploy strips the gate out of `.htaccess` entirely rather than
+   leaving the placeholder — a literal `@@EDGE_TOKEN@@` would demand a header
+   nobody can send and refuse every visitor.
+4. **Verify the frontend gate on test**, which is where a mistake is survivable:
+
+   ```
+   curl -so /dev/null -w '%{http_code}\n' https://test.voteforjulia.com/
+   curl -so /dev/null -w '%{http_code}\n' \
+     --resolve test.voteforjulia.com:443:208.115.234.114 https://test.voteforjulia.com/
+   ```
+
+   Want `200` then `403`. Use `--resolve`, never a `Host:` header against the
+   IP — the mismatched SNI serves a different vhost and reports a misleading
+   result.
+
+5. **Check the second front door is shut, and the mail paths are not.**
+   `mail.voteforjulia.com` serves the whole site from `public_html` and is never
+   proxied, so it is the bypass — not, as an earlier version of this page had it,
+   a hostname to keep working:
+
+   ```
+   curl -so /dev/null -w 'site   %{http_code}\n' https://mail.voteforjulia.com/
+   curl -so /dev/null -w 'auto   %{http_code}\n' https://mail.voteforjulia.com/autodiscover/autodiscover.xml
+   curl -so /dev/null -w 'acme   %{http_code}\n' https://voteforjulia.com/.well-known/
+   ```
+
+   Want `403`, then `400`, then not-`403`. A `200` on the first means the gate is
+   scoped by `Host` and the bypass is open. A `403` on the second means the
+   `[NC]` trap above has been reintroduced and mail clients cannot configure
+   themselves.
+
+   **`400` is the healthy answer for autodiscover, not `200`.** Measured
+   2026-08-16, before anything enforced: cPanel answers
+   `/autodiscover/autodiscover.xml` above the docroot — LiteSpeed,
+   `text/plain`, identical proxied and direct — and `400` is what its handler
+   returns to a `GET`. The docroot never sees that path, so the `.htaccess`
+   exemption is insurance against that interception changing rather than the
+   thing keeping Outlook working. What the docroot _does_ see is the
+   capitalised `/AutoDiscover/AutoDiscover.xml`, which is `404` today and
+   becomes `403` under the gate — a path that already did not work either way,
+   which is why the exemption is spelled `[Aa]utodiscover` and does not need
+   widening to `[Aa]uto[Dd]iscover`.
+
+6. **Arm the API**: set `EDGE_TOKEN_ENFORCED=true` on `api_test`, restart,
+   re-run the Cypress suite, then repeat 3–6 for production and `api`.
+
+**Rolling back** is clearing `EDGE_TOKEN_ENFORCED` and restarting for the API,
+or deleting the repository secret and redeploying for the frontend. Deleting the
+Transform Rule alone rolls back nothing — it takes the header away while both
+ends still demand it, which is the total outage. **Turn enforcement off before
+touching the rule.**
+
+#### Rotating the token
+
+**There is no order that rotates in place without an outage.** The frontend
+compares against exactly one value, baked into `.htaccess` at deploy time, so
+between changing the Transform Rule and landing a deploy that agrees with it,
+every proxied request to the site is refused — and a deploy is a full CI run,
+not a dashboard edit. Changing the API last does not help: the API is the side
+that fails open, and the frontend is the side that goes down.
+
+So rotation **takes the gate down first and puts it back after**, accepting a
+few minutes with the origin reachable rather than a few minutes with the site
+refusing its visitors. The gap was open for months before ADR-0020; the site
+being down is the worse of the two:
+
+1. Clear `EDGE_TOKEN_ENFORCED` on both cPanel apps and restart.
+2. Delete the `EDGE_SHARED_TOKEN` repository secret and re-run the deploy. The
+   gate block is stripped from `.htaccess`, and the frontend serves everyone.
+3. Change the Transform Rule to the new value.
+4. Set the new secret, deploy, set the new `EDGE_SHARED_TOKEN` on both apps,
+   restart, then re-arm `EDGE_TOKEN_ENFORCED` — steps 3–6 above, in order.
+
+Accepting both an old and a new token for an overlap would remove the window
+entirely, and is
+[recorded as the alternative it is](adr/0020-authenticate-the-origin-path.md#alternatives-considered):
+it needs a second placeholder in `.htaccess` and a second secret, to make an
+operation that has never yet been performed slightly tidier.
+
+Consequences worth knowing:
+
+- **A fourth drift surface**, alongside [monitoring/](../monitoring/), the
+  firewall rules and the branch protection. Nothing syncs the Transform Rule and
+  nothing warns if it is edited away; the symptom is the whole site returning 403.
+- **A rollback to `public_html_prev` restores whatever token was current when
+  that snapshot was deployed**, which after a rotation is the wrong one — the
+  [one-command rollback below](#frontend-deploys) is then itself a site-wide 403. The third thing on this page a rollback quietly resurrects, after the two
+  blocklist caveats. Redeploy rather than roll back if the token has changed
+  since that build.
+- **Debugging with `curl --resolve` now needs the header**, or the origin
+  answers 403 and looks like a different fault.
+
 ### Leave these off
 
 - **Rocket Loader** and **Email Obfuscation** — both inject inline script; see

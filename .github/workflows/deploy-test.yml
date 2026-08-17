@@ -201,10 +201,14 @@ jobs:
                   exit 1
                   ;;
               esac
-              # See production for why a missing placeholder aborts rather than
-              # substituting nothing and calling it armed.
-              if ! grep -q '@@EDGE_TOKEN@@' "$staged"; then
-                echo "EDGE_SHARED_TOKEN is set but $staged carries no @@EDGE_TOKEN@@ placeholder; aborting rather than reporting a gate that is not there." >&2
+              # See production for why the count and the line are both pinned
+              # before substituting. This environment shares production's token,
+              # so a second placeholder here would publish the production secret.
+              gate='RewriteCond %{HTTP:X-Origin-Token} !^@@EDGE_TOKEN@@$'
+              occurrences=$(grep -o '@@EDGE_TOKEN@@' "$staged" | wc -l | tr -d '[:space:]' || true)
+              gate_lines=$(grep -F -x "$gate" "$staged" | wc -l | tr -d '[:space:]' || true)
+              if [ "$occurrences" != "1" ] || [ "$gate_lines" != "1" ]; then
+                echo "Expected exactly one @@EDGE_TOKEN@@ in $staged, on the gate RewriteCond; found $occurrences occurrence(s) and $gate_lines gate line(s). Aborting before the swap." >&2
                 exit 1
               fi
               sed -i "s/@@EDGE_TOKEN@@/$EDGE_TOKEN/" "$staged"
