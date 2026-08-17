@@ -151,9 +151,17 @@ create the Transform Rule, confirm the header arrives, then enforce.
 - **The secret is deployment state with no representation in the checkout**, like
   the cPanel environment variables in [hosting.md](../hosting.md#environment-variables).
   It now lives in three places that must agree: the Cloudflare Transform Rule,
-  the GitHub Actions secret, and `EDGE_SHARED_TOKEN` on both cPanel apps. Rotating
-  it means changing all three, and the frontend and API will disagree for the
-  length of a deploy.
+  the GitHub Actions secret, and `EDGE_SHARED_TOKEN` on both cPanel apps.
+- **Rotation cannot be done in place, and is an outage if attempted that way.**
+  The frontend compares against exactly one value baked into `.htaccess` at
+  deploy time, so from the moment the Transform Rule changes until a full CI run
+  and deploy agree with it, every proxied request to the site is refused. No
+  ordering avoids this — changing the API last only protects the side that fails
+  open anyway, while the frontend is the side that goes down. Rotation therefore
+  disarms both ends first and re-arms them after, trading a few minutes of open
+  origin for not taking the site down; the sequence is in
+  [hosting.md](../hosting.md#rotating-the-token). This is the cost of the design
+  and the strongest argument for the mTLS alternative below.
 - **A fourth drift surface.** The Transform Rule lives only in Cloudflare's
   dashboard, alongside the firewall rules and the monitors. Nothing syncs it and
   nothing warns if it is edited away — the symptom would be the whole site
@@ -196,6 +204,13 @@ create the Transform Rule, confirm the header arrives, then enforce.
   and strictly stronger, since the credential cannot leak through a deploy log.
   It needs the origin to verify a client certificate, which is web-server
   configuration we do not have on shared cPanel hosting.
+- **Accepting an old and a new token during an overlap**, which would make
+  rotation orderless and remove the outage window above. It needs a second
+  placeholder in `.htaccess`, a second repository secret, and a second value
+  parsed on the API side — permanent complexity in the enforcement path, on
+  every request, to smooth an operation that has not yet been performed once.
+  Deferred rather than rejected: the trigger for revisiting is a rotation that
+  actually has to happen under time pressure, such as a leaked token.
 - **A host-level firewall allowlist.** Operates on the true TCP peer, so the IP
   restoration does not defeat it, and it would cover every docroot and every port
   at once. Not self-service on shared hosting, and it is the option that can lock
