@@ -621,15 +621,33 @@ it, rather than reporting a gate it did not install.
    ssh vfj 'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'
 
    eval "$(ssh -G vfj | awk '/^hostname /{print "H="$2} /^port /{print "P="$2}')"
-   ssh-keyscan -p "$P" -t ed25519 "$H" | ssh-keygen -lf -   # must agree
+   ssh-keyscan -p "$P" -t ed25519 "$H" | ssh-keygen -lf -
    ```
+
+   Each prints four fields, and **only the second one is the fingerprint**:
+
+   ```
+   256 SHA256:F3QIAH7qTYPeWARYIWuO0GFI94UB5u8LgDGOQ8QzHYI root@host           (ED25519)
+   256 SHA256:F3QIAH7qTYPeWARYIWuO0GFI94UB5u8LgDGOQ8QzHYI [203.0.113.10]:2222 (ED25519)
+   ^bits                    ^ store exactly this          ^ differs, ignore   ^ key type
+   ```
+
+   Store `SHA256:…` alone — keep the prefix, drop the bit count, the trailing
+   comment and the `(ED25519)`. There is no `=` padding to trim: `ssh-keygen`
+   prints the unpadded form, which is exactly what `easyssh-proxy` compares
+   against (`"SHA256:" + base64.RawStdEncoding`).
+
+   **The third field is meant to differ between the two commands** — one is the
+   key's comment on the server, the other the address it was scanned at. Only
+   the fingerprint has to match, so `… | awk '{print $2}'` on both is the
+   comparison to trust.
 
    If the first command cannot read the file, the host has made `/etc/ssh`
    unreadable and the scan is all there is — in that case run it from two
    different networks and compare, rather than accepting a single result.
 
-   Store the `SHA256:…` field. If the deploy later fails with a fingerprint
-   mismatch, the server presented a different key type — take that type's
+   If the deploy later fails with a fingerprint mismatch, the server presented
+   a different key type — take that type's
    fingerprint from the first command rather than pasting whatever the error
    reports. **Each deploy refuses to run once its own token secret is set and
    this is not**, so the ordering is enforced rather than remembered.
