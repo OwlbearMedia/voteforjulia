@@ -46,6 +46,25 @@ reads as broken — the review passes, the deploy succeeds, and the door is open
 Write access rules in the `Order`/`Allow`/`Deny` form, or use a `RewriteRule`
 with `[F]`, and verify against the deployed site rather than locally.
 
+### Reaching the host
+
+Every `ssh vfj` / `scp … vfj:` command on this page assumes a `vfj` host alias in
+your `~/.ssh/config`, so the hostname, port, user and key live in one place
+rather than being pasted around:
+
+```
+Host vfj
+    HostName <host>
+    Port <port>
+    User <cpanel-user>
+    IdentityFile ~/.ssh/<key>
+```
+
+The four values are the same ones held as the `SSH_HOST`, `SSH_PORT`,
+`SSH_USERNAME` and `SSH_PRIVATE_KEY` repository secrets. `ssh -G vfj` prints what
+the alias resolves to without connecting, which is the quickest way to confirm it
+is set up and the source of the host and port in the fingerprint step below.
+
 #### Probing an `.htaccess` question safely
 
 Nothing about this host's parser can be settled by reading documentation, and a
@@ -573,13 +592,27 @@ it, rather than reporting a gate it did not install.
    verification entirely when `fingerprint` is empty. `scp-action` documents
    that default as "skip verification"; `easyssh-proxy` uses
    `ssh.InsecureIgnoreHostKey()`. Unpinned, anything that can answer for the
-   host receives the armed file. Read the value over a
-   session you already trust, rather than trusting a scan:
+   host receives the armed file.
+
+   **Both commands below run on your own machine**, not on the host, and the
+   point is that they are two different questions. The first runs `ssh-keygen`
+   _on_ the server over a session you have already accepted, so it is the
+   server's own statement of its key. The second asks a fresh client what the
+   host presents. A scan on its own is trust-on-first-use and would confirm an
+   impostor just as readily; the two agreeing is what makes it evidence. Host
+   and port come from the same [`vfj` alias](#reaching-the-host), so there is
+   nothing to paste:
 
    ```
    ssh vfj 'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'
-   ssh-keyscan -p <port> -t ed25519 <host> | ssh-keygen -lf -   # must agree
+
+   eval "$(ssh -G vfj | awk '/^hostname /{print "H="$2} /^port /{print "P="$2}')"
+   ssh-keyscan -p "$P" -t ed25519 "$H" | ssh-keygen -lf -   # must agree
    ```
+
+   If the first command cannot read the file, the host has made `/etc/ssh`
+   unreadable and the scan is all there is — in that case run it from two
+   different networks and compare, rather than accepting a single result.
 
    Store the `SHA256:…` field. If the deploy later fails with a fingerprint
    mismatch, the server presented a different key type — take that type's
