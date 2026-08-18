@@ -577,10 +577,27 @@ it, rather than reporting a gate it did not install.
    attack, since carrying it is the only thing the origin checks. A memorable
    value is the failure here, not a short one chosen on purpose.
 
-2. **Create both Transform Rules** (Rules → Transform Rules → Modify Request
-   Header), each setting `X-Origin-Token` to that environment's token, matched
-   on hostname. **Every hostname in an environment must be covered** — same trap
-   as [the firewall rules](#the-firewall-rules-and-how-they-were-derived): a
+2. **Create both Transform Rules.** In the dashboard: **Rules** → **Overview** →
+   **Create rule** → **Request Header Transform Rule**, once per environment.
+   Skip the templates, name the rule, choose the custom filter expression rather
+   than "all incoming requests", and paste the matching expression below. Then
+   under **Modify request header** pick **Set static**, with header name
+   `X-Origin-Token` and that environment's token as the value, and **Deploy**.
+
+   ```
+   # production rule
+   http.host in {"voteforjulia.com" "www.voteforjulia.com" "api.voteforjulia.com"}
+
+   # test rule
+   http.host in {"test.voteforjulia.com" "test-api.voteforjulia.com"}
+   ```
+
+   Space-separated inside the braces, no commas. The two sets are disjoint, so
+   neither rule can overwrite the other's header — worth knowing because request
+   header rules run in order and a later one silently wins where they overlap.
+
+   **Every hostname in an environment must be listed** — same trap as
+   [the firewall rules](#the-firewall-rules-and-how-they-were-derived): a
    production rule matching only `voteforjulia.com` leaves `api.voteforjulia.com`
    unstamped, and the API is what the spam bot posts to. Splitting one rule into
    two doubles the chances of getting this wrong, so check all five hostnames
@@ -594,8 +611,12 @@ it, rather than reporting a gate it did not install.
    done
    ```
 
-   `mail.voteforjulia.com` is deliberately absent: it is grey-clouded, gets no
-   header, and being refused is the entire point of this control.
+   `mail.voteforjulia.com` is deliberately absent, and cannot be added even by
+   mistake: **Transform Rules only apply to proxied records**, and `mail` is
+   grey-clouded precisely because Cloudflare does not carry SMTP. It therefore
+   never gets the header, and being refused is the entire point of this control.
+   Confirmed 2026-08-18 — every other hostname answers with `server: cloudflare`
+   and a `cf-ray`; `mail` answers `server: LiteSpeed` with neither.
 
 3. **Confirm the header actually arrives**, before anything enforces. Set
    `EDGE_SHARED_TOKEN` on `api_test` to the **test** token, leave
