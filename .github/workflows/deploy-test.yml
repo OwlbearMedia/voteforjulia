@@ -185,12 +185,12 @@ jobs:
       # upload itself is what would leak.
       - name: Require a pinned host key before uploading the edge token
         env:
-          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN_TEST }}
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
           HOST_FINGERPRINT: ${{ secrets.SSH_HOST_FINGERPRINT }}
         run: |
           set -euo pipefail
           if [ -n "${EDGE_TOKEN:-}" ] && [ -z "${HOST_FINGERPRINT:-}" ]; then
-            echo "EDGE_SHARED_TOKEN_TEST is set but SSH_HOST_FINGERPRINT is not, so the token would be uploaded to an unverified host. Aborting." >&2
+            echo "EDGE_SHARED_TOKEN is set but SSH_HOST_FINGERPRINT is not, so the token would be uploaded to an unverified host. Aborting." >&2
             exit 1
           fi
 
@@ -201,14 +201,15 @@ jobs:
       # guard around the substitution lives in the script, where CI can reach
       # it — see scripts/test_arm_edge_gate.py.
       #
-      # EDGE_SHARED_TOKEN_TEST, never the production secret. This pipeline
+      # This resolves to the `test` ENVIRONMENT's secret, not a repository one —
+      # a different value from production's, under the same name. This pipeline
       # deploys PR-head code into api_test and a PR-built .htaccess into the
-      # test docroot, either of which can read back whatever token is in scope.
-      # A shared token would therefore hand production's edge credential to any
-      # unmerged branch. Separate tokens, separate Transform Rules. See ADR-0020.
+      # test docroot, either of which can read back whatever token is in scope,
+      # so a value shared with production would hand any unmerged branch the
+      # production edge credential. See ADR-0020.
       - name: Arm the edge gate in the .htaccess about to be uploaded
         env:
-          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN_TEST }}
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
         run: ./scripts/arm-edge-gate.sh dist/.htaccess
 
       - name: Upload .htaccess to test staging directory

@@ -92,14 +92,23 @@ The secret lives in a GitHub Actions secret, is substituted into the built
 runner during the deploy job, and is set on the cPanel app as
 `EDGE_SHARED_TOKEN`. **It is never committed** — this repo is public.
 
-**Production and test get different tokens**, with a Transform Rule each, matched
-on hostname. Sharing one was the first version of this decision and was wrong:
-the test pipeline deploys PR-head code into `api_test` and a PR-built
-`.htaccess` into the test docroot, so a shared value is readable by any branch
-someone can push — `os.environ["EDGE_SHARED_TOKEN"]` from a deployed route is
-enough — and that value would authenticate direct requests to **production**.
-Found in review. The cost is a second rule to keep scoped correctly, and the
-hostname trap below now has two ways to go wrong instead of one.
+**Production and test get different values under the same name**, with a
+Transform Rule each, matched on hostname. Sharing one value was the first
+version of this decision and was wrong: the test pipeline deploys PR-head code
+into `api_test` and a PR-built `.htaccess` into the test docroot, so a shared
+value is readable by any branch someone can push —
+`os.environ["EDGE_SHARED_TOKEN"]` from a deployed route is enough — and it would
+authenticate direct requests to **production**. Found in review.
+
+The split is expressed as a **GitHub environment secret** rather than two
+repository secrets with different names. Two names would have left the value
+reachable from anywhere that spelled it correctly, including `ci.yml`, which
+runs pull-request-controlled workflow definitions; an environment secret is
+invisible to a job that does not declare that environment, and `production`'s
+deployment branch policy admits only `main`. It also keeps one name across the
+workflows, both cPanel apps and `app.py`, so nothing in the codebase has to know
+which environment it is running in. The cost is a second Transform Rule to keep
+scoped correctly, and the hostname trap below now has two ways to go wrong.
 
 Enforcement covers every entry point that shares the property, named explicitly
 because the sibling-path hole is the easy mistake:
@@ -161,8 +170,8 @@ create the Transform Rule, confirm the header arrives, then enforce.
 - **The secret is deployment state with no representation in the checkout**, like
   the cPanel environment variables in [hosting.md](../hosting.md#environment-variables).
   Each of the two tokens lives in three places that must agree: its Cloudflare
-  Transform Rule, its GitHub Actions secret, and `EDGE_SHARED_TOKEN` on its
-  cPanel app.
+  Transform Rule, `EDGE_SHARED_TOKEN` in its GitHub environment, and
+  `EDGE_SHARED_TOKEN` on its cPanel app.
 - **Rotation cannot be done in place, and is an outage if attempted that way.**
   The frontend compares against exactly one value baked into `.htaccess` at
   deploy time, so from the moment the Transform Rule changes until a full CI run

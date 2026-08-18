@@ -522,17 +522,31 @@ into `api_test` and a PR-built `.htaccess` into the test docroot, so anything in
 scope there is readable by an unmerged branch. A shared value would hand
 production's edge credential to any branch someone can push.
 
-Each token has to agree in three places:
+Each token has to agree in three places. **The name is the same everywhere and
+only the value differs**, so nothing — not the workflows, not
+[api/app.py](../api/app.py) — has to know which environment it is running in:
 
-|                                      | Production          | Test                     |
-| ------------------------------------ | ------------------- | ------------------------ |
-| Cloudflare Transform Rule            | apex, `www`, `api`  | `test`, `test-api`       |
-| GitHub Actions secret                | `EDGE_SHARED_TOKEN` | `EDGE_SHARED_TOKEN_TEST` |
-| cPanel app env (`EDGE_SHARED_TOKEN`) | `api-sub`           | `api_test`               |
+|                           | Production         | Test               |
+| ------------------------- | ------------------ | ------------------ |
+| Cloudflare Transform Rule | apex, `www`, `api` | `test`, `test-api` |
+| GitHub Actions secret     | `production` env   | `test` env         |
+| cPanel app env            | `api-sub`          | `api_test`         |
 
-The cPanel variable is called `EDGE_SHARED_TOKEN` on both apps — only the value
-differs, so [api/app.py](../api/app.py) reads one name and knows nothing about
-environments. Generate each one, never choose it:
+**`EDGE_SHARED_TOKEN` is an environment secret, not a repository one**, set once
+under Settings → Environments → `production` and once under `test`. That is not
+just tidiness. A repository secret is readable by any workflow that names it,
+including [ci.yml](../.github/workflows/ci.yml), which runs on `pull_request`
+from the pull request's own copy of the file — so a branch could add a step
+referencing it and read production's token out of CI. An environment secret is
+unavailable to a job that does not declare that environment, and `production`'s
+deployment branch policy admits only `main`, which a `pull_request` job's ref
+(`refs/pull/N/merge`) cannot satisfy. The jobs that need it already declare the
+right environment; nothing else in the repository can reach production's value.
+
+`SSH_HOST_FINGERPRINT` stays a repository secret: it is the same host either
+way, and a host key fingerprint is not a credential.
+
+Generate each token, never choose it:
 
 ```
 openssl rand -hex 32
@@ -620,9 +634,10 @@ it, rather than reporting a gate it did not install.
    reports. **Each deploy refuses to run once its own token secret is set and
    this is not**, so the ordering is enforced rather than remembered.
 
-4. **Add the repository secrets** — `EDGE_SHARED_TOKEN_TEST` first, since test
-   is where a mistake is survivable, then `EDGE_SHARED_TOKEN` — and deploy.
-   Until a secret exists the corresponding deploy strips the gate out of
+4. **Add `EDGE_SHARED_TOKEN` to the `test` environment first**, since test is
+   where a mistake is survivable, then to `production` — Settings →
+   Environments, not the repository secrets page — and deploy. Until an
+   environment has the secret, that environment's deploy strips the gate out of
    `.htaccess` entirely rather than leaving the placeholder — a literal `@@EDGE_TOKEN@@` would demand a header
    nobody can send and refuse every visitor.
 5. **Verify the frontend gate on test**, which is where a mistake is survivable:
@@ -693,9 +708,8 @@ Each environment rotates on its own — that is the point of them being separate
 and app:
 
 1. Clear `EDGE_TOKEN_ENFORCED` on that environment's cPanel app and restart.
-2. Delete its repository secret (`EDGE_SHARED_TOKEN` or
-   `EDGE_SHARED_TOKEN_TEST`) and re-run the deploy. The gate block is stripped
-   from `.htaccess`, and the frontend serves everyone.
+2. Delete `EDGE_SHARED_TOKEN` from that environment and re-run the deploy. The
+   gate block is stripped from `.htaccess`, and the frontend serves everyone.
 3. Change that environment's Transform Rule to the new value.
 4. Set the new secret, deploy, set the new `EDGE_SHARED_TOKEN` value on that
    app, restart, then re-arm `EDGE_TOKEN_ENFORCED` — steps 4–7 above, in order.
