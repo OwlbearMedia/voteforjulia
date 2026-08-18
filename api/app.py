@@ -591,7 +591,46 @@ def _origin_rejected(endpoint_name: str) -> bool:
 # above, which asks which page sent the request -- this only asks whether the
 # request came through the edge at all.
 _EDGE_TOKEN_HEADER = "X-Origin-Token"
-_EDGE_TOKEN = env("EDGE_SHARED_TOKEN", "").strip()
+
+# Matches MIN_TOKEN_LENGTH in scripts/arm-edge-gate.sh. The two ends read the
+# same secret from different places, so they have to agree on what a valid one
+# is; see ADR-0020 on why entropy is the control here.
+_EDGE_TOKEN_MIN_LENGTH = 32
+
+
+def _edge_token_setting() -> str:
+    """The edge token, or empty if it fails the format the deploy enforces.
+
+    The deploy validates the GitHub secret, but the API's copy is typed into
+    cPanel by hand and that check never sees it -- so a value too weak to arm
+    the frontend could still arm this. Degrades to unset for the reason
+    `_int_setting` degrades, and never logs the value. See ADR-0020.
+    """
+    raw = env("EDGE_SHARED_TOKEN", "").strip()
+    if not raw:
+        return ""
+
+    # `isalnum` alone accepts non-ASCII digits and letters; `isascii` is what
+    # pins this to the deploy's [A-Za-z0-9].
+    if not (raw.isascii() and raw.isalnum()):
+        logger.error(
+            "EDGE_SHARED_TOKEN must be ASCII alphanumeric; ignoring it and leaving the origin open."
+        )
+        return ""
+
+    if len(raw) < _EDGE_TOKEN_MIN_LENGTH:
+        logger.error(
+            "EDGE_SHARED_TOKEN must be at least %d characters; got %d. "
+            "Ignoring it and leaving the origin open.",
+            _EDGE_TOKEN_MIN_LENGTH,
+            len(raw),
+        )
+        return ""
+
+    return raw
+
+
+_EDGE_TOKEN = _edge_token_setting()
 
 # Attacker-chosen text on its way to a log line, same as the origin above.
 _MAX_LOGGED_PATH_CHARS = 128

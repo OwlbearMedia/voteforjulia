@@ -629,7 +629,9 @@ components:
         edge sets it. Seeing this from a real user means the Transform Rule is
         gone.
 
-        Off unless both `EDGE_SHARED_TOKEN` and `EDGE_TOKEN_ENFORCED` are set;
+        Off unless both `EDGE_SHARED_TOKEN` and `EDGE_TOKEN_ENFORCED` are
+        set, and the token is at least 32 ASCII alphanumeric characters —
+        one that is not is logged and ignored, leaving this off;
         with the token set and enforcement off, the refusal is logged and the
         request proceeds. See ADR-0020.
       content:

@@ -1,7 +1,9 @@
 import os
+import re
 import subprocess
 import sys
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import api.app as app_module
@@ -147,6 +149,90 @@ class IntSettingTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "5")
+
+
+class EdgeTokenSettingTests(unittest.TestCase):
+    """The API validates the edge token the way the deploy does. See ADR-0020."""
+
+    VALID = "a" * 32
+
+    def test_reads_a_valid_token(self) -> None:
+        # The positive case, without which every assertion below passes on a
+        # function that returns "" unconditionally.
+        with mock.patch.dict(os.environ, {"EDGE_SHARED_TOKEN": self.VALID}, clear=False):
+            self.assertEqual(app_module._edge_token_setting(), self.VALID)
+
+    def test_an_unset_token_is_empty_and_silent(self) -> None:
+        # Local runs and CI. Not a misconfiguration, so it must not log one.
+        with (
+            mock.patch.dict(os.environ, {"EDGE_SHARED_TOKEN": ""}, clear=False),
+            self.assertNoLogs("api.app", level="ERROR"),
+        ):
+            self.assertEqual(app_module._edge_token_setting(), "")
+
+    def test_a_token_under_the_length_floor_is_refused(self) -> None:
+        # The realistic failure ADR-0020 names: a memorable value, not a short
+        # one chosen on purpose. Refused here rather than trusted, because the
+        # deploy's check never sees the copy typed into cPanel.
+        for raw in ("short", "a" * 31):
+            with (
+                self.subTest(raw=raw),
+                mock.patch.dict(os.environ, {"EDGE_SHARED_TOKEN": raw}, clear=False),
+                self.assertLogs("api.app", level="ERROR") as logs,
+            ):
+                self.assertEqual(app_module._edge_token_setting(), "")
+
+            # Never the value: this is a secret on its way to a log file.
+            self.assertNotIn(raw, logs.output[0])
+            self.assertIn("at least 32 characters", logs.output[0])
+
+    def test_a_non_ascii_alphanumeric_token_is_refused(self) -> None:
+        # `isalnum` alone accepts the last two: non-ASCII digits and letters
+        # that the deploy's [A-Za-z0-9] rejects. All four are long enough, so
+        # the message is asserted -- otherwise the length guard could be the
+        # one firing and this would still pass.
+        interior_space = "a" * 16 + " " + "a" * 16
+        for raw in ("a" * 31 + "-", interior_space, "a" * 31 + "\u00e9", "a" * 31 + "\u0663"):
+            with (
+                self.subTest(raw=raw),
+                mock.patch.dict(os.environ, {"EDGE_SHARED_TOKEN": raw}, clear=False),
+                self.assertLogs("api.app", level="ERROR") as logs,
+            ):
+                self.assertEqual(app_module._edge_token_setting(), "")
+
+            self.assertNotIn(raw, logs.output[0])
+            self.assertIn("ASCII alphanumeric", logs.output[0])
+
+    def test_the_length_floor_agrees_with_the_deploy(self) -> None:
+        # Two implementations of one rule, in two languages, reading the same
+        # secret from different places. Nothing else would notice them parting.
+        script = Path(__file__).resolve().parent.parent / "scripts" / "arm-edge-gate.sh"
+        match = re.search(r"^readonly MIN_TOKEN_LENGTH=(\d+)$", script.read_text(), re.MULTILINE)
+
+        self.assertIsNotNone(match, "MIN_TOKEN_LENGTH not found in arm-edge-gate.sh")
+        self.assertEqual(int(match.group(1)), app_module._EDGE_TOKEN_MIN_LENGTH)
+
+    def test_a_weak_token_cannot_arm_the_gate(self) -> None:
+        # The property that matters, end to end in a fresh interpreter: the
+        # module-level token a bad value produces is the unset one, so the
+        # `before_request` hook refuses nothing rather than guarding the origin
+        # with a guessable secret.
+        env = dict(
+            os.environ,
+            EMAIL_ADDRESS="a@b.com",
+            EMAIL_PASSWORD="x",
+            EDGE_SHARED_TOKEN="letmein",
+            EDGE_TOKEN_ENFORCED="true",
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", "import api.app as m; print(repr(m._EDGE_TOKEN))"],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "''")
 
 
 class TimeoutConfigTests(unittest.TestCase):
