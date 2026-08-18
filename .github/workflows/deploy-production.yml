@@ -103,6 +103,19 @@ jobs:
       url: https://voteforjulia.com
 
     steps:
+      # arm-edge-gate.sh has to be on disk before the .htaccess is uploaded, and
+      # `checkout` cleans the workspace — so it runs ahead of the artifact
+      # download rather than after it. Pinned to the head SHA like every other
+      # checkout here, which is safe precisely where deploy-test.yml's is not:
+      # this workflow only runs for a `push` to `main` from this repository, so
+      # the head SHA is a commit on `main` rather than an unmerged branch. See
+      # the longer note in deploy-test.yml, and ADR-0020.
+      - name: Check out the deploy scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
       - name: Download build output
         uses: actions/download-artifact@v8
         with:
@@ -135,6 +148,34 @@ jobs:
           overwrite: true
           strip_components: 1
 
+      # The .htaccess uploaded below is the only thing either workflow sends
+      # that carries a secret, and appleboy's actions skip host-key verification
+      # entirely when `fingerprint` is empty — scp-action documents that default
+      # as "skip verification", and easyssh-proxy uses InsecureIgnoreHostKey().
+      # Refuse to upload rather than upload unverified. Checked here because the
+      # upload itself is what would leak.
+      - name: Require a pinned host key before uploading the edge token
+        env:
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+          HOST_FINGERPRINT: ${{ secrets.SSH_HOST_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${EDGE_TOKEN:-}" ] && [ -z "${HOST_FINGERPRINT:-}" ]; then
+            echo "EDGE_SHARED_TOKEN is set but SSH_HOST_FINGERPRINT is not, so the token would be uploaded to an unverified host. Aborting." >&2
+            exit 1
+          fi
+
+      # Substituted on the runner, which is ephemeral and single-tenant, rather
+      # than over SSH on the shared host where the token has to come to rest
+      # anyway. What matters is that it happens in the DEPLOY job: the build
+      # job's output is an artifact, and an artifact is downloadable. Every
+      # guard around the substitution lives in the script, where CI can reach
+      # it — see scripts/test_arm_edge_gate.py.
+      - name: Arm the edge gate in the .htaccess about to be uploaded
+        env:
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+        run: ./scripts/arm-edge-gate.sh dist/.htaccess
+
       - name: Upload .htaccess to staging directory
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -143,29 +184,12 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           source: dist/.htaccess
           target: ./public_html_next
           overwrite: true
           strip_components: 1
 
-      # cPanel's IP Blocker appends `deny from` lines to the .htaccess of EVERY
-      # document root on the account, and renders its UI list from
-      # public_html/.htaccess alone. Replacing that file wholesale therefore
-      # drops the main site's blocks *and* empties the screen, while the copies
-      # under ~/api-sub keep enforcing invisibly — so an address stays refused
-      # by api.voteforjulia.com with nothing left in cPanel to un-block it.
-      # Observed 2026-08-10; see docs/hosting.md.
-      #
-      # So the block is rebuilt into the staged file before the swap, from the
-      # UNION of the live docroot and the API docroot. The union — rather than
-      # merely preserving public_html's copy — is what repairs an already
-      # orphaned entry: it reappears in the UI, where removing it clears every
-      # docroot at once. It never widens enforcement, because a unioned address
-      # is by definition already being refused by the API.
-      #
-      # Reconstructed rather than copied verbatim so the output does not depend
-      # on how the source files happen to be ordered. The <Files 403.shtml>
-      # stanza is cPanel's own, and keeps the 403 document itself reachable.
       - name: Carry cPanel IP Blocker rules into the staged .htaccess
         uses: appleboy/ssh-action@v1.2.5
         with:
