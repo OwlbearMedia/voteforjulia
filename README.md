@@ -404,14 +404,36 @@ its access control.
 
 ### Required GitHub Secrets
 
+**Where a secret is stored is part of its definition.** Everything the deploys
+use is set per environment, under Settings → Environments → `production` or
+`test`, so a job that does not declare an environment cannot read it. Only
+`CODECOV_TOKEN` sits at the repository level, because CI needs it and CI declares
+no environment. See
+[docs/hosting.md](docs/hosting.md#every-deploy-secret-is-environment-scoped) for
+why, and for the empty-string trap this creates when a job is missing its
+`environment:` line.
+
+On the `production` and `test` environments both:
+
 - SSH_HOST
 - SSH_USERNAME
 - SSH_PRIVATE_KEY
 - SSH_PASSPHRASE
 - SSH_PORT
+- SSH_HOST_FINGERPRINT (same value in both — it is one host, and a fingerprint is not a credential)
+- EDGE_SHARED_TOKEN (different value per environment; see [docs/hosting.md](docs/hosting.md#closing-the-direct-to-origin-path))
+
+On `production` only:
+
 - NEW_RELIC_API_KEY (New Relic User key, `NRAK-…`, for uploading source maps in the production deploy)
+
+On `test` only:
+
+- GOOGLE_SHEETS_SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON and GOOGLE_SHEETS_YARDSIGN_WORKSHEET (the same values the [E2E tests](#e2e-tests-cypress) need locally — the Cypress job in the test deploy reads the submitted rows back out of the sheet and deletes them, so without these the e2e job fails after an otherwise good deploy)
+
+On the repository:
+
 - CODECOV_TOKEN (repository upload token from [codecov.io](https://codecov.io); enables the coverage upload and the README coverage badge)
-- GOOGLE_SHEETS_SPREADSHEET_ID and GOOGLE_SERVICE_ACCOUNT_JSON (the same two values the [E2E tests](#e2e-tests-cypress) need locally — the Cypress job in the test deploy reads the submitted rows back out of the sheet and deletes them, so without these the e2e job fails after an otherwise good deploy)
 
 ### Test coverage (Codecov)
 

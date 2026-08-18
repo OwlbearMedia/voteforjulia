@@ -61,7 +61,10 @@ Host vfj
 ```
 
 The four values are the same ones held as the `SSH_HOST`, `SSH_PORT`,
-`SSH_USERNAME` and `SSH_PRIVATE_KEY` repository secrets. `ssh -G vfj` prints what
+`SSH_USERNAME` and `SSH_PRIVATE_KEY` secrets. Those live on the `production` and
+`test` environments, not on the repository — see
+[Every deploy secret is environment-scoped](#every-deploy-secret-is-environment-scoped).
+`ssh -G vfj` prints what
 the alias resolves to without connecting, which is the quickest way to confirm it
 is set up and the source of the host and port in the fingerprint step below.
 
@@ -559,8 +562,11 @@ deployment branch policy admits only `main`, which a `pull_request` job's ref
 (`refs/pull/N/merge`) cannot satisfy. The jobs that need it already declare the
 right environment; nothing else in the repository can reach production's value.
 
-`SSH_HOST_FINGERPRINT` stays a repository secret: it is the same host either
-way, and a host key fingerprint is not a credential.
+`SSH_HOST_FINGERPRINT` holds the same value in both environments: it is the same
+host either way, and a host key fingerprint is not a credential. It is still
+stored per environment rather than on the repository, so that
+[the rule](#every-deploy-secret-is-environment-scoped) has no exceptions to
+remember.
 
 The order is what keeps this from being an outage. Every step fails open, so
 stopping halfway leaves the site working and the gap merely still open.
@@ -840,6 +846,37 @@ Consequences worth knowing:
 - **Bot Fight Mode**, at least until the e2e suite and the synthetic monitors
   have been observed passing with it on. It challenges by IP reputation, and
   both run from cloud ranges.
+
+## Every deploy secret is environment-scoped
+
+[The edge token's reasoning](#closing-the-direct-to-origin-path) is not specific to that token. **No secret the
+deploys use is stored on the repository** — every one of them lives on
+`production` or `test`. The repository level holds `CODECOV_TOKEN` and nothing
+else, because CI needs it and CI declares no environment.
+
+The `SSH_*` secrets were duplicated at both levels until 2026-08-18, which meant
+`ci.yml` could still read a production-capable private key from a branch by the
+route described there. The environment copies were already in place and
+already winning — an environment secret shadows a repository secret of the same
+name — so the repository copies were doing nothing except staying readable.
+
+**The trap when removing one: a job reads environment secrets only if it names
+the environment.** `deploy-production.yml`'s `build-frontend` uses
+`NEW_RELIC_API_KEY` and is not a deploy job, so it had no `environment:` line;
+dropping the repository copy left the reference resolving to an empty string.
+Nothing goes red — [scripts/upload-sourcemaps.mjs](../scripts/upload-sourcemaps.mjs)
+exits 0 when the key is absent — so the deploy succeeds and the next production
+stack trace is unmapped. Before deleting a repository secret, list every job
+naming it and confirm each one declares an environment that holds it:
+
+```
+gh secret list; gh secret list --env production; gh secret list --env test
+```
+
+Adding `environment:` to a `workflow_run` job costs nothing here: such a job runs
+with `github.ref` set to the default branch, so `production`'s `main` branch
+policy admits it — the same reason [the note above](#deploy-workflow-changes-cannot-be-tested-from-a-pr)
+warns that the policy is not a trust boundary.
 
 ## Deploy workflow changes cannot be tested from a PR
 

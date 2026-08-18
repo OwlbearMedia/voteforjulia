@@ -50,6 +50,12 @@ jobs:
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    # Declared for the secret scope, not the gate: `NEW_RELIC_API_KEY` is a
+    # `production` environment secret, and a job that does not name the
+    # environment reads an empty string. upload-sourcemaps.mjs exits 0 on an
+    # absent key, so the failure is a silently unmapped stack trace rather than
+    # a red build. No `url:` — this job deploys nothing.
+    environment: production
 
     steps:
       - name: Checkout repository
