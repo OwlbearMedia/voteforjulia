@@ -191,9 +191,11 @@ create the Transform Rule, confirm the header arrives, then enforce.
   build job because the build job's output is an artifact, and an artifact is
   downloadable. `appleboy`'s actions skip host-key verification when no
   fingerprint is given, so the deploy now pins one and refuses to upload with a
-  token configured and no fingerprint. The other twenty SSH and SCP steps remain
-  unpinned — they carry no secret, but they do carry what gets deployed, which
-  is a separate decision worth taking on its own.
+  token configured and no fingerprint. The other sixteen SSH and SCP steps remain
+  unpinned — they carry no secret, but they do carry what gets deployed, so the
+  exposure there is integrity rather than disclosure, and pinning them all would
+  put a total deploy outage one host-key rotation away. Tracked as
+  [#148](https://github.com/OwlbearMedia/voteforjulia/issues/148).
 - **Guessing the token is the whole attack, and the origin meters nothing.**
   Carrying the header is the only thing checked, and a caller refused here never
   reached the edge, so the 403 answers guesses as fast as the origin will serve
