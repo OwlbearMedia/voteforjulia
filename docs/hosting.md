@@ -647,23 +647,35 @@ it, rather than reporting a gate it did not install.
    `ssh.InsecureIgnoreHostKey()`. Unpinned, anything that can answer for the
    host receives the armed file.
 
-   **Pin the key type the deploy will actually negotiate, which is not the one
-   `ssh` picks.** The host offers RSA, ECDSA and Ed25519. OpenSSH prefers
-   Ed25519; Go's `x/crypto/ssh` — what `easyssh-proxy` uses — lists
-   `rsa-sha2-256` and the ECDSA algorithms _ahead_ of `ssh-ed25519` in
-   `supportedHostKeyAlgos`, so the deploy is presented the **RSA** host key.
-   Pinning what `ssh` shows you gives a fingerprint mismatch and a refused
-   deploy. Ask the server directly, with a client told to prefer Go's order:
+   **Pin the key type the deploy negotiates, which is neither the one `ssh`
+   picks nor the one Go's current source suggests.** The host offers RSA, ECDSA
+   and Ed25519, and which is presented depends on the client's preference order.
+   OpenSSH prefers Ed25519. Go's `x/crypto/ssh` orders `supportedHostKeyAlgos`
+   differently — **and that order changed between releases**, so it has to be
+   read from the version the action actually pins, not from `master`:
+
+   | `x/crypto` version                                      | First non-certificate algorithm |
+   | ------------------------------------------------------- | ------------------------------- |
+   | v0.17.0 — via `scp-action@v0.1.7` → `drone-scp` v1.6.14 | `ecdsa-sha2-nistp256`           |
+   | current `master`                                        | `rsa-sha2-256`                  |
+
+   So today the deploy is presented the **ECDSA** host key. Ask the server
+   directly, with a client told to use the pinned version's order:
 
    ```
    ssh -v -o BatchMode=yes \
-       -o HostKeyAlgorithms=rsa-sha2-256,rsa-sha2-512,ecdsa-sha2-nistp256,ssh-ed25519 \
+       -o HostKeyAlgorithms=ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,rsa-sha2-256,ssh-ed25519 \
        vfj true 2>&1 | grep 'Server host key'
    ```
 
    ```
-   debug1: Server host key: ssh-rsa SHA256:V5BKW36AxulrN7mV0ooeYp01dHT9S+j8kwxdrA5ICSo
+   debug1: Server host key: ecdsa-sha2-nistp256 SHA256:StI193FHo9KRMo+ftLOC/CRMLeVLsEF0vTqvJdLmDmw
    ```
+
+   Getting this wrong is loud and safe: the handshake fails, `drone-scp`
+   reports `ssh: handshake failed: ssh: host key fingerprint mismatch`, and
+   the deploy stops before uploading anything. It costs a run, not an outage
+   — measured 2026-08-18, when this page still said RSA.
 
    **Cross-check it before trusting it**, because that single connection is
    trust-on-first-use and would confirm an impostor as readily as the real host.
@@ -685,9 +697,9 @@ it, rather than reporting a gate it did not install.
    `SHA256:…` token itself and nothing around it**, prefix included:
 
    ```
-   debug1: Server host key: ssh-rsa SHA256:V5BKW36Axu…   ← from the ssh -v line
-   [203.0.113.10]:50288 RSA        SHA256:V5BKW36Axu…    ← from known_hosts
-                                   ^^^^^^^^^^^^^^^^^ store exactly this
+   debug1: Server host key: ecdsa-sha2-nistp256 SHA256:StI193FHo9…  ← ssh -v
+   [203.0.113.10]:50288 ECDSA                  SHA256:StI193FHo9…  ← known_hosts
+                                               ^^^^^^^^^^^^^^^^^ store this
    ```
 
    The surrounding fields are expected to differ; only the `SHA256:` token has
