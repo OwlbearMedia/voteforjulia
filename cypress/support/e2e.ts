@@ -58,6 +58,25 @@ beforeEach(() => {
   autErrors.length = 0;
 });
 
+// Probe the API once per run, whether or not anything fails.
+//
+// This used to live only in the failure path, which meant a green run printed
+// nothing — so there was no baseline to compare a failure against, and a run
+// that was one flaky decision away from breaking looked identical to a healthy
+// one. On 2026-08-14 an interception took out both form specs, the re-run
+// passed, and neither run left any evidence of what had answered.
+//
+// The task de-duplicates across spec files, so this costs two requests per run
+// rather than two per spec.
+before(() => {
+  const baseUrl = Cypress.config('baseUrl');
+  cy.task(
+    'probeApi',
+    { origin: baseUrl ? new URL(baseUrl).origin : '', when: 'baseline, before any spec ran' },
+    { log: false }
+  );
+});
+
 // Record, but do not swallow: returning undefined leaves Cypress's default
 // behaviour (an uncaught app error fails the test) alone.
 Cypress.on('uncaught:exception', (err) => {
@@ -102,7 +121,14 @@ afterEach(function () {
   // `Failed to fetch`. Without this the two are indistinguishable in the log:
   // a healthy site serving a page whose submit button quietly cannot reach the
   // API looks exactly like a site that is fine.
-  cy.task('probeApi', { origin: url ? new URL(url).origin : '' }, { log: false });
+  // `force` because the baseline above has already run: an interception can
+  // begin part-way through a run, so the reading taken at the moment of failure
+  // is the one that matters most.
+  cy.task(
+    'probeApi',
+    { origin: url ? new URL(url).origin : '', when: 'after a failure', force: true },
+    { log: false }
+  );
 
   // Ask for the same URL again, straight from the Cypress proxy, so the log
   // shows the status, headers and body the runner is being served right now.

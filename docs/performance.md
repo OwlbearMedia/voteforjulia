@@ -194,7 +194,7 @@ always audits it.
 - **Heading order.** `JuliaModal`'s own title bar emitted an `<h3>` under the
   page's visually-hidden `<h1>`. It is now an `<h2>` with `mt-0` to cancel the
   base `h2` prose margin, and
-  [tests/unit/JuliaModal.spec.ts](../../tests/unit/JuliaModal.spec.ts) asserts
+  [tests/unit/JuliaModal.spec.ts](../tests/unit/JuliaModal.spec.ts) asserts
   the level so a change back fails a unit test rather than only Lighthouse.
 
 **A caveat that still applies at 1.00.** Nothing in page content was ever

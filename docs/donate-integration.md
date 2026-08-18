@@ -10,7 +10,8 @@ console errors on the page that takes money.
 <dbox-widget campaign="julia-hamann-for-mankato-mayor" type="donation_form" />
 ```
 
-`https://donorbox.org/widgets.js` (loaded via `scripts` in `buildPageHead`)
+`https://donorbox.org/widgets.js` (appended from `onMounted`, for reasons in
+"Their constructor throws" below)
 defines `dbox-widget` as a **custom element that renders into our own document**
 using shadow DOM. It is not a cross-origin frame, so the donation form runs with
 our origin's privileges, under our CSP, in our permissions-policy context.

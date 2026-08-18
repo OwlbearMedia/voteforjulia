@@ -119,7 +119,9 @@ sequenceDiagram
     participant S as Google Sheets
 
     B->>A: POST /send-email (JSON, cross-origin)
+    A->>A: Origin on the allowlist? (403 if not, before any cost)
     A->>A: rate-limit bucket, per IP per endpoint
+    A->>A: take one of 12 in-flight slots (503 if none free)
     A->>A: parse + validate, then log field NAMES only
     A->>M: notification email to the campaign
     M-->>A: accepted
@@ -216,9 +218,49 @@ credentials in the system are server-side env vars (SMTP password, Google servic
 account), which is why the `$`-in-env-var trap in
 [hosting.md](hosting.md#app-env-vars-must-not-contain-) matters so much.
 
-**Abuse.** Per-IP, per-endpoint fixed-window rate limiting in process memory
-([ADR-0009](adr/0009-in-process-rate-limiting.md)). No CAPTCHA — the forms are
-low-value targets and a CAPTCHA would cost real conversions on a volunteer form.
+**Abuse.** Two per-IP, per-endpoint rate-limit tiers
+([ADR-0009](adr/0009-in-process-rate-limiting.md),
+[ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md)). The burst tier
+(5/60s) counts in process memory; the sustained tier (10/hour) counts in SQLite
+under the app's `tmp/`, because Passenger reaps idle workers and an hour-long
+window held in memory would restart with them. The sustained tier fails open, so
+a limiter that loses its database degrades to the burst tier rather than taking
+the forms down. Both forms also carry a `display: none` honeypot field, which is
+the only one of these controls that still works after an attacker changes IP.
+No CAPTCHA — the forms are low-value targets and a CAPTCHA would cost real
+conversions on a volunteer form.
+
+In front of all of them is an origin check
+([ADR-0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md)): a POST
+whose `Origin` is present and not on the CORS allowlist is refused with `403`
+before the limiter runs. It covers the case per-IP limiting is blind to by
+construction — a page elsewhere auto-submitting the form from its visitors'
+browsers, where every request arrives on a different victim's address and no
+limit is ever approached. **The CORS allowlist alone never prevented this**: a
+form-encoded POST is a CORS simple request, so it is sent with no preflight and
+CORS only ever decided who could read the reply. An absent `Origin` is allowed,
+because the callers that send none are the ones rate limiting does bound.
+
+Above all of them sits a cap on **concurrent** submissions
+([ADR-0018](adr/0018-cap-concurrent-submissions.md)): twelve at a time across
+every worker, counted in the same SQLite store, with the overflow refused as
+`503`. The others bound who may ask and how often; this bounds how much work
+runs at once, which is a different question with a different trigger. A
+submission holds a worker for as long as two SMTP connections and a sheet write
+take, so the case it is really for is an upstream slowdown — where every holder
+is a legitimate supporter and no rate limit is anywhere near being reached —
+piling workers up against the host's memory cap.
+
+Outside all of them is the edge itself
+([ADR-0020](adr/0020-authenticate-the-origin-path.md)). Cloudflare stamps every
+proxied request with a shared secret header, and both the frontend `.htaccess`
+and a `before_request` hook in the API refuse anything arriving without it — so
+a caller that reads the origin address off the MX record and connects directly
+no longer reaches either. That decision also records why the obvious version,
+an allowlist of Cloudflare's IP ranges, cannot work here: the host restores the
+real client address before access control sees it, so the allowlist refuses the
+proxy along with everyone else. Both enforcement points fail open until switched
+on, and the secret is deployment state with no representation in the checkout.
 
 **Observability.** New Relic Browser for client errors and Core Web Vitals, GA4
 for traffic ([ADR-0011](adr/0011-browser-side-observability.md)), and the New
@@ -240,29 +282,35 @@ What is watched, what the alerts mean, and what to do when one fires is
 are version-controlled in [monitoring/](../monitoring/).
 
 **Testing.** Vitest for units, Cypress against the deployed test site for the two
-form flows end to end (they submit real data and clean up after themselves), and
-pytest for the API. The OpenAPI spec is kept honest by a test that diffs it
+form flows end to end (they submit real data and clean up after themselves) and
+for the Donorbox widget on `/donate`, and pytest for the API. The OpenAPI spec is
+kept honest by a test that diffs it
 against the app ([api/test_openapi_spec.py](../api/test_openapi_spec.py)) rather
 than by discipline.
 
 ## Decision records
 
-| #                                                   | Decision                                                        | Status                                                            |
-| --------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
-| [0001](adr/0001-shared-hosting-over-aws.md)         | Shared LiteSpeed hosting instead of AWS S3 + ECS Fargate        | Accepted                                                          |
-| [0002](adr/0002-static-site-generation.md)          | Prerender the frontend with vite-ssg                            | Accepted                                                          |
-| [0003](adr/0003-separate-api-subdomain.md)          | Run the API on its own subdomain, cross-origin                  | Accepted                                                          |
-| [0004](adr/0004-no-database.md)                     | No database — email plus a Google Sheet is the system of record | Accepted                                                          |
-| [0005](adr/0005-outsource-donations.md)             | Outsource donations to Donorbox/Stripe                          | Accepted                                                          |
-| [0006](adr/0006-scp-deploy-with-atomic-swap.md)     | Deploy by scp from GitHub Actions with an atomic directory swap | Accepted                                                          |
-| [0007](adr/0007-shared-test-environment.md)         | One shared test environment on the same host                    | Accepted                                                          |
-| [0008](adr/0008-pin-python-to-host.md)              | Pin Python to the host's interpreter                            | Accepted                                                          |
-| [0009](adr/0009-in-process-rate-limiting.md)        | Rate-limit in process memory                                    | Superseded by [0014](adr/0014-do-not-trust-forwarding-headers.md) |
-| [0010](adr/0010-edge-policy-in-htaccess.md)         | Keep security, caching, and URL policy in `.htaccess`           | Accepted                                                          |
-| [0011](adr/0011-browser-side-observability.md)      | Browser-side observability only                                 | Superseded by [0013](adr/0013-server-side-apm.md)                 |
-| [0012](adr/0012-imagekit-for-images.md)             | Serve images from ImageKit rather than the host                 | Accepted                                                          |
-| [0013](adr/0013-server-side-apm.md)                 | Instrument the API server-side, and alert on it                 | Accepted                                                          |
-| [0014](adr/0014-do-not-trust-forwarding-headers.md) | Trust a forwarding header only when one is configured           | Accepted                                                          |
-| [0015](adr/0015-performance-budgets-in-ci.md)       | Gate CI on performance budgets                                  | Accepted                                                          |
+| #                                                                | Decision                                                        | Status                                                                                                                           |
+| ---------------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| [0001](adr/0001-shared-hosting-over-aws.md)                      | Shared LiteSpeed hosting instead of AWS S3 + ECS Fargate        | Accepted                                                                                                                         |
+| [0002](adr/0002-static-site-generation.md)                       | Prerender the frontend with vite-ssg                            | Accepted                                                                                                                         |
+| [0003](adr/0003-separate-api-subdomain.md)                       | Run the API on its own subdomain, cross-origin                  | Accepted                                                                                                                         |
+| [0004](adr/0004-no-database.md)                                  | No database — email plus a Google Sheet is the system of record | Accepted                                                                                                                         |
+| [0005](adr/0005-outsource-donations.md)                          | Outsource donations to Donorbox/Stripe                          | Accepted                                                                                                                         |
+| [0006](adr/0006-scp-deploy-with-atomic-swap.md)                  | Deploy by scp from GitHub Actions with an atomic directory swap | Accepted                                                                                                                         |
+| [0007](adr/0007-shared-test-environment.md)                      | One shared test environment on the same host                    | Accepted                                                                                                                         |
+| [0008](adr/0008-pin-python-to-host.md)                           | Pin Python to the host's interpreter                            | Accepted                                                                                                                         |
+| [0009](adr/0009-in-process-rate-limiting.md)                     | Rate-limit in process memory                                    | Superseded by [0014](adr/0014-do-not-trust-forwarding-headers.md) and [0016](adr/0016-second-tier-rate-limiting-and-honeypot.md) |
+| [0010](adr/0010-edge-policy-in-htaccess.md)                      | Keep security, caching, and URL policy in `.htaccess`           | Accepted                                                                                                                         |
+| [0011](adr/0011-browser-side-observability.md)                   | Browser-side observability only                                 | Superseded by [0013](adr/0013-server-side-apm.md)                                                                                |
+| [0012](adr/0012-imagekit-for-images.md)                          | Serve images from ImageKit rather than the host                 | Accepted                                                                                                                         |
+| [0013](adr/0013-server-side-apm.md)                              | Instrument the API server-side, and alert on it                 | Accepted                                                                                                                         |
+| [0014](adr/0014-do-not-trust-forwarding-headers.md)              | Trust a forwarding header only when one is configured           | Accepted                                                                                                                         |
+| [0015](adr/0015-performance-budgets-in-ci.md)                    | Gate CI on performance budgets                                  | Accepted                                                                                                                         |
+| [0016](adr/0016-second-tier-rate-limiting-and-honeypot.md)       | Add a persistent long-window rate limit and a form honeypot     | Accepted                                                                                                                         |
+| [0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md) | Refuse cross-site submissions, and cache the deep health probe  | Accepted                                                                                                                         |
+| [0018](adr/0018-cap-concurrent-submissions.md)                   | Cap concurrent submissions, and close three smaller gaps        | Accepted                                                                                                                         |
+| [0019](adr/0019-cloudflare-in-front.md)                          | Put Cloudflare in front of the web hostnames                    | Accepted                                                                                                                         |
+| [0020](adr/0020-authenticate-the-origin-path.md)                 | Authenticate the edge-to-origin path with a shared secret       | Accepted                                                                                                                         |
 
 New ADRs: see [adr/README.md](adr/README.md).

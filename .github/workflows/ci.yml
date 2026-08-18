@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 1
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6.0.9
+        uses: pnpm/action-setup@v6.0.10
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -107,7 +107,7 @@ jobs:
           fetch-depth: 1
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6.0.9
+        uses: pnpm/action-setup@v6.0.10
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -139,7 +139,7 @@ jobs:
         # `always()` so a failed budget or assertion still produces the reports
         # that explain it — without them the failure message is all you get.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: performance-reports
           path: |

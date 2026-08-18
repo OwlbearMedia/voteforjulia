@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 import smtplib
+import unicodedata
 from contextlib import contextmanager
 from email.message import Message
 from email.mime.multipart import MIMEMultipart
@@ -18,6 +19,75 @@ _YARD_SIGN_CONFIRMATION_TEMPLATE = (
     Path(__file__).resolve().parents[1] / "email" / "yard-sign-email-template.html"
 )
 _SENDER_DISPLAY_NAME = "Julia Hamann"
+
+# The greeting is the one piece of caller-supplied text in a message the
+# campaign's own domain signs and sends to an address the caller also chose, so
+# it is the one place someone could put chosen words in front of a stranger
+# under Julia's name. Cut to a length and a character set that still fits every
+# real first name. See ADR-0018.
+_MAX_GREETING_LENGTH = 30
+
+# No `.`, deliberately: it is what lets a domain survive the filter
+# ("evil.example"), and some mail clients linkify one. The cost is that "J."
+# greets as "J", which no real supporter will notice.
+_GREETING_EXTRA_CHARS = frozenset(" '-")
+
+# Letters and combining marks. `M` is not optional padding: in Indic and many
+# other scripts the marks carry vowels, so dropping them rewrites the name.
+_GREETING_CHARACTER_CATEGORIES = frozenset("LM")
+
+# ZWNJ and ZWJ, allowed by codepoint rather than by category. They are `Cf`
+# (format), and Persian, Urdu and Indic names use them to control joining --
+# "علی‌رضا" renders as one word without the ZWNJ. Admitting the whole `Cf`
+# category instead would also admit the bidi overrides (U+202D/U+202E), which
+# exist to make text display in an order it is not written in.
+_GREETING_JOINERS = frozenset("\u200c\u200d")
+
+# Trimmed from the ends, where a joiner or a separator has nothing to join or
+# separate. Kept out of the middle, where they are part of the name.
+_GREETING_EDGE_CHARS = "".join(sorted(_GREETING_EXTRA_CHARS | _GREETING_JOINERS))
+
+
+def _safe_greeting(raw: str, fallback: str) -> str:
+    """A first name fit to put after "Hi", or `fallback` if nothing survives.
+
+    Keeps Unicode letters (`L*`) **and combining marks** (`M*`), which is the
+    whole difficulty. `str.isalpha()` is false for a mark, so filtering on it
+    silently rewrites names rather than passing them: decomposed "José" loses
+    its accent, and Indic names lose their vowel signs outright -- "अनुराधा"
+    became "अनरध", which is not a spelling of anything. Caught by Copilot on
+    PR #138.
+
+    Digits and punctuation are still dropped, which is what keeps a phone
+    number or a URL out of the greeting line, and at least one letter must
+    survive so a string of bare marks cannot get through.
+
+    Only the confirmation is sanitised -- the notification to the campaign and
+    the sheet row keep the submitted value verbatim, because those are what a
+    volunteer follows up on.
+    """
+    # NFC first, so a decomposed name is measured and truncated as the
+    # characters a reader sees rather than as base-plus-mark pairs.
+    normalized = unicodedata.normalize("NFC", raw)
+
+    kept = "".join(
+        ch
+        for ch in normalized
+        if unicodedata.category(ch)[0] in _GREETING_CHARACTER_CATEGORIES
+        or ch in _GREETING_EXTRA_CHARS
+        or ch in _GREETING_JOINERS
+    )
+    collapsed = " ".join(kept.split())[:_MAX_GREETING_LENGTH].strip(_GREETING_EDGE_CHARS)
+
+    # Truncation can land inside a combining sequence and leave a mark with
+    # nothing to attach to, which renders as a stray glyph.
+    while collapsed and unicodedata.category(collapsed[0]).startswith("M"):
+        collapsed = collapsed[1:]
+
+    if not any(unicodedata.category(ch).startswith("L") for ch in collapsed):
+        return fallback
+
+    return unicodedata.normalize("NFC", collapsed)
 
 
 def _formatted_sender(email_address: str) -> str:
@@ -60,7 +130,7 @@ def _build_submission_message(config: EmailConfig, submission: Submission) -> MI
 
 
 def _build_confirmation_content(submission: Submission) -> tuple[str, str]:
-    greeting_name = submission.first_name or "there"
+    greeting_name = _safe_greeting(submission.first_name, "there")
     plain_text_body = "\n".join(
         [
             f"Hi {greeting_name}!",
@@ -198,7 +268,7 @@ def _build_yard_sign_request_message(
 
 
 def _build_yard_sign_confirmation_content(yard_sign_request: YardSignRequest) -> tuple[str, str]:
-    greeting_name = yard_sign_request.first_name or "friend"
+    greeting_name = _safe_greeting(yard_sign_request.first_name, "friend")
     plain_text_body = "\n".join(
         [
             f"Thanks so much for your support, {greeting_name}!",

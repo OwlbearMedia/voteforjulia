@@ -52,8 +52,30 @@ SMTP and reads spreadsheet metadata — see
 
 | Monitor                              | Target     | Period | Alerts? |
 | ------------------------------------ | ---------- | ------ | ------- |
-| `voteforjulia-api /health/deep`      | production | 5 min  | **yes** |
-| `voteforjulia-api-test /health/deep` | test       | 15 min | no      |
+| `voteforjulia-api /health/deep`      | production | 15 min | **yes** |
+| `voteforjulia-api-test /health/deep` | test       | 30 min | no      |
+
+**The periods are a billing constraint, not a tuning choice.** Both were
+lengthened on 2026-08-10 — production from 5 min, test from 15 — because
+5-minute checks ran over the plan's budget. Two things follow, and both are
+easy to miss:
+
+- **The alert's aggregation window has to track the period.** See the
+  [alert conditions](#alert-conditions) below; changing one without the other
+  stops the alert firing at all.
+- **`/health/deep` has its own rate-limit allowance** (30/hour, against the
+  form endpoints' 10) so a monitor can never 429 itself into a false alert.
+  `test_health_deep_allowance_fits_the_synthetic_monitor` in
+  [api/test_app_pipeline.py](../api/test_app_pipeline.py) fails if a future
+  period change outgrows it. Raise the allowance before shortening the period.
+- **Its results are cached for 60 seconds**
+  ([ADR-0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md)), so the
+  endpoint cannot be used as an amplifier against SMTP and Sheets. At a 15- or
+  30-minute period every scheduled check still runs the real probes, and the
+  `Age` response header says which it got — `0` means the probes ran for that
+  request. **Keep any future period comfortably above the TTL**: a period below
+  it would have the monitor grading a cached answer, and an outage could clear
+  and re-alert against a result nothing re-measured.
 
 **The test monitor is deliberately not wired to the policy.** Every PR deploy
 restarts `api_test` and it briefly fails. Alerting on that would train you to
@@ -72,6 +94,23 @@ All three sit on the **`voteforjulia — API`** policy (`PER_CONDITION`, so an
 SMTP outage and a Sheets outage open separate issues rather than collapsing into
 one).
 
+Read back from the account on 2026-08-10, all three exist and are enabled:
+
+| Condition                                 | ID         |
+| ----------------------------------------- | ---------- |
+| Policy `voteforjulia — API`               | `7831111`  |
+| API dependency check failing (production) | `64880222` |
+| API error rate above 5% (production)      | `64880233` |
+| API not reporting (production)            | `64880240` |
+
+**Conditions existing is not the same as being alerted.** A policy with no
+notification workflow and destination raises issues that sit in the UI and reach
+nobody, which looks identical to "nothing has gone wrong". The account had **no
+issues at all** as of 2026-08-10, which is consistent both with nothing breaking
+and with the conditions never having evaluated — so it is not evidence either
+way. Confirm a workflow exists (Alerts → Workflows) and send yourself a test
+notification; that is the only check that proves the path end to end.
+
 | Condition                    | Fires when                                    |
 | ---------------------------- | --------------------------------------------- |
 | API dependency check failing | the production synthetic fails twice in a row |
@@ -81,6 +120,28 @@ one).
 The third exists because **silence is not a signal**. If the worker dies or the
 agent crashes, error _rate_ has no data to be high on, so it uses
 `fillOption: STATIC, fillValue: 0` to make absence look like zero throughput.
+
+**Two of the three are coupled to the synthetic's period**, and neither
+dependency is visible from the New Relic UI. Lengthening the monitor to 15
+minutes on 2026-08-10 made the values in `alerts.graphql` wrong, and they were
+corrected in the same change — but **whether the live conditions were ever
+updated has not been established**, because a condition's signal block cannot be
+read back through the read-only MCP server. Check the two below in the UI before
+trusting either.
+
+- **"API dependency check failing" — keep `aggregationWindow` equal to the
+  period and `thresholdDuration` at twice it.** At the current 15 minutes that
+  is 900 and 1800. The condition fills empty windows with 0 and requires _every_
+  window in `thresholdDuration` to breach, so a window shorter than the period
+  guarantees a filled zero between checks and the breach can never be sustained.
+  It then fails silently, which is the worst way for an alert to fail. Detection
+  now takes about 30 minutes — the cost of the longer period, not a choice.
+- **"API not reporting" needs six consecutive empty 5-minute windows**, and the
+  synthetic is most of this API's baseline traffic. At a 15-minute period a
+  check lands in every third window, so the longest run of zeros is two. A
+  30-minute period would make that run five against a threshold of six, and the
+  condition would start flapping. Lengthen `thresholdDuration` alongside any
+  further increase.
 
 ## When something fires
 
@@ -109,13 +170,39 @@ FROM SyntheticCheck WHERE result = 'FAILED' SINCE 2 hours ago
   single-location failure is therefore worth taking seriously as evidence the
   WAF is back, rather than dismissing as noise.
 
+### A 503 from the submission cap
+
+`API error rate above 5%` counts these, deliberately — the site turning
+supporters away is worth knowing about. Tell them apart from a genuine fault by
+the log line, which names the cap:
+
+```
+/send-email refused: 12 submissions already in flight
+```
+
+That is not a bug report. It means twelve submissions were being served at once,
+and the usual cause is SMTP or Sheets responding slowly enough that ordinary
+traffic stacks up — so check `/health/deep` before looking at the form code at
+all. Raising `MAX_CONCURRENT_SUBMISSIONS` is the wrong first move: the cap is
+sized against the account's memory limit, and lifting it trades a shed
+submission for an LVE fault that takes the whole account down.
+See [ADR-0018](adr/0018-cap-concurrent-submissions.md).
+
 ### If it is real
 
 `/health/deep` reports which dependency broke:
 
 ```
-curl -s https://api.voteforjulia.com/health/deep | jq
+curl -s -D /dev/stderr https://api.voteforjulia.com/health/deep | jq
 ```
+
+`-D /dev/stderr`, not `-D -`: the latter writes the headers to stdout, where
+they reach `jq` ahead of the body and it dies on `HTTP/2 200` instead of showing
+you the probe result.
+
+Read `Age` from the headers first. Anything above `0` is a cached result, so a
+green answer may predate the alert by up to a minute — wait it out and ask
+again rather than concluding the alert was noise.
 
 - `"smtp": "fail"` → the mail server or its credentials. This is the
   2026-07-30 failure mode; check `EMAIL_PASSWORD` for a `$`
@@ -152,9 +239,12 @@ apart from a request the server already applied, so a retry could duplicate a
 supporter's row. It clears the cached client and fails, which returns a 502 and
 logs the raw body for recovery.
 
-One useful side effect: `/health/deep` exercises the same cached client every
-five minutes, so a stale connection is usually discovered and discarded by a
-probe long before a real submission meets it.
+One useful side effect: `/health/deep` exercises the same cached client on every
+probe, so a stale connection is often discovered and discarded before a real
+submission meets it. **Lengthening the monitor's period widened that gap** — at
+the current 15 minutes the window in which a submission can be the first caller
+to touch a dead socket is three times what it was at 5, so treat this as a
+mitigation rather than a guard.
 
 ### Turning it off
 

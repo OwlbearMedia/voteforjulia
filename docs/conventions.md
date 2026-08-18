@@ -74,8 +74,11 @@ and a JSON-LD graph containing the shared `campaignWebSiteNode` +
 - `schemaGraph` — fully replace the graph when node order matters (e.g. Donate
   inserts a `WebPage` node between WebSite and Person). Compose it from the
   exported `campaignWebSiteNode` / `campaignPersonNode`.
-- `scripts` — extra `<script>` tags, emitted before the JSON-LD (e.g. Donate's
-  Donorbox loader).
+- `scripts` — extra `<script>` tags, emitted before the JSON-LD. No caller today:
+  Donate used it for the Donorbox loader until that moved to `onMounted`.
+- `extraLinks` — extra `<link>` tags (e.g. Donate's `modulepreload` for the
+  Donorbox loader, which is preloaded here but _executed_ from `onMounted` — see
+  [Custom elements](#custom-elements)).
 - `extraMeta` — meta tags appended after the standard block.
 
 ## Tailwind
@@ -297,6 +300,16 @@ conventions and the traps.
   injecting one (`sitemapLastmod.spec.ts`) rather than against the live repo.
   Only the deploy workflows use `fetch-depth: 0`, because that is where the
   sitemap is actually built.
+- **The honeypot's hiding mechanism is a correctness property, not a style
+  choice.** `.honeypot-field` is `display: none` because that removes the
+  element from the accessibility tree; `.sr-only` is the off-screen idiom, which
+  exists precisely so screen readers _do_ announce what it hides. Swapping one
+  for the other reads as an equivalent refactor and would make the field a trap
+  only screen-reader users can fall into. `tests/unit/honeypot.spec.ts` parses
+  `src/style.css` and asserts the declaration directly, so the invariant fails
+  in unit tests rather than in production —
+  [ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md) has the
+  reasoning.
 - **Backend tests are split by what they cover.**
   [api/test_app.py](../api/test_app.py) has the happy paths, CORS, rate limiting,
   and input validation; [api/test_app_pipeline.py](../api/test_app_pipeline.py)

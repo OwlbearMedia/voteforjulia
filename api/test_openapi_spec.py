@@ -17,6 +17,7 @@ Three kinds of drift are covered:
 """
 
 from pathlib import Path
+from unittest import mock
 
 import pytest
 import yaml
@@ -170,6 +171,12 @@ GENERATED_ERRORS = {
     "The data value transmitted exceeds the capacity limit.": (
         lambda: RequestEntityTooLarge().description
     ),
+    # Long enough that app.py composes it across two source lines, so it never
+    # appears as a single literal. Keyed on the constant rather than a copy of
+    # its text: that makes the lookup itself the drift check, because a spec
+    # that quotes anything other than what app.py sends will not find an entry
+    # here and falls through to the literal search, which fails.
+    app_module._REFUSED_SUBMISSION_MESSAGE: lambda: app_module._REFUSED_SUBMISSION_MESSAGE,
 }
 
 _SOURCE = "\n".join(
@@ -298,6 +305,75 @@ def test_rate_limit_defaults_match_the_spec():
     description = SPEC["components"]["responses"]["RateLimited"]["description"]
     assert f"{app_module._RATE_LIMIT_MAX_REQUESTS} requests" in description
     assert f"{app_module._RATE_LIMIT_WINDOW_SECONDS} seconds" in description
+
+
+def test_long_rate_limit_defaults_match_the_spec():
+    # Same drift check for the second tier (ADR-0016). Kept as its own test
+    # rather than four asserts in the one above so a failure names which tier
+    # drifted -- the two are configured independently and change independently.
+    description = SPEC["components"]["responses"]["RateLimited"]["description"]
+    assert f"{app_module._LONG_RATE_LIMIT_MAX_REQUESTS} requests" in description
+    assert f"{app_module._LONG_RATE_LIMIT_WINDOW_SECONDS} seconds" in description
+
+
+def test_health_deep_allowance_matches_the_spec():
+    # `/health/deep` is documented as having its own, larger hourly allowance.
+    description = SPEC["components"]["responses"]["RateLimited"]["description"]
+    assert f"{app_module._HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS} per hour" in description
+
+
+def test_documented_concurrency_cap_matches_the_app():
+    # Quoted in prose, so a changed default would leave the spec describing a
+    # ceiling the API no longer has.
+    description = SPEC["components"]["responses"]["AtCapacity"]["description"]
+    assert f"Default cap {app_module._MAX_CONCURRENT_SUBMISSIONS}" in description
+
+
+@pytest.mark.parametrize("path", ["/send-email", "/yard-sign"])
+def test_at_capacity_returns_the_documented_status(path):
+    assert "503" in SPEC["paths"][path]["post"]["responses"]
+
+    with mock.patch.object(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 0):
+        response = app_module.app.test_client().post(
+            path, json={"firstName": "Alex", "email": "alex@example.com"}
+        )
+
+    assert response.status_code == 503
+    assert response.mimetype == "application/json"
+
+
+def test_documented_health_fields_match_the_app():
+    # `client` was added to answer an operational question; a spec that stopped
+    # listing it would make the endpoint look like it had gone back to being a
+    # bare liveness probe.
+    documented = set(SPEC["components"]["schemas"]["HealthStatus"]["required"])
+    returned = set(app_module.app.test_client().get("/health").get_json())
+
+    assert documented == returned
+
+
+def test_documented_deep_health_cache_matches_the_app():
+    # The TTL is quoted in prose, so a changed default would otherwise leave the
+    # spec describing a staleness window the endpoint no longer has.
+    description = SPEC["paths"]["/health/deep"]["get"]["description"]
+    assert f"cached for {app_module._HEALTH_DEEP_CACHE_SECONDS} seconds" in description
+
+
+@pytest.mark.parametrize("path", ["/send-email", "/yard-sign"])
+def test_cross_site_post_returns_the_documented_status(path):
+    # Same gap as the 413 test below: paths and methods are compared elsewhere,
+    # nothing otherwise checks that a documented *status* is reachable. A 403
+    # documented on an endpoint that stopped enforcing origins would go unnoticed.
+    assert "403" in SPEC["paths"][path]["post"]["responses"]
+
+    response = app_module.app.test_client().post(
+        path,
+        json={"firstName": "Alex", "email": "alex@example.com"},
+        headers={"Origin": "https://not-the-campaign.example"},
+    )
+
+    assert response.status_code == 403
+    assert response.mimetype == "application/json"
 
 
 def test_documented_request_size_limit_matches_the_app():

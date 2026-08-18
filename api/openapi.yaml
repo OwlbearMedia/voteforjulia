@@ -32,8 +32,28 @@ info:
 
     ### Authentication
 
-    None. The endpoints are public and protected by CORS plus per-IP rate
-    limiting.
+    None. The endpoints are public. What stands in for authentication is a
+    stack of controls, each covering a case the others cannot see: an origin
+    check (`403`) that refuses submissions from pages the campaign does not
+    control, two tiers of per-IP rate limiting (`429`), and a hidden honeypot
+    field (`400`).
+
+    CORS is **not** one of them, despite appearing to be. A form-encoded POST is
+    a CORS simple request, so the browser sends it with no preflight and the
+    allowlist never gets a say in whether it is made — it governs only who may
+    read the response. That is what the origin check exists to cover; see
+    ADR-0017.
+
+    A cap on **concurrent** submissions (`503`) sits alongside them, answering a
+    different question again: not who is asking or how often, but how much work
+    may run at once. See ADR-0018.
+
+    ### Response headers
+
+    Every response carries `Strict-Transport-Security` and
+    `X-Content-Type-Options: nosniff`. They are set by the app rather than by an
+    `.htaccess` because the API subdomain's docroot is not in the repo, so a
+    header added there would be untracked host state.
   contact:
     name: Vote for Julia
     email: info@voteforjulia.com
@@ -69,6 +89,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
+        '403':
+          $ref: '#/components/responses/Unproxied'
 
   /health/deep:
     get:
@@ -87,22 +109,52 @@ paths:
         Failures report `fail` and nothing more; the underlying exception text
         quotes credentials and is logged server-side only. The deploy pipeline
         checks `/health`, not this — a mail-server blip must not fail a deploy.
+
+        **Results are cached for 60 seconds** (`HEALTH_DEEP_CACHE_SECONDS`),
+        successes and failures alike. Rate limiting bounds how often one address
+        may ask; the cache bounds what the answer costs, so an unauthenticated
+        caller spread across many addresses cannot turn this into an amplifier
+        against the mail server and the Sheets API. `Age` reports how old the
+        answer is — `0` means the probes ran for this request. The cache is
+        per-worker, so the real ceiling is one probe per worker per TTL. See
+        ADR-0017.
       operationId: deepHealthCheck
       responses:
         '200':
           description: Both dependencies are reachable and authenticated.
+          headers:
+            Age:
+              $ref: '#/components/headers/Age'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeepHealthStatus'
+        '403':
+          $ref: '#/components/responses/Unproxied'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
-          description: At least one dependency failed.
+          description: |
+            Either a dependency failed (`DeepHealthStatus`, with `Age`), or
+            every probe slot was busy and nothing had been cached yet
+            (`ErrorResponse`, no `Age`).
+
+            The probe holds one of `MAX_CONCURRENT_HEALTH_PROBES` slots (2 by
+            default) while it runs, counted separately from submissions so a
+            probe flood cannot close the forms and vice versa. When the slots
+            are full **and** a cached result exists, the cached one is served
+            with a `200`/`503` and an honest `Age` rather than this — a stale
+            answer is worth more to a monitor than a refusal, and it keeps a
+            flood from paging as though a dependency had broken. See ADR-0018.
+          headers:
+            Age:
+              $ref: '#/components/headers/Age'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeepHealthStatus'
+                oneOf:
+                  - $ref: '#/components/schemas/DeepHealthStatus'
+                  - $ref: '#/components/schemas/ErrorResponse'
 
   /send-email:
     post:
@@ -116,6 +168,9 @@ paths:
         `firstName` and `email` are required. A confirmation email that fails to
         send is logged but does **not** fail the request; a Google Sheets append
         that fails does (`502`), because the submission is then only in email.
+
+        Browser callers must send an `Origin` on the allowlist — see
+        `#/components/responses/CrossSiteRejected`.
       operationId: sendEmail
       requestBody:
         required: true
@@ -153,6 +208,8 @@ paths:
           $ref: '#/components/responses/Sent'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/CrossSiteRejected'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '429':
@@ -161,6 +218,8 @@ paths:
           $ref: '#/components/responses/ServerMisconfigured'
         '502':
           $ref: '#/components/responses/UpstreamFailed'
+        '503':
+          $ref: '#/components/responses/AtCapacity'
     options:
       tags: [Forms]
       summary: CORS preflight
@@ -168,6 +227,8 @@ paths:
       responses:
         '204':
           $ref: '#/components/responses/Preflight'
+        '403':
+          $ref: '#/components/responses/Unproxied'
 
   /yard-sign:
     post:
@@ -179,6 +240,9 @@ paths:
         and rows are appended to the `Yard Signs` worksheet.
 
         `firstName`, `email`, and `address` are required.
+
+        Browser callers must send an `Origin` on the allowlist — see
+        `#/components/responses/CrossSiteRejected`.
       operationId: yardSign
       requestBody:
         required: true
@@ -211,6 +275,8 @@ paths:
           $ref: '#/components/responses/Sent'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/CrossSiteRejected'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '429':
@@ -219,6 +285,8 @@ paths:
           $ref: '#/components/responses/ServerMisconfigured'
         '502':
           $ref: '#/components/responses/UpstreamFailed'
+        '503':
+          $ref: '#/components/responses/AtCapacity'
     options:
       tags: [Forms]
       summary: CORS preflight
@@ -226,12 +294,14 @@ paths:
       responses:
         '204':
           $ref: '#/components/responses/Preflight'
+        '403':
+          $ref: '#/components/responses/Unproxied'
 
 components:
   schemas:
     HealthStatus:
       type: object
-      required: [status, path, script_root]
+      required: [status, path, script_root, client]
       properties:
         status:
           type: string
@@ -244,10 +314,24 @@ components:
           type: string
           description: WSGI `SCRIPT_ROOT` — the prefix the app is mounted under.
           examples: ['']
+        client:
+          type: string
+          description: |
+            The key every per-IP control is counted against, for this request.
+
+            Echoed for the same reason as `script_root`: to answer what the
+            *deployed* app sees rather than what the code appears to do. Rate
+            limiting assumes this is the caller and not something in front of
+            the app — if it ever reads as a fixed private address, every client
+            shares one bucket and one caller can exhaust everybody's allowance.
+            Follows `TRUSTED_CLIENT_IP_HEADER` when set (ADR-0014). A caller
+            only ever learns their own address. See ADR-0018.
+          examples: ['203.0.113.7']
       examples:
         - status: ok
           path: /health
           script_root: ''
+          client: 203.0.113.7
 
     DeepHealthStatus:
       type: object
@@ -303,9 +387,32 @@ components:
             the site posts it as a hidden field alongside them.
           examples: [Alex Rivera]
 
+    HoneypotField:
+      type: object
+      properties:
+        referralCode:
+          type: string
+          description: |
+            Anti-spam honeypot (ADR-0016). Both forms render this as a
+            `display: none` input that no person can see, focus or tab into, so
+            a request that carries a non-empty value did not come from someone
+            using the site.
+
+            **Send it empty or omit it.** A non-empty value is refused with
+            `400` before any mail is sent, and the body is written to the
+            application log so a false positive stays recoverable. Setting
+            `HONEYPOT_ENFORCED=false` keeps the logging but stops the rejection,
+            so the check can be switched off without a deploy.
+
+            Documented rather than hidden: an undocumented field that rejects
+            requests is worse for a legitimate client than a known one, and a
+            spam bot does not read specifications.
+          examples: ['']
+
     ContactSubmission:
       allOf:
         - $ref: '#/components/schemas/NameFields'
+        - $ref: '#/components/schemas/HoneypotField'
         - type: object
           properties:
             email:
@@ -346,6 +453,7 @@ components:
     YardSignRequest:
       allOf:
         - $ref: '#/components/schemas/NameFields'
+        - $ref: '#/components/schemas/HoneypotField'
         - type: object
           properties:
             email:
@@ -414,8 +522,14 @@ components:
 
     BadRequest:
       description: |
-        The request was rejected before anything was sent. The submitter still
-        has their data and can correct it and retry.
+        The request was rejected before anything was sent, so the submitter
+        still has their data.
+
+        Every case below except one names the field at fault and is fixed by
+        correcting it and retrying. The exception is the honeypot: the field it
+        objects to is invisible to the submitter, so there is nothing for them
+        to correct, and the message points them at email instead. Do not present
+        that one as a form validation error.
       headers:
         Vary:
           $ref: '#/components/headers/Vary'
@@ -450,6 +564,82 @@ components:
               summary: Email is well-formed text but not an address
               value:
                 error: Please provide a valid email address.
+            honeypot:
+              summary: The hidden anti-spam field was filled in
+              value:
+                error: >-
+                  We could not process this submission. Please email
+                  info@voteforjulia.com and we will follow up personally.
+
+    CrossSiteRejected:
+      description: |
+        The request carried an `Origin` header that is not in
+        `CORS_ALLOWED_ORIGINS`, so it was sent by a page the campaign does not
+        control. Refused before the rate limiter, before the honeypot, and
+        before any mail or sheet write.
+
+        This exists because CORS does not stop the request being *made*. A
+        form-encoded POST is a simple request: no preflight, so a page anywhere
+        can auto-submit these forms from its visitors' browsers. Every visitor
+        arrives on their own address, which is what makes per-IP limiting blind
+        to it — one request per victim.
+
+        A missing `Origin` is **not** refused. Only browsers send one, and the
+        callers that do not (curl, monitors, anything server-side) are the ones
+        per-IP limiting does bound.
+
+        `403` rather than `400`: the body is fine, the page that sent it is not,
+        so there is nothing for the caller to correct and retry. The message is
+        the one the honeypot uses, because the useful advice is the same and the
+        response should not say which control fired. Set `ORIGIN_ENFORCED=false`
+        to log without refusing.
+
+        A `403` on these two endpoints has a second possible cause this schema
+        does not distinguish: the edge check refuses an unproxied caller with
+        the same status and a different body, before this one runs. See
+        `Unproxied`.
+      headers:
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: >-
+              We could not process this submission. Please email
+              info@voteforjulia.com and we will follow up personally.
+
+    Unproxied:
+      description: |
+        The request did not arrive through Cloudflare, so it was refused before
+        routing — this is the only `403` that applies to every path, including
+        paths that match no route at all.
+
+        Cloudflare stamps every proxied request with `X-Origin-Token`. A caller
+        that read the origin's address off the MX record and connected straight
+        to it does not carry one, which is what this refuses. Distinct from the
+        `403` on the form endpoints: that one asks which page sent the request,
+        this one asks whether the request reached the edge at all.
+
+        Not something a legitimate client can encounter or correct — a browser
+        cannot set this header cross-origin, and does not need to, because the
+        edge sets it. Seeing this from a real user means the Transform Rule is
+        gone.
+
+        Off unless both `EDGE_SHARED_TOKEN` and `EDGE_TOKEN_ENFORCED` are
+        set, and the token is at least 32 ASCII alphanumeric characters —
+        one that is not is logged and ignored, leaving this off;
+        with the token set and enforcement off, the refusal is logged and the
+        request proceeds. See ADR-0020.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: This endpoint is not reachable directly.
 
     PayloadTooLarge:
       description: |
@@ -491,9 +681,24 @@ components:
 
     RateLimited:
       description: |
-        Too many submissions from this client. The limit is per endpoint and per
-        client IP — 5 requests per 60 seconds by default
-        (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`).
+        Too many submissions from this client. Two limits apply, both per
+        endpoint and per client IP, and either can produce this response:
+
+        - **Burst** — 5 requests per 60 seconds by default
+          (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`).
+        - **Sustained** — 10 requests per 3600 seconds by default
+          (`LONG_RATE_LIMIT_MAX_REQUESTS` / `LONG_RATE_LIMIT_WINDOW_SECONDS`).
+
+        `/health/deep` is polled on a schedule rather than by people, so it gets
+        a larger sustained allowance of 30 per hour
+        (`HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS`). The form endpoints' figure is
+        sized against "a supporter submits one form once" and would 429 a
+        synthetic monitor, which is a false alert rather than a blocked spammer.
+
+        The second tier exists because the first cannot see a patient caller.
+        The 2026-08-10 abuse ran 43 submissions over roughly two hours without
+        ever exceeding three in any single minute, so the per-minute limit never
+        fired. See ADR-0016.
 
         The client is identified by the socket address. Forwarding headers are
         **not** trusted: nothing sits in front of this API to overwrite them, so
@@ -503,8 +708,11 @@ components:
         makes that header authoritative (its **last** hop); no other header is
         consulted. See ADR-0014.
 
-        Buckets live in process memory, so they are per-worker and reset on
-        restart.
+        The burst tier counts in process memory, so it is per-worker and resets
+        on restart. The sustained tier counts in SQLite under the app's `tmp/`
+        directory, because Passenger reaps idle workers and an hour-long window
+        held in memory would restart with them. If that store cannot be reached
+        the sustained tier fails open and only the burst tier applies.
 
         `Retry-After` is rounded up, so honouring it exactly is enough to clear
         the window.
@@ -525,6 +733,47 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
           example:
             error: Too many requests. Please try again later.
+
+    AtCapacity:
+      description: |
+        Too many submissions are already in flight, across every worker, so this
+        one was refused before any work started. Default cap 12
+        (`MAX_CONCURRENT_SUBMISSIONS`). `/health/deep` has a separate, smaller
+        budget of its own (`MAX_CONCURRENT_HEALTH_PROBES`), so neither kind of
+        work can spend the other's allowance.
+
+        Distinct from `429`, and the distinction is the point. Rate limiting
+        bounds how often *one client* may ask; this bounds how much work runs at
+        all, whoever asked for it. A submission holds a worker for as long as
+        two SMTP connections and a Sheets write take, so the case this exists
+        for is not really an attacker — it is an upstream slowdown turning every
+        legitimate submission into a held worker until the host's memory limit
+        is reached.
+
+        Retried automatically by nobody, so `Retry-After` is seconds rather than
+        the minutes a rate-limit window needs: a slot frees as soon as a
+        submission finishes.
+
+        Fails open. If the store backing the count cannot be reached, the
+        submission proceeds — refusing a supporter is the worse failure. See
+        ADR-0018.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+            minimum: 1
+          example: 5
+        Vary:
+          $ref: '#/components/headers/Vary'
+        Access-Control-Allow-Origin:
+          $ref: '#/components/headers/AccessControlAllowOrigin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: The site is busy right now. Please try again in a moment.
 
     ServerMisconfigured:
       description: |
@@ -615,6 +864,18 @@ components:
             const: '86400'
 
   headers:
+    Age:
+      description: |
+        Seconds since the probes behind this response actually ran. `0` means
+        they ran for this request; anything higher is a cached result being
+        reused. Stamped before the probes rather than after, so a slow run
+        reports itself as older than it is — this may overstate, never
+        understate.
+      schema:
+        type: integer
+        minimum: 0
+      example: 0
+
     Vary:
       description: |
         Always includes `Origin` — on rejected origins too, so a shared cache

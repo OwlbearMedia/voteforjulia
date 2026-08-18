@@ -19,14 +19,23 @@ so restoration is automatic rather than hand-rolled in a `tearDown`.
 """
 
 import logging
+import re
 import smtplib
 from dataclasses import replace
+from pathlib import Path
 
 import httplib2
 import pytest
 
 import api.app as app_module
-from api.config import EmailConfig, SheetsConfig
+import api.rate_limit_store as rate_limit_store
+from api.config import (
+    DEFAULT_SMTP_TIMEOUT_SECONDS,
+    EmailConfig,
+    SheetsConfig,
+    load_email_config,
+    load_sheets_config,
+)
 
 VALID_EMAIL_CONFIG = EmailConfig(
     smtp_server="mail.example.com",
@@ -542,3 +551,623 @@ def test_empty_last_forwarded_hop_falls_back_to_remote_addr(client, pipeline, mo
     )
 
     assert list(app_module._RATE_LIMIT_BUCKETS) == ["send-email:127.0.0.1"]
+
+
+# --- Second-tier (long-window) rate limiting, ADR-0016 ----------------------
+#
+# The burst tier stays at its shipped 5/60s throughout, so anything that 429s
+# here was refused by the hour-scale tier. Tightening both would make these
+# tests pass regardless of which tier did the work.
+
+
+def test_a_caller_under_the_burst_limit_is_still_stopped_by_the_long_window(
+    client, pipeline, monkeypatch
+):
+    """The gap that let the 2026-08-10 abuse through.
+
+    That traffic never exceeded three requests in a minute, so the per-minute
+    limiter could not fire once. Four requests in four separate minutes is the
+    same shape: each inside the burst allowance, the fourth still refused.
+    """
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 3)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    statuses = []
+    for _minute in range(4):
+        # A fresh burst bucket each time, which is what a caller pacing itself
+        # minutes apart gets for free — the 60-second window has emptied.
+        monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+        monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+        statuses.append(client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code)
+
+    assert statuses == [200, 200, 200, 429]
+    # And the refusal happened before any of the expensive work.
+    assert len(pipeline.notifications) == 3
+    assert len(pipeline.confirmations) == 3
+    assert len(pipeline.rows) == 3
+
+
+def test_long_window_429_carries_a_retry_after_and_the_standard_body(client, pipeline, monkeypatch):
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    refused = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD)
+
+    assert refused.status_code == 429
+    assert refused.get_json() == {"error": "Too many requests. Please try again later."}
+    # Up to a full window, never zero or negative, and never past the window.
+    assert 1 <= int(refused.headers["Retry-After"]) <= 3600
+
+
+def test_long_window_is_scoped_per_endpoint(client, pipeline, monkeypatch):
+    """Exhausting the contact form must not lock out the yard-sign form.
+
+    Pins that the persistent tier inherits the burst tier's `{endpoint}:{client}`
+    key instead of collapsing both forms into one hourly allowance.
+    """
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 429
+    assert client.post(YARD_SIGN_PATH, json=YARD_SIGN_PAYLOAD).status_code == 200
+
+
+def test_burst_refusals_do_not_spend_the_hourly_allowance(client, pipeline, monkeypatch):
+    """A 429 from the burst tier must not also be counted by the long one.
+
+    Otherwise an accidental double-click burns hourly budget on requests that
+    were never served.
+    """
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 3)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    # One served, then four refused by the burst tier in the same window.
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    for _ in range(4):
+        assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 429
+
+    # The hourly tier has seen exactly one request, so two more are available
+    # once the burst window clears.
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+
+def test_an_unusable_store_leaves_the_endpoint_working(client, pipeline, monkeypatch, tmp_path):
+    """Fail open, end to end.
+
+    `test_rate_limit_store.py` proves `consume` returns None on a broken database;
+    this is the part a supporter notices — the sign-up still goes through.
+    """
+    broken = tmp_path / "not-a-database"
+    broken.mkdir()
+    monkeypatch.setattr(rate_limit_store, "DEFAULT_DB_PATH", broken)
+
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD)
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+# --- Honeypot, ADR-0016 -----------------------------------------------------
+
+
+@BOTH_ENDPOINTS
+def test_a_filled_honeypot_is_refused_before_any_work(client, pipeline, path, payload):
+    response = client.post(path, json={**payload, "referralCode": "https://spam.example"})
+
+    assert response.status_code == 400
+    assert "info@voteforjulia.com" in response.get_json()["error"]
+    # The whole point: no mail to the campaign, no confirmation to whatever
+    # address the caller supplied, and no row in the volunteers' sheet.
+    assert pipeline.notifications == []
+    assert pipeline.confirmations == []
+    assert pipeline.rows == []
+
+
+@BOTH_ENDPOINTS
+def test_an_empty_honeypot_is_indistinguishable_from_an_absent_one(client, pipeline, path, payload):
+    """The negative case, without which the test above proves nothing.
+
+    Every real submission carries this field blank, so a check testing presence
+    rather than content would 400 the whole site.
+    """
+    assert client.post(path, json={**payload, "referralCode": ""}).status_code == 200
+    assert client.post(path, json={**payload, "referralCode": "   "}).status_code == 200
+    assert client.post(path, json=payload).status_code == 200
+
+    assert len(pipeline.notifications) == 3
+
+
+@pytest.mark.parametrize(
+    "blank",
+    [
+        pytest.param("\n", id="newline"),
+        pytest.param("\r\n", id="crlf"),
+        pytest.param("\t", id="tab"),
+        pytest.param("\u00a0", id="non-breaking-space"),
+        pytest.param(" \n\t ", id="mixed"),
+    ],
+)
+def test_whitespace_only_honeypot_values_count_as_blank(client, pipeline, blank):
+    """Every flavour of whitespace, not just the ones `normalize_text` strips.
+
+    Caught by Copilot on PR #134. The check used to be a plain truthiness test
+    on `normalize_text`, which strips only spaces and tabs -- so a lone newline
+    or a non-breaking space read as a filled honeypot and rejected the
+    submission. A pasted value or an odd keyboard layout is enough to produce
+    one, and the person could not see the field to clear it.
+    """
+    response = client.post(CONTACT_PATH, json={**CONTACT_PAYLOAD, "referralCode": blank})
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+def test_a_filled_honeypot_is_caught_on_the_form_encoded_path(client, pipeline):
+    """The encoding every one of the 2026-08-10 requests actually used.
+
+    All 36 were form-encoded while the site's scripted path posts JSON, so a
+    JSON-only check would have missed the whole attack it was written for.
+    """
+    response = client.post(
+        CONTACT_PATH,
+        data={**CONTACT_PAYLOAD, "referralCode": "buy-cheap-things"},
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    assert response.status_code == 400
+    assert pipeline.notifications == []
+
+
+def test_a_filled_honeypot_logs_the_body_so_a_false_positive_is_recoverable(
+    client, pipeline, caplog
+):
+    """A person tripping this must not vanish silently.
+
+    The field is invisible, so they cannot fix the form. The response tells them
+    to email; this log line is how the campaign finds them if they do not.
+    """
+    with caplog.at_level(logging.WARNING):
+        client.post(CONTACT_PATH, json={**CONTACT_PAYLOAD, "referralCode": "x"})
+
+    assert "honeypot" in caplog.text
+    assert "julia@example.com" in caplog.text, "the body is logged, so nothing is lost"
+
+
+def test_the_honeypot_can_be_disabled_without_a_deploy(client, pipeline, monkeypatch, caplog):
+    """The kill switch, for the day it rejects someone real.
+
+    Unenforced still logs, so turning it off answers whether it was catching
+    bots or catching people.
+    """
+    monkeypatch.setattr(app_module, "_HONEYPOT_ENFORCED", False)
+
+    with caplog.at_level(logging.WARNING):
+        response = client.post(CONTACT_PATH, json={**CONTACT_PAYLOAD, "referralCode": "x"})
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+    assert "honeypot" in caplog.text
+
+
+# --- Origin trust boundary, ADR-0017 ----------------------------------------
+
+
+SITE_ORIGIN = "https://voteforjulia.com"
+
+
+@pytest.fixture
+def allowed_origins(monkeypatch):
+    """Pin the allowlist so these tests do not depend on `CORS_ALLOWED_ORIGINS`.
+
+    The set is built from the environment at import, so a developer shell that
+    exports the variable would otherwise change what these tests mean.
+    """
+    monkeypatch.setattr(app_module, "_CORS_ALLOWED_ORIGINS", {SITE_ORIGIN})
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        pytest.param("https://evil.example", id="unrelated-site"),
+        # The reason this is a set membership test and not a substring or
+        # suffix one. Both of these contain the real origin's text.
+        pytest.param("https://voteforjulia.com.evil.example", id="suffix-lookalike"),
+        pytest.param("https://evil.example/?https://voteforjulia.com", id="prefix-lookalike"),
+        # What a sandboxed iframe or a `data:` URL sends. No supporter submits
+        # from one, and it must not be read as "no origin".
+        pytest.param("null", id="opaque-origin"),
+        # Same host, wrong scheme: a page served over plain HTTP is a page an
+        # active network attacker wrote.
+        pytest.param("http://voteforjulia.com", id="insecure-scheme"),
+    ],
+)
+def test_a_cross_site_submission_is_refused_before_any_work(
+    client, pipeline, allowed_origins, origin
+):
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": origin})
+
+    assert response.status_code == 403
+    assert "info@voteforjulia.com" in response.get_json()["error"]
+    # The point of doing this before anything else: no mail to the campaign, no
+    # confirmation to whatever address the page supplied, no row in the sheet.
+    assert pipeline.notifications == []
+    assert pipeline.confirmations == []
+    assert pipeline.rows == []
+
+
+@BOTH_ENDPOINTS
+def test_a_same_site_submission_is_accepted(client, pipeline, allowed_origins, path, payload):
+    """The negative case, without which the test above proves nothing.
+
+    Every scripted submission the site makes carries this header, so a check
+    that rejected on presence rather than on value would take both forms down.
+    """
+    response = client.post(path, json=payload, headers={"Origin": SITE_ORIGIN})
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+def test_a_cross_site_form_post_is_refused(client, pipeline, allowed_origins):
+    """The encoding that made this reachable in the first place.
+
+    A form-encoded POST is a CORS simple request: the browser sends it with no
+    preflight, so nothing consults the allowlist before it arrives. It is also
+    the encoding all 36 recorded requests of the 2026-08-10 abuse used.
+    """
+    response = client.post(
+        CONTACT_PATH,
+        data=CONTACT_PAYLOAD,
+        content_type="application/x-www-form-urlencoded",
+        headers={"Origin": "https://evil.example"},
+    )
+
+    assert response.status_code == 403
+    assert pipeline.notifications == []
+
+
+def test_a_submission_with_no_origin_header_is_accepted(client, pipeline, allowed_origins):
+    """Absent is not foreign, and that is deliberate.
+
+    Only browsers attach `Origin`. curl, a monitor and anything server-side send
+    none, and those are precisely the callers per-IP rate limiting does bound.
+    Rejecting them would buy nothing and break every scripted client.
+    """
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD)
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+def test_a_cross_site_flood_does_not_spend_a_victims_rate_limit(
+    client, pipeline, allowed_origins, monkeypatch
+):
+    """The reason the check runs ahead of the limiter.
+
+    A cross-site attack arrives on its victims' addresses. If a rejected request
+    consumed a bucket, the attacker would spend the allowance of the very people
+    whose browsers were conscripted -- so a supporter who then submitted the form
+    themselves would be turned away by a limit they never approached.
+    """
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 3)
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+
+    for _ in range(10):
+        rejected = client.post(
+            CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": "https://evil.example"}
+        )
+        assert rejected.status_code == 403
+
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": SITE_ORIGIN})
+
+    assert response.status_code == 200, "the rejections should have cost this client nothing"
+    assert len(pipeline.notifications) == 1
+
+
+def test_a_rejected_origin_is_logged_without_the_body(client, pipeline, allowed_origins, caplog):
+    """Logged, but not the way the honeypot logs.
+
+    The honeypot dumps the body because a false positive there is a real person
+    whose submission is otherwise lost. This path cannot afford that: it runs
+    before the limiter, so nothing bounds how many times an attacker can reach
+    it, and a body dump per request would be a way to fill the disk. The origin
+    alone is what makes the kill switch usable, and it is bounded text.
+    """
+    with caplog.at_level(logging.WARNING):
+        client.post(
+            CONTACT_PATH,
+            json={**CONTACT_PAYLOAD, "message": "unique-body-marker"},
+            headers={"Origin": "https://evil.example"},
+        )
+
+    assert "https://evil.example" in caplog.text
+    assert "unique-body-marker" not in caplog.text
+    assert "julia@example.com" not in caplog.text
+
+
+def test_an_oversized_origin_is_truncated_before_it_reaches_the_log(
+    client, pipeline, allowed_origins, caplog
+):
+    """The header is attacker-chosen text on its way to a log file.
+
+    Asserts the line is written *and* bounded. A bare length check passes just
+    as well when nothing is logged at all, so on its own it would go green the
+    day the rejection stopped happening.
+    """
+    with caplog.at_level(logging.WARNING):
+        client.post(
+            CONTACT_PATH,
+            json=CONTACT_PAYLOAD,
+            headers={"Origin": "https://" + "a" * 4000 + ".example"},
+        )
+
+    assert "rejected a submission from origin" in caplog.text
+    assert "a" * 4000 not in caplog.text
+    assert len(caplog.text) < 1000
+
+
+def test_the_origin_check_can_be_disabled_without_a_deploy(
+    client, pipeline, allowed_origins, monkeypatch, caplog
+):
+    """The kill switch, for the day it rejects someone real.
+
+    Unenforced still logs, so turning it off answers whether it was catching
+    attackers or catching people -- the same bargain `HONEYPOT_ENFORCED` makes.
+    """
+    monkeypatch.setattr(app_module, "_ORIGIN_ENFORCED", False)
+
+    with caplog.at_level(logging.WARNING):
+        response = client.post(
+            CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": "https://evil.example"}
+        )
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+    assert "https://evil.example" in caplog.text
+
+
+# --- /health/deep's own hourly allowance, ADR-0016 ---------------------------
+
+
+def test_health_deep_has_a_larger_hourly_allowance_than_the_forms(client, pipeline, monkeypatch):
+    """The scopes must not share a number.
+
+    Caught by Copilot on PR #134: the persistent tier initially applied the
+    forms' allowance to `/health/deep` too. A monitor polls on a schedule, so
+    the forms' figure -- sized against "a supporter submits one form once" --
+    would 429 it on a cadence that is entirely legitimate, and a 429 there is a
+    false page rather than a blocked spammer.
+
+    Asserts on "was it rate limited", not on the status code: the probes fail in
+    a test environment with no SMTP or Sheets, so a served request is a 503.
+    That is the property under test either way.
+    """
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS", 5)
+    # Keep the probes off the network; this test is about the limiter.
+    monkeypatch.setattr(app_module, "verify_smtp_credentials", lambda config: None)
+    monkeypatch.setattr(app_module, "verify_sheets_access", lambda config: None)
+
+    def probe():
+        monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+        monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+        return client.get("/health/deep").status_code
+
+    # The form allowance is exhausted after one request; the health scope keeps
+    # going, which is only true if the two are looked up separately.
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 429
+    assert [probe() for _ in range(5)] == [200] * 5
+    assert probe() == 429
+
+
+def test_health_deep_allowance_fits_the_synthetic_monitor():
+    """The shipped defaults must leave the real monitor headroom.
+
+    Reads the period straight out of `monitoring/alerts.graphql` rather than
+    restating it, so shortening the monitor without raising the allowance fails
+    here instead of paging with a 429 that looks like an outage. The monitor
+    runs from two locations, and the worst case is both egressing from one
+    address, so the arithmetic assumes they share a bucket.
+
+    Parsed from the production monitor's own block, located by the name it
+    creates -- an earlier version took the first period in the file, which meant
+    a period New Relic spells without a trailing "S" (`EVERY_MINUTE`) silently
+    matched the *test* monitor instead and the assertion passed regardless.
+
+    `monitoring/` drifts silently against the live account (docs/monitoring.md),
+    so this pins the checked-in intent -- it cannot see a change made in the UI.
+    """
+    graphql = (Path(__file__).resolve().parent.parent / "monitoring" / "alerts.graphql").read_text()
+
+    # Every period enum New Relic accepts, in minutes. A value outside this map
+    # fails loudly below rather than being skipped by a regex that misses it.
+    period_minutes = {
+        "EVERY_MINUTE": 1,
+        "EVERY_5_MINUTES": 5,
+        "EVERY_10_MINUTES": 10,
+        "EVERY_15_MINUTES": 15,
+        "EVERY_30_MINUTES": 30,
+        "EVERY_HOUR": 60,
+        "EVERY_6_HOURS": 360,
+        "EVERY_12_HOURS": 720,
+        "EVERY_DAY": 1440,
+    }
+
+    production = re.search(r'name: "voteforjulia-api /health/deep".*?\n    \}', graphql, re.DOTALL)
+    assert production, "could not find the production monitor block in alerts.graphql"
+    block = production.group(0)
+
+    period = re.search(r"period: (\w+)", block)
+    assert period, "the production monitor declares no period"
+    assert period.group(1) in period_minutes, (
+        f"unrecognised monitor period {period.group(1)!r} -- add it to period_minutes"
+    )
+
+    locations = re.search(r"locations: \{ public: \[([^\]]*)\]", block)
+    assert locations, "the production monitor declares no locations"
+
+    checks_per_hour = (60 / period_minutes[period.group(1)]) * len(locations.group(1).split(","))
+
+    assert checks_per_hour * 2 <= app_module._HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS, (
+        f"the production monitor makes {checks_per_hour:.0f} checks/hour "
+        f"({period.group(1)} x {len(locations.group(1).split(','))} locations), which leaves no "
+        f"margin under an allowance of {app_module._HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS}/hour -- "
+        "raise HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS or lengthen the period"
+    )
+
+
+# --- Concurrent-submission cap, ADR-0018 ------------------------------------
+
+
+@BOTH_ENDPOINTS
+def test_a_submission_is_refused_when_every_slot_is_held(
+    client, pipeline, monkeypatch, path, payload
+):
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 0)
+
+    response = client.post(path, json=payload)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == str(app_module._AT_CAPACITY_RETRY_AFTER_SECONDS)
+    # Refused before the work, not during it: no mail, no sheet row.
+    assert pipeline.notifications == []
+    assert pipeline.rows == []
+
+
+def test_a_finished_submission_gives_its_slot_back(client, pipeline, monkeypatch):
+    """Without a release, the cap would ratchet shut one submission at a time.
+
+    A single slot plus two sequential submissions is the smallest arrangement
+    that can tell "released" apart from "never taken": the second can only
+    succeed if the first gave its slot back.
+    """
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 1)
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+    assert len(pipeline.notifications) == 2
+
+
+def test_a_failed_submission_gives_its_slot_back(client, pipeline, monkeypatch):
+    """The `finally` clause, which is the half that matters under an outage.
+
+    A slow or failing SMTP server is exactly when the cap fills, so a slot
+    leaked on the error path would take the forms down for `INFLIGHT_TTL_SECONDS`
+    on top of whatever broke -- turning an upstream blip into a longer outage of
+    our own making.
+    """
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 1)
+    pipeline.notify_error = smtplib.SMTPException("mail server is down")
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 502
+
+    pipeline.notify_error = None
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+
+def test_the_cap_counts_submissions_not_rejected_requests(client, pipeline, monkeypatch):
+    """A request refused before the handler must not hold a slot.
+
+    Rate-limited and cross-site requests are refused ahead of this, so a flood
+    of them cannot exhaust the cap and lock out the submissions it exists to
+    protect. Uses a cap of 1 and a rejected request that would, if it consumed
+    a slot, leave nothing for the legitimate one behind it.
+    """
+    monkeypatch.setattr(app_module, "_MAX_CONCURRENT_SUBMISSIONS", 1)
+    monkeypatch.setattr(app_module, "_CORS_ALLOWED_ORIGINS", {SITE_ORIGIN})
+
+    for _ in range(5):
+        refused = client.post(
+            CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"Origin": "https://evil.example"}
+        )
+        assert refused.status_code == 403
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+
+def test_the_cap_fails_open_when_the_store_is_unusable(client, pipeline, monkeypatch, tmp_path):
+    """A disk problem must not be the reason a supporter cannot reach us."""
+    broken = tmp_path / "not-a-database"
+    broken.mkdir()
+    monkeypatch.setattr(rate_limit_store, "DEFAULT_DB_PATH", broken)
+
+    response = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD)
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+def test_inflight_ttl_outlives_the_slowest_possible_request():
+    """The TTL has to clear the worst case, or a slot is reused while in use.
+
+    Read from the **configured** timeouts, not the defaults, which is the whole
+    point: an environment that raises `SMTP_TIMEOUT_SECONDS` moves the worst
+    case, and this has to move with it. Copilot raised exactly that on PR #138
+    against an earlier version that summed the default constants.
+
+    The bound itself lives in `app.py` because the shipped default is derived
+    from it; asserting it here against live config is what stops the two
+    drifting apart.
+    """
+    email_config = load_email_config()
+    sheets_config = load_sheets_config()
+
+    slowest = app_module._worst_case_submission_seconds(
+        email_config.timeout_seconds, sheets_config.timeout_seconds
+    )
+    ttl = app_module._submission_slot_ttl_seconds()
+
+    assert slowest <= ttl, (
+        f"a submission can take {slowest}s under the configured timeouts, but a slot "
+        f"expires after {ttl}s -- raise INFLIGHT_TTL_SECONDS or lower the timeouts"
+    )
+
+
+@pytest.mark.parametrize("smtp_timeout", ["10", "30", "90"])
+def test_the_slot_ttl_tracks_the_configured_timeouts(monkeypatch, smtp_timeout):
+    """Raising a timeout must raise the TTL, in production and not just in CI.
+
+    The first version derived the TTL once at import from the DEFAULT_*
+    constants while the test read the configured values -- so the guarantee held
+    exactly where it was tested and nowhere else, since `SMTP_TIMEOUT_SECONDS`
+    is a per-request cPanel setting CI never sets. Caught in review.
+    """
+    monkeypatch.setenv("SMTP_TIMEOUT_SECONDS", smtp_timeout)
+
+    smtp, sheets = app_module._configured_timeouts()
+
+    assert smtp == float(smtp_timeout)
+    assert app_module._worst_case_submission_seconds(smtp, sheets) <= (
+        app_module._submission_slot_ttl_seconds()
+    )
+
+
+def test_a_probe_slot_expires_sooner_than_a_submission_slot():
+    """A probe is half the work, so it should not borrow the longer bound.
+
+    Using the submission figure doubled the window in which a worker killed
+    mid-probe leaves a cold cache answering 503 -- which pages as a dependency
+    failure. Raised in review.
+    """
+    assert app_module._probe_slot_ttl_seconds() < app_module._submission_slot_ttl_seconds()
+
+
+def test_an_unusable_timeout_does_not_break_slot_sizing(monkeypatch, caplog):
+    """A typo in cPanel must not take the forms down before the handler reports it."""
+    monkeypatch.setenv("SMTP_TIMEOUT_SECONDS", "1O")
+
+    with caplog.at_level(logging.ERROR):
+        smtp, _ = app_module._configured_timeouts()
+
+    assert smtp == DEFAULT_SMTP_TIMEOUT_SECONDS
+    assert "SMTP_TIMEOUT_SECONDS" in caplog.text
