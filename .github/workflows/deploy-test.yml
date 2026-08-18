@@ -124,13 +124,25 @@ jobs:
     steps:
       # arm-edge-gate.sh has to be on disk before the .htaccess is uploaded, and
       # `checkout` cleans the workspace — so it runs ahead of the artifact
-      # download rather than after it. Pinned to the head SHA like every other
-      # checkout here, which also means a PR changing the gate ships the script
-      # that matches it. See ADR-0020.
+      # download rather than after it.
+      #
+      # **The default branch, NOT the PR head**, unlike every other checkout in
+      # this file. This job runs the checked-out script with EDGE_SHARED_TOKEN
+      # in its environment, and the gate above admits any same-repository
+      # branch — so taking the script from the PR would let an unmerged branch
+      # rewrite it and read the token. The artifact stays PR-controlled: it is
+      # the thing being tested. Executable deploy code is not.
+      #
+      # The cost is that a PR changing the gate stanza cannot be test-deployed
+      # until the matching script change is on `main`, which is the merge-first
+      # sequencing this control already requires of the gate itself
+      # (docs/hosting.md). The pairing is covered by scripts/test_arm_edge_gate.py
+      # on every CI run regardless. deploy-production.yml keeps `head_sha`
+      # because there it is a commit on `main` by construction. See ADR-0020.
       - name: Check out the deploy scripts
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
 
       - name: Download build output

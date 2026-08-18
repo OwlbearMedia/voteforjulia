@@ -106,8 +106,10 @@ jobs:
       # arm-edge-gate.sh has to be on disk before the .htaccess is uploaded, and
       # `checkout` cleans the workspace — so it runs ahead of the artifact
       # download rather than after it. Pinned to the head SHA like every other
-      # checkout here, which also means a PR changing the gate ships the script
-      # that matches it. See ADR-0020.
+      # checkout here, which is safe precisely where deploy-test.yml's is not:
+      # this workflow only runs for a `push` to `main` from this repository, so
+      # the head SHA is a commit on `main` rather than an unmerged branch. See
+      # the longer note in deploy-test.yml, and ADR-0020.
       - name: Check out the deploy scripts
         uses: actions/checkout@v4
         with:
