@@ -631,46 +631,57 @@ it, rather than reporting a gate it did not install.
    `ssh.InsecureIgnoreHostKey()`. Unpinned, anything that can answer for the
    host receives the armed file.
 
-   **Both commands below run on your own machine**, not on the host, and the
-   point is that they are two different questions. The first runs `ssh-keygen`
-   _on_ the server over a session you have already accepted, so it is the
-   server's own statement of its key. The second asks a fresh client what the
-   host presents. A scan on its own is trust-on-first-use and would confirm an
-   impostor just as readily; the two agreeing is what makes it evidence. Host
-   and port come from the same [`vfj` alias](#reaching-the-host), so there is
-   nothing to paste:
+   **Pin the key type the deploy will actually negotiate, which is not the one
+   `ssh` picks.** The host offers RSA, ECDSA and Ed25519. OpenSSH prefers
+   Ed25519; Go's `x/crypto/ssh` — what `easyssh-proxy` uses — lists
+   `rsa-sha2-256` and the ECDSA algorithms _ahead_ of `ssh-ed25519` in
+   `supportedHostKeyAlgos`, so the deploy is presented the **RSA** host key.
+   Pinning what `ssh` shows you gives a fingerprint mismatch and a refused
+   deploy. Ask the server directly, with a client told to prefer Go's order:
 
    ```
-   ssh vfj 'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'
+   ssh -v -o BatchMode=yes \
+       -o HostKeyAlgorithms=rsa-sha2-256,rsa-sha2-512,ecdsa-sha2-nistp256,ssh-ed25519 \
+       vfj true 2>&1 | grep 'Server host key'
+   ```
 
+   ```
+   debug1: Server host key: ssh-rsa SHA256:V5BKW36AxulrN7mV0ooeYp01dHT9S+j8kwxdrA5ICSo
+   ```
+
+   **Cross-check it before trusting it**, because that single connection is
+   trust-on-first-use and would confirm an impostor as readily as the real host.
+   `known_hosts` already records the key accepted on earlier sessions, which is
+   the cheapest independent source. Host and port come from the same
+   [`vfj` alias](#reaching-the-host), so there is nothing to paste:
+
+   ```
    eval "$(ssh -G vfj | awk '/^hostname /{print "H="$2} /^port /{print "P="$2}')"
-   ssh-keyscan -p "$P" -t ed25519 "$H" | ssh-keygen -lf -
+   ssh-keygen -F "[$H]:$P" -l | grep -v '^#'
    ```
 
-   Each prints four fields, and **only the second one is the fingerprint**:
+   On this host `/etc/ssh` is not readable — CloudLinux CageFS gives the account
+   a virtualised `/etc` — so reading the key file on the server is not an option,
+   and `known_hosts` carries the comparison instead.
+
+   The two commands print the fingerprint in different positions and surround it
+   with different things — a key type here, a host and port there. **Store the
+   `SHA256:…` token itself and nothing around it**, prefix included:
 
    ```
-   256 SHA256:F3QIAH7qTYPeWARYIWuO0GFI94UB5u8LgDGOQ8QzHYI root@host           (ED25519)
-   256 SHA256:F3QIAH7qTYPeWARYIWuO0GFI94UB5u8LgDGOQ8QzHYI [203.0.113.10]:2222 (ED25519)
-   ^bits                    ^ store exactly this          ^ differs, ignore   ^ key type
+   debug1: Server host key: ssh-rsa SHA256:V5BKW36Axu…   ← from the ssh -v line
+   [203.0.113.10]:50288 RSA        SHA256:V5BKW36Axu…    ← from known_hosts
+                                   ^^^^^^^^^^^^^^^^^ store exactly this
    ```
 
-   Store `SHA256:…` alone — keep the prefix, drop the bit count, the trailing
-   comment and the `(ED25519)`. There is no `=` padding to trim: `ssh-keygen`
-   prints the unpadded form, which is exactly what `easyssh-proxy` compares
-   against (`"SHA256:" + base64.RawStdEncoding`).
-
-   **The third field is meant to differ between the two commands** — one is the
-   key's comment on the server, the other the address it was scanned at. Only
-   the fingerprint has to match, so `… | awk '{print $2}'` on both is the
-   comparison to trust.
-
-   If the first command cannot read the file, the host has made `/etc/ssh`
-   unreadable and the scan is all there is — in that case run it from two
-   different networks and compare, rather than accepting a single result.
+   The surrounding fields are expected to differ; only the `SHA256:` token has
+   to match between them, and matching on that token is the comparison to trust.
+   There is no `=` padding to trim either — `ssh-keygen` prints the unpadded
+   form, which is exactly what `easyssh-proxy` compares against
+   (`"SHA256:" + base64.RawStdEncoding`).
 
    If the deploy later fails with a fingerprint mismatch, the server presented
-   a different key type — take that type's
+   a different key type than the one pinned — take that type's
    fingerprint from the first command rather than pasting whatever the error
    reports. **Each deploy refuses to run once its own token secret is set and
    this is not**, so the ordering is enforced rather than remembered.
