@@ -86,29 +86,38 @@ The list would not have had to go stale. It would have done that immediately.
 origin refuses requests that do not carry it.** No IP list is involved, so
 nothing about this can go stale.
 
-A Transform Rule at the edge sets `X-Origin-Token: <secret>` on every request to
-the zone. The secret lives in a GitHub Actions secret, is substituted into the
-built `.htaccess` by [scripts/arm-edge-gate.sh](../../scripts/arm-edge-gate.sh)
-on the runner during the deploy job, and is set on both cPanel apps as
+A Transform Rule at the edge sets `X-Origin-Token: <secret>` on every request.
+The secret lives in a GitHub Actions secret, is substituted into the built
+`.htaccess` by [scripts/arm-edge-gate.sh](../../scripts/arm-edge-gate.sh) on the
+runner during the deploy job, and is set on the cPanel app as
 `EDGE_SHARED_TOKEN`. **It is never committed** — this repo is public.
+
+**Production and test get different tokens**, with a Transform Rule each, matched
+on hostname. Sharing one was the first version of this decision and was wrong:
+the test pipeline deploys PR-head code into `api_test` and a PR-built
+`.htaccess` into the test docroot, so a shared value is readable by any branch
+someone can push — `os.environ["EDGE_SHARED_TOKEN"]` from a deployed route is
+enough — and that value would authenticate direct requests to **production**.
+Found in review. The cost is a second rule to keep scoped correctly, and the
+hostname trap below now has two ways to go wrong instead of one.
 
 Enforcement covers every entry point that shares the property, named explicitly
 because the sibling-path hole is the easy mistake:
 
-| Entry point                              | Covered by                   | Notes                                     |
-| ---------------------------------------- | ---------------------------- | ----------------------------------------- |
-| `voteforjulia.com`, `www` (all paths)    | `public/.htaccess`           | path-scoped rewrite, `[F]`                |
-| `test.voteforjulia.com`                  | same file, same rule         | no Host condition, so it applies here too |
-| **`mail.voteforjulia.com`** (site paths) | same file, same rule         | serves the whole site; the bypass         |
-| `api.voteforjulia.com` `/send-email`     | `before_request` in `app.py` | covers the method, not the route          |
-| `api.voteforjulia.com` `/yard-sign`      | same hook                    |                                           |
-| `api.voteforjulia.com` `/health`         | same hook                    |                                           |
-| `api.voteforjulia.com` `/health/deep`    | same hook                    | the path 0018's cap was left off          |
-| `test-api.voteforjulia.com` (all)        | same hook                    |                                           |
-| `/.well-known/` on any hostname          | **deliberately excepted**    | AutoSSL; see below                        |
-| `/autodiscover/` on any hostname         | **deliberately excepted**    | mail-client setup                         |
-| `autoconfig.voteforjulia.com`            | not reached                  | cPanel answers it before the docroot      |
-| `cpanel`, `webmail`, `webdisk`, `ftp`    | out of scope                 | separate ports, not this docroot          |
+| Entry point                              | Covered by                   | Notes                                |
+| ---------------------------------------- | ---------------------------- | ------------------------------------ |
+| `voteforjulia.com`, `www` (all paths)    | `public/.htaccess`           | path-scoped rewrite, `[F]`           |
+| `test.voteforjulia.com`                  | same file, same rule         | its own token; see above             |
+| **`mail.voteforjulia.com`** (site paths) | same file, same rule         | serves the whole site; the bypass    |
+| `api.voteforjulia.com` `/send-email`     | `before_request` in `app.py` | covers the method, not the route     |
+| `api.voteforjulia.com` `/yard-sign`      | same hook                    |                                      |
+| `api.voteforjulia.com` `/health`         | same hook                    |                                      |
+| `api.voteforjulia.com` `/health/deep`    | same hook                    | the path 0018's cap was left off     |
+| `test-api.voteforjulia.com` (all)        | same hook                    |                                      |
+| `/.well-known/` on any hostname          | **deliberately excepted**    | AutoSSL; see below                   |
+| `/autodiscover/` on any hostname         | **deliberately excepted**    | mail-client setup                    |
+| `autoconfig.voteforjulia.com`            | not reached                  | cPanel answers it before the docroot |
+| `cpanel`, `webmail`, `webdisk`, `ftp`    | out of scope                 | separate ports, not this docroot     |
 
 The API hook is a `before_request` rather than a per-route check, so a route
 added later is covered without anyone remembering to cover it.
@@ -151,8 +160,9 @@ create the Transform Rule, confirm the header arrives, then enforce.
   placeholder in it, so arming the secret in between fails the deploy.
 - **The secret is deployment state with no representation in the checkout**, like
   the cPanel environment variables in [hosting.md](../hosting.md#environment-variables).
-  It now lives in three places that must agree: the Cloudflare Transform Rule,
-  the GitHub Actions secret, and `EDGE_SHARED_TOKEN` on both cPanel apps.
+  Each of the two tokens lives in three places that must agree: its Cloudflare
+  Transform Rule, its GitHub Actions secret, and `EDGE_SHARED_TOKEN` on its
+  cPanel app.
 - **Rotation cannot be done in place, and is an outage if attempted that way.**
   The frontend compares against exactly one value baked into `.htaccess` at
   deploy time, so from the moment the Transform Rule changes until a full CI run

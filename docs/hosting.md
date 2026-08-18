@@ -497,9 +497,23 @@ Why a shared secret rather than an IP allowlist is
 [access control sees the visitor's address](#access-control-sees-the-visitors-address-not-cloudflares),
 so the allowlist refuses the proxy too.
 
-**The token has to agree in three places**, and none of them is the checkout:
-the Cloudflare Transform Rule, the `EDGE_SHARED_TOKEN` GitHub Actions secret,
-and `EDGE_SHARED_TOKEN` on both cPanel apps. Generate it, never choose it:
+**There are two tokens, one per environment, and neither is in the checkout.**
+Production and test must not share one: the test pipeline deploys PR-head code
+into `api_test` and a PR-built `.htaccess` into the test docroot, so anything in
+scope there is readable by an unmerged branch. A shared value would hand
+production's edge credential to any branch someone can push.
+
+Each token has to agree in three places:
+
+|                                      | Production          | Test                     |
+| ------------------------------------ | ------------------- | ------------------------ |
+| Cloudflare Transform Rule            | apex, `www`, `api`  | `test`, `test-api`       |
+| GitHub Actions secret                | `EDGE_SHARED_TOKEN` | `EDGE_SHARED_TOKEN_TEST` |
+| cPanel app env (`EDGE_SHARED_TOKEN`) | `api-sub`           | `api_test`               |
+
+The cPanel variable is called `EDGE_SHARED_TOKEN` on both apps — only the value
+differs, so [api/app.py](../api/app.py) reads one name and knows nothing about
+environments. Generate each one, never choose it:
 
 ```
 openssl rand -hex 32
@@ -528,17 +542,31 @@ every path. Do not set the repository secret until the gate block is on `main`
 either; the substitution step aborts a deploy whose build has no placeholder in
 it, rather than reporting a gate it did not install.
 
-1. **Create the Transform Rule** (Rules → Transform Rules → Modify Request
-   Header), setting `X-Origin-Token` to the token on every request. **Scope it
-   to the zone, not the apex** — same trap as
-   [the firewall rules](#the-firewall-rules-and-how-they-were-derived): a rule
-   matching only `voteforjulia.com` leaves `api.voteforjulia.com` unstamped, and
-   the API is what the spam bot posts to.
+1. **Create both Transform Rules** (Rules → Transform Rules → Modify Request
+   Header), each setting `X-Origin-Token` to that environment's token, matched
+   on hostname. **Every hostname in an environment must be covered** — same trap
+   as [the firewall rules](#the-firewall-rules-and-how-they-were-derived): a
+   production rule matching only `voteforjulia.com` leaves `api.voteforjulia.com`
+   unstamped, and the API is what the spam bot posts to. Splitting one rule into
+   two doubles the chances of getting this wrong, so check all five hostnames
+   rather than the one you were thinking about:
+
+   ```
+   for h in voteforjulia.com www.voteforjulia.com api.voteforjulia.com \
+            test.voteforjulia.com test-api.voteforjulia.com; do
+     printf '%-28s ' "$h"
+     curl -so /dev/null -w '%{http_code}\n' "https://$h/"
+   done
+   ```
+
+   `mail.voteforjulia.com` is deliberately absent: it is grey-clouded, gets no
+   header, and being refused is the entire point of this control.
+
 2. **Confirm the header actually arrives**, before anything enforces. Set
-   `EDGE_SHARED_TOKEN` on `api_test` only, leave `EDGE_TOKEN_ENFORCED` unset,
-   restart, then submit through the test site and read the app log. A warning
-   naming `X-Origin-Token` means the rule is not reaching the API; silence means
-   it is.
+   `EDGE_SHARED_TOKEN` on `api_test` to the **test** token, leave
+   `EDGE_TOKEN_ENFORCED` unset, restart, then submit through the test site and
+   read the app log. A warning naming `X-Origin-Token` means the rule is not
+   reaching the API; silence means it is.
 3. **Pin the SSH host key first**, as `SSH_HOST_FINGERPRINT`. The token is
    substituted on the runner, so the `.htaccess` upload is the one transfer in
    either workflow that carries a secret — and `appleboy`'s actions skip host
@@ -556,12 +584,13 @@ it, rather than reporting a gate it did not install.
    Store the `SHA256:…` field. If the deploy later fails with a fingerprint
    mismatch, the server presented a different key type — take that type's
    fingerprint from the first command rather than pasting whatever the error
-   reports. **The deploy refuses to run once `EDGE_SHARED_TOKEN` is set and this
-   is not**, so the ordering is enforced rather than remembered.
+   reports. **Each deploy refuses to run once its own token secret is set and
+   this is not**, so the ordering is enforced rather than remembered.
 
-4. **Add the `EDGE_SHARED_TOKEN` repository secret**, then deploy. Until it
-   exists the deploy strips the gate out of `.htaccess` entirely rather than
-   leaving the placeholder — a literal `@@EDGE_TOKEN@@` would demand a header
+4. **Add the repository secrets** — `EDGE_SHARED_TOKEN_TEST` first, since test
+   is where a mistake is survivable, then `EDGE_SHARED_TOKEN` — and deploy.
+   Until a secret exists the corresponding deploy strips the gate out of
+   `.htaccess` entirely rather than leaving the placeholder — a literal `@@EDGE_TOKEN@@` would demand a header
    nobody can send and refuse every visitor.
 5. **Verify the frontend gate on test**, which is where a mistake is survivable:
 
@@ -626,12 +655,21 @@ few minutes with the origin reachable rather than a few minutes with the site
 refusing its visitors. The gap was open for months before ADR-0020; the site
 being down is the worse of the two:
 
-1. Clear `EDGE_TOKEN_ENFORCED` on both cPanel apps and restart.
-2. Delete the `EDGE_SHARED_TOKEN` repository secret and re-run the deploy. The
-   gate block is stripped from `.htaccess`, and the frontend serves everyone.
-3. Change the Transform Rule to the new value.
-4. Set the new secret, deploy, set the new `EDGE_SHARED_TOKEN` on both apps,
-   restart, then re-arm `EDGE_TOKEN_ENFORCED` — steps 4–7 above, in order.
+Each environment rotates on its own — that is the point of them being separate
+— so this is done once per environment, against that environment's rule, secret
+and app:
+
+1. Clear `EDGE_TOKEN_ENFORCED` on that environment's cPanel app and restart.
+2. Delete its repository secret (`EDGE_SHARED_TOKEN` or
+   `EDGE_SHARED_TOKEN_TEST`) and re-run the deploy. The gate block is stripped
+   from `.htaccess`, and the frontend serves everyone.
+3. Change that environment's Transform Rule to the new value.
+4. Set the new secret, deploy, set the new `EDGE_SHARED_TOKEN` value on that
+   app, restart, then re-arm `EDGE_TOKEN_ENFORCED` — steps 4–7 above, in order.
+
+**Rotate the test token on its own schedule, and treat it as burnt whenever a
+branch has had something questionable on it.** It is exposed to every PR by
+design, which is precisely why it is not production's.
 
 Accepting both an old and a new token for an overlap would remove the window
 entirely, and is
@@ -642,7 +680,7 @@ operation that has never yet been performed slightly tidier.
 Consequences worth knowing:
 
 - **A fourth drift surface**, alongside [monitoring/](../monitoring/), the
-  firewall rules and the branch protection. Nothing syncs the Transform Rule and
+  firewall rules and the branch protection. Nothing syncs the Transform Rules and
   nothing warns if it is edited away; the symptom is the whole site returning 403.
 - **A rollback to `public_html_prev` restores whatever token was current when
   that snapshot was deployed**, which after a rotation is the wrong one — the

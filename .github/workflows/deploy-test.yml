@@ -127,7 +127,7 @@ jobs:
       # download rather than after it.
       #
       # **The default branch, NOT the PR head**, unlike every other checkout in
-      # this file. This job runs the checked-out script with EDGE_SHARED_TOKEN
+      # this file. This job runs the checked-out script with the edge token
       # in its environment, and the gate above admits any same-repository
       # branch — so taking the script from the PR would let an unmerged branch
       # rewrite it and read the token. The artifact stays PR-controlled: it is
@@ -185,12 +185,12 @@ jobs:
       # upload itself is what would leak.
       - name: Require a pinned host key before uploading the edge token
         env:
-          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN_TEST }}
           HOST_FINGERPRINT: ${{ secrets.SSH_HOST_FINGERPRINT }}
         run: |
           set -euo pipefail
           if [ -n "${EDGE_TOKEN:-}" ] && [ -z "${HOST_FINGERPRINT:-}" ]; then
-            echo "EDGE_SHARED_TOKEN is set but SSH_HOST_FINGERPRINT is not, so the token would be uploaded to an unverified host. Aborting." >&2
+            echo "EDGE_SHARED_TOKEN_TEST is set but SSH_HOST_FINGERPRINT is not, so the token would be uploaded to an unverified host. Aborting." >&2
             exit 1
           fi
 
@@ -200,9 +200,15 @@ jobs:
       # job's output is an artifact, and an artifact is downloadable. Every
       # guard around the substitution lives in the script, where CI can reach
       # it — see scripts/test_arm_edge_gate.py.
+      #
+      # EDGE_SHARED_TOKEN_TEST, never the production secret. This pipeline
+      # deploys PR-head code into api_test and a PR-built .htaccess into the
+      # test docroot, either of which can read back whatever token is in scope.
+      # A shared token would therefore hand production's edge credential to any
+      # unmerged branch. Separate tokens, separate Transform Rules. See ADR-0020.
       - name: Arm the edge gate in the .htaccess about to be uploaded
         env:
-          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN_TEST }}
         run: ./scripts/arm-edge-gate.sh dist/.htaccess
 
       - name: Upload .htaccess to test staging directory
