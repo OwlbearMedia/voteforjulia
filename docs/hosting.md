@@ -546,22 +546,6 @@ right environment; nothing else in the repository can reach production's value.
 `SSH_HOST_FINGERPRINT` stays a repository secret: it is the same host either
 way, and a host key fingerprint is not a credential.
 
-Generate each token, never choose it:
-
-```
-openssl rand -hex 32
-```
-
-**Alphanumeric, and at least 32 characters** — the deploy refuses anything else
-and aborts before the swap. The character set is a mechanical constraint: the
-value is interpolated into a `sed` replacement and then a `RewriteCond` regex,
-where a metacharacter would corrupt the file or silently change what the rule
-matches. The length is the security one. A refused caller is by definition one
-the edge's rate limiting never saw, so the 403 is an unmetered oracle to guess
-against — and guessing the token is the whole attack, since carrying it is the
-only thing the origin checks. A memorable value is the failure here, not a
-short one chosen on purpose.
-
 The order is what keeps this from being an outage. Every step fails open, so
 stopping halfway leaves the site working and the gap merely still open.
 
@@ -575,7 +559,25 @@ every path. Do not set the repository secret until the gate block is on `main`
 either; the substitution step aborts a deploy whose build has no placeholder in
 it, rather than reporting a gate it did not install.
 
-1. **Create both Transform Rules** (Rules → Transform Rules → Modify Request
+1. **Generate the two values.** Nobody issues these — they are yours to invent,
+   and inventing them badly is the failure mode. Run this once per environment,
+   on your own machine, and keep the two results apart:
+
+   ```
+   openssl rand -hex 32
+   ```
+
+   **Alphanumeric, and at least 32 characters** — the deploy refuses anything
+   else and aborts before the swap. The character set is a mechanical
+   constraint: the value is interpolated into a `sed` replacement and then a
+   `RewriteCond` regex, where a metacharacter would corrupt the file or silently
+   change what the rule matches. The length is the security one. A refused
+   caller is by definition one the edge's rate limiting never saw, so the 403 is
+   an unmetered oracle to guess against — and guessing the token is the whole
+   attack, since carrying it is the only thing the origin checks. A memorable
+   value is the failure here, not a short one chosen on purpose.
+
+2. **Create both Transform Rules** (Rules → Transform Rules → Modify Request
    Header), each setting `X-Origin-Token` to that environment's token, matched
    on hostname. **Every hostname in an environment must be covered** — same trap
    as [the firewall rules](#the-firewall-rules-and-how-they-were-derived): a
@@ -595,12 +597,12 @@ it, rather than reporting a gate it did not install.
    `mail.voteforjulia.com` is deliberately absent: it is grey-clouded, gets no
    header, and being refused is the entire point of this control.
 
-2. **Confirm the header actually arrives**, before anything enforces. Set
+3. **Confirm the header actually arrives**, before anything enforces. Set
    `EDGE_SHARED_TOKEN` on `api_test` to the **test** token, leave
    `EDGE_TOKEN_ENFORCED` unset, restart, then submit through the test site and
    read the app log. A warning naming `X-Origin-Token` means the rule is not
    reaching the API; silence means it is.
-3. **Pin the SSH host key first**, as `SSH_HOST_FINGERPRINT`. The token is
+4. **Pin the SSH host key first**, as `SSH_HOST_FINGERPRINT`. The token is
    substituted on the runner, so the `.htaccess` upload is the one transfer in
    either workflow that carries a secret — and `appleboy`'s actions skip host
    verification entirely when `fingerprint` is empty. `scp-action` documents
@@ -652,13 +654,13 @@ it, rather than reporting a gate it did not install.
    reports. **Each deploy refuses to run once its own token secret is set and
    this is not**, so the ordering is enforced rather than remembered.
 
-4. **Add `EDGE_SHARED_TOKEN` to the `test` environment first**, since test is
+5. **Add `EDGE_SHARED_TOKEN` to the `test` environment first**, since test is
    where a mistake is survivable, then to `production` — Settings →
    Environments, not the repository secrets page — and deploy. Until an
    environment has the secret, that environment's deploy strips the gate out of
    `.htaccess` entirely rather than leaving the placeholder — a literal `@@EDGE_TOKEN@@` would demand a header
    nobody can send and refuse every visitor.
-5. **Verify the frontend gate on test**, which is where a mistake is survivable:
+6. **Verify the frontend gate on test**, which is where a mistake is survivable:
 
    ```
    curl -so /dev/null -w '%{http_code}\n' https://test.voteforjulia.com/
@@ -670,7 +672,7 @@ it, rather than reporting a gate it did not install.
    IP — the mismatched SNI serves a different vhost and reports a misleading
    result.
 
-6. **Check the second front door is shut, and the mail paths are not.**
+7. **Check the second front door is shut, and the mail paths are not.**
    `mail.voteforjulia.com` serves the whole site from `public_html` and is never
    proxied, so it is the bypass — not, as an earlier version of this page had it,
    a hostname to keep working:
@@ -698,8 +700,8 @@ it, rather than reporting a gate it did not install.
    which is why the exemption is spelled `[Aa]utodiscover` and does not need
    widening to `[Aa]uto[Dd]iscover`.
 
-7. **Arm the API**: set `EDGE_TOKEN_ENFORCED=true` on `api_test`, restart,
-   re-run the Cypress suite, then repeat 4–7 for production and `api`.
+8. **Arm the API**: set `EDGE_TOKEN_ENFORCED=true` on `api_test`, restart,
+   re-run the Cypress suite, then repeat 5–8 for production and `api`.
 
 **Rolling back** is clearing `EDGE_TOKEN_ENFORCED` and restarting for the API,
 or deleting the repository secret and redeploying for the frontend. Deleting the
@@ -730,7 +732,7 @@ and app:
    gate block is stripped from `.htaccess`, and the frontend serves everyone.
 3. Change that environment's Transform Rule to the new value.
 4. Set the new secret, deploy, set the new `EDGE_SHARED_TOKEN` value on that
-   app, restart, then re-arm `EDGE_TOKEN_ENFORCED` — steps 4–7 above, in order.
+   app, restart, then re-arm `EDGE_TOKEN_ENFORCED` — steps 5–8 above, in order.
 
 **Rotate the test token on its own schedule, and treat it as burnt whenever a
 branch has had something questionable on it.** It is exposed to every PR by
