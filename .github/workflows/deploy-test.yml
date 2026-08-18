@@ -122,6 +122,17 @@ jobs:
     environment: test
 
     steps:
+      # arm-edge-gate.sh has to be on disk before the .htaccess is uploaded, and
+      # `checkout` cleans the workspace — so it runs ahead of the artifact
+      # download rather than after it. Pinned to the head SHA like every other
+      # checkout here, which also means a PR changing the gate ships the script
+      # that matches it. See ADR-0020.
+      - name: Check out the deploy scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
       - name: Download build output
         uses: actions/download-artifact@v8
         with:
@@ -154,6 +165,34 @@ jobs:
           overwrite: true
           strip_components: 1
 
+      # The .htaccess uploaded below is the only thing either workflow sends
+      # that carries a secret, and appleboy's actions skip host-key verification
+      # entirely when `fingerprint` is empty — scp-action documents that default
+      # as "skip verification", and easyssh-proxy uses InsecureIgnoreHostKey().
+      # Refuse to upload rather than upload unverified. Checked here because the
+      # upload itself is what would leak.
+      - name: Require a pinned host key before uploading the edge token
+        env:
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+          HOST_FINGERPRINT: ${{ secrets.SSH_HOST_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${EDGE_TOKEN:-}" ] && [ -z "${HOST_FINGERPRINT:-}" ]; then
+            echo "EDGE_SHARED_TOKEN is set but SSH_HOST_FINGERPRINT is not, so the token would be uploaded to an unverified host. Aborting." >&2
+            exit 1
+          fi
+
+      # Substituted on the runner, which is ephemeral and single-tenant, rather
+      # than over SSH on the shared host where the token has to come to rest
+      # anyway. What matters is that it happens in the DEPLOY job: the build
+      # job's output is an artifact, and an artifact is downloadable. Every
+      # guard around the substitution lives in the script, where CI can reach
+      # it — see scripts/test_arm_edge_gate.py.
+      - name: Arm the edge gate in the .htaccess about to be uploaded
+        env:
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+        run: ./scripts/arm-edge-gate.sh dist/.htaccess
+
       - name: Upload .htaccess to test staging directory
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -162,106 +201,12 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           source: dist/.htaccess
           target: ./public_html_test_next
           overwrite: true
           strip_components: 1
 
-      # Same substitution as production — see the comment there for why an unset
-      # secret deletes the gate rather than leaving the placeholder. Test shares
-      # production's token: one Transform Rule covers the whole zone, and the
-      # `.htaccess` rule matches the test hostname too. See ADR-0020.
-      # See production: unpinned, the host key is not verified at all, and this
-      # step sends production's token. Refused on the runner before connecting.
-      - name: Require a pinned host key before sending the edge token
-        env:
-          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
-          HOST_FINGERPRINT: ${{ secrets.SSH_HOST_FINGERPRINT }}
-        run: |
-          set -euo pipefail
-          if [ -n "${EDGE_TOKEN:-}" ] && [ -z "${HOST_FINGERPRINT:-}" ]; then
-            echo "EDGE_SHARED_TOKEN is set but SSH_HOST_FINGERPRINT is not, so the token would be sent to an unverified host. Aborting." >&2
-            exit 1
-          fi
-
-      - name: Substitute the edge token into the staged .htaccess
-        uses: appleboy/ssh-action@v1.2.5
-        env:
-          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          port: ${{ secrets.SSH_PORT }}
-          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
-          envs: EDGE_TOKEN
-          script: |
-            set -euo pipefail
-            staged=./public_html_test_next/.htaccess
-
-            if [ ! -s "$staged" ]; then
-              echo "Staged $staged is missing or empty; aborting before the swap." >&2
-              exit 1
-            fi
-
-            if [ -z "${EDGE_TOKEN:-}" ]; then
-              sed -i '/# BEGIN EDGE GATE/,/# END EDGE GATE/d' "$staged"
-              echo "EDGE_SHARED_TOKEN unset; edge gate removed, origin left open."
-            else
-              case "$EDGE_TOKEN" in
-                *[!A-Za-z0-9]*)
-                  echo "EDGE_SHARED_TOKEN must be alphanumeric; aborting." >&2
-                  exit 1
-                  ;;
-              esac
-              # See production: the 403 is an unmetered oracle, so the token
-              # needs a length floor and the character-set check is not one.
-              if [ "${#EDGE_TOKEN}" -lt 32 ]; then
-                echo "EDGE_SHARED_TOKEN must be at least 32 characters; got ${#EDGE_TOKEN}. Aborting." >&2
-                exit 1
-              fi
-              # See production for why the whole stanza is compared rather than
-              # the placeholder's line. This environment shares production's
-              # token, so a second placeholder here would publish it.
-              expected='RewriteCond %{REQUEST_URI} !^/\.well-known/|RewriteCond %{REQUEST_URI} !^/[Aa]utodiscover/|RewriteCond %{HTTP:X-Origin-Token} !^@@EDGE_TOKEN@@$|RewriteRule ^ - [F]|'
-              actual=$(sed -n '/^# BEGIN EDGE GATE$/,/^# END EDGE GATE$/p' "$staged" | sed '1d;$d' | tr '\n' '|')
-              occurrences=$(grep -o '@@EDGE_TOKEN@@' "$staged" | wc -l | tr -d '[:space:]' || true)
-              if [ "$actual" != "$expected" ]; then
-                echo "Staged gate stanza is not the expected block. Aborting before the swap." >&2
-                echo "  expected: $expected" >&2
-                echo "  actual:   $actual" >&2
-                echo "If public/.htaccess changed the gate on purpose, update this step to match." >&2
-                exit 1
-              fi
-              if [ "$occurrences" != "1" ]; then
-                echo "Expected exactly one @@EDGE_TOKEN@@ in $staged; found $occurrences. Aborting before the swap." >&2
-                exit 1
-              fi
-              sed -i "s/@@EDGE_TOKEN@@/$EDGE_TOKEN/" "$staged"
-              echo "Edge gate armed."
-            fi
-
-            if grep -q '@@EDGE_TOKEN@@' "$staged"; then
-              echo "Placeholder survived substitution; aborting before the swap." >&2
-              exit 1
-            fi
-
-            # The range delete above runs to EOF if the END marker is ever lost,
-            # truncating this file to its first few lines. Neither guard above
-            # catches that: the placeholder is gone either way and the file is
-            # still non-empty. Assert something from the far end of the file
-            # instead -- losing the CSP silently is what ADR-0010 warns about.
-            if ! grep -q 'Content-Security-Policy' "$staged"; then
-              echo "Staged $staged lost its CSP; aborting before the swap." >&2
-              exit 1
-            fi
-
-      # Same carry-over as production — see the long comment in
-      # [deploy-production.yml](deploy-production.yml) for why this exists at
-      # all. Test pairs its own two docroots (public_html_test + api_test) and
-      # never reads production's, so a block is never moved between
-      # environments by this step.
       - name: Carry cPanel IP Blocker rules into the staged .htaccess
         uses: appleboy/ssh-action@v1.2.5
         with:

@@ -539,13 +539,14 @@ it, rather than reporting a gate it did not install.
    restart, then submit through the test site and read the app log. A warning
    naming `X-Origin-Token` means the rule is not reaching the API; silence means
    it is.
-3. **Pin the SSH host key first**, as `SSH_HOST_FINGERPRINT`. The substitution
-   step is the only place either workflow sends a secret over SSH, and
-   `appleboy`'s actions skip host verification entirely when `fingerprint` is
-   empty — `scp-action` documents the default as "skip verification", and
-   `easyssh-proxy` uses `ssh.InsecureIgnoreHostKey()`. Unpinned, anything that
-   can answer for the host reads the token straight out of the session. Read the
-   value over a session you already trust, rather than trusting a scan:
+3. **Pin the SSH host key first**, as `SSH_HOST_FINGERPRINT`. The token is
+   substituted on the runner, so the `.htaccess` upload is the one transfer in
+   either workflow that carries a secret — and `appleboy`'s actions skip host
+   verification entirely when `fingerprint` is empty. `scp-action` documents
+   that default as "skip verification"; `easyssh-proxy` uses
+   `ssh.InsecureIgnoreHostKey()`. Unpinned, anything that can answer for the
+   host receives the armed file. Read the value over a
+   session you already trust, rather than trusting a scan:
 
    ```
    ssh vfj 'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'
@@ -684,7 +685,14 @@ gh run view <run-id> --json jobs \
   --jq '.jobs[] | select(.name|test("Deploy")) | {name, steps: [.steps[].name]}'
 ```
 
-If your new step name is absent, it did not run. Consequences worth planning for:
+If your new step name is absent, it did not run. The mitigation, where it is
+available, is to keep the logic in a script the workflow merely calls: a
+one-line step is hard to get wrong, and everything it invokes can be tested from
+the PR like any other code. [scripts/arm-edge-gate.sh](../scripts/arm-edge-gate.sh)
+is the worked example — the edge gate's substitution and its guards live there,
+covered by [scripts/test_arm_edge_gate.py](../scripts/test_arm_edge_gate.py),
+after starting life as ninety lines of shell embedded in both workflows where
+nothing could reach them. Consequences worth planning for:
 
 - A merge is the **first** execution of any deploy-workflow change, and for
   `deploy-production.yml` that first execution is against production.
