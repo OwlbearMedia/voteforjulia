@@ -1162,5 +1162,255 @@ class AppDeepHealthTests(unittest.TestCase):
         self.assertEqual(response.get_json()["status"], "ok")
 
 
+class EdgeTokenTests(unittest.TestCase):
+    """The edge trust boundary (ADR-0020).
+
+    Distinct from the origin check: this asks whether the request came through
+    Cloudflare at all, not which page sent it.
+    """
+
+    TOKEN = "edgetoken123"
+
+    def setUp(self) -> None:
+        self.client = app_module.app.test_client()
+
+    def _configured(self, token: str = TOKEN, enforced: bool = True, log_window: float = 0.0):
+        # The warning throttle is module state that would otherwise leak: with a
+        # real window, whichever test logged first silences every test after it.
+        # A zero window logs every refusal; the throttle is exercised on purpose
+        # in its own tests below.
+        return mock.patch.multiple(
+            app_module,
+            _EDGE_TOKEN=token,
+            _EDGE_TOKEN_ENFORCED=enforced,
+            _EDGE_LOG_WINDOW_SECONDS=log_window,
+            _EDGE_LOG_STATE={"next_at": 0.0, "suppressed": 0},
+        )
+
+    def test_an_unconfigured_token_is_a_no_op(self) -> None:
+        # Local runs, CI and any app whose cPanel entry was never added. The
+        # check must not be able to refuse anything it has no secret for.
+        #
+        # Both header states, because an empty secret compares EQUAL to an
+        # absent header: testing only that case passes whether or not the
+        # unconfigured guard exists, and an app with no token would still refuse
+        # a caller who happened to send one. Found by the deletion ritual.
+        with self._configured(token="", enforced=True):
+            for headers in ({}, {app_module._EDGE_TOKEN_HEADER: "anything"}):
+                with self.subTest(headers=headers):
+                    response = self.client.get("/health", headers=headers)
+                    self.assertEqual(response.status_code, 200)
+
+    def test_the_configured_token_passes(self) -> None:
+        with self._configured():
+            response = self.client.get(
+                "/health", headers={app_module._EDGE_TOKEN_HEADER: self.TOKEN}
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_missing_token_is_logged_but_served_when_unenforced(self) -> None:
+        # The state between creating the Transform Rule and arming the check:
+        # it must report what it would have refused without refusing it.
+        with (
+            self._configured(enforced=False),
+            self.assertLogs(app_module.logger, level="WARNING") as logs,
+        ):
+            response = self.client.get("/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(app_module._EDGE_TOKEN_HEADER, logs.output[0])
+
+    def test_a_missing_token_is_refused_when_enforced(self) -> None:
+        with self._configured():
+            response = self.client.get("/health")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"], app_module._UNPROXIED_MESSAGE)
+
+    def test_a_wrong_token_is_refused(self) -> None:
+        # Values from the shared corpus rather than ones invented here, per the
+        # blind-spot rule in api/test_text_corpus.py. Restricted to what an HTTP
+        # header can actually carry: werkzeug encodes header values as latin-1.
+        hostile = [
+            "",
+            "   ",
+            "A" * 500,
+            "12345",
+            "!!!",
+            "https://evil.example",
+            self.TOKEN + "x",
+            self.TOKEN[:-1],
+            self.TOKEN.upper(),
+            # Non-ASCII: `hmac.compare_digest` raises TypeError on a str holding
+            # any of these, which turned a refusal into a 500 with a traceback.
+            # The first list here was all-ASCII despite a comment claiming the
+            # constraint was considered -- the blind spot test_text_corpus.py
+            # exists for. Latin-1 is the ceiling: werkzeug decodes header bytes
+            # that way, so these are what can actually arrive.
+            "café",
+            "ÿþ",
+            "évilévilévil",
+        ]
+        with self._configured():
+            for value in hostile:
+                with self.subTest(value=value[:32]):
+                    response = self.client.get(
+                        "/health", headers={app_module._EDGE_TOKEN_HEADER: value}
+                    )
+                    self.assertEqual(response.status_code, 403)
+
+    def test_a_hostile_token_never_produces_a_500(self) -> None:
+        # The refusal path must be total: any byte a header can carry has to end
+        # in a 403, not an exception. A 500 here would also be an uncapped way
+        # to fill the error log from off-edge, where no rate limit applies.
+        with self._configured():
+            for value in ("café", "\x80\xff", "ÿ" * 300, "tokén123"):
+                with self.subTest(value=value[:16]):
+                    response = self.client.get(
+                        "/health", headers={app_module._EDGE_TOKEN_HEADER: value}
+                    )
+                    self.assertEqual(response.status_code, 403)
+
+    def test_a_path_matching_no_route_is_refused(self) -> None:
+        # A scanner sweeping the origin address gets the same answer everywhere,
+        # rather than a 404 that confirms the host is ours.
+        with self._configured():
+            response = self.client.get("/wp-login.php")
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_every_route_refuses_an_unproxied_caller(self) -> None:
+        # The check ADR-0018 did not make: name every entry point sharing the
+        # property, and assert each one rather than the one in front of us.
+        # Enumerated from the url_map so a route added later is included here
+        # without anyone remembering to add it.
+        rules = [r for r in app_module.app.url_map.iter_rules() if r.endpoint != "static"]
+
+        self.assertGreaterEqual(len(rules), 4, "url_map lookup found no routes to check")
+        self.assertEqual(
+            [r.rule for r in rules if r.arguments],
+            [],
+            "a parameterised route needs a concrete URL adding to this test",
+        )
+
+        with self._configured():
+            for rule in rules:
+                for method in sorted(rule.methods - {"HEAD"}):
+                    with self.subTest(rule=rule.rule, method=method):
+                        response = self.client.open(rule.rule, method=method)
+                        self.assertEqual(response.status_code, 403)
+
+    def test_the_refusal_never_echoes_the_token(self) -> None:
+        # The 403 goes to whoever probed the origin, and the log is read over
+        # SSH by a human. Neither may carry the secret.
+        with (
+            self._configured(),
+            self.assertLogs(app_module.logger, level="WARNING") as logs,
+        ):
+            response = self.client.get("/health", headers={app_module._EDGE_TOKEN_HEADER: "wrong"})
+
+        self.assertNotIn(self.TOKEN, response.get_data(as_text=True))
+        self.assertNotIn(self.TOKEN, "\n".join(logs.output))
+
+    def test_a_proxied_submission_reaches_the_pipeline(self) -> None:
+        # Every other pass-path assertion in this class is `GET /health`. The
+        # endpoints that carry the traffic worth protecting are the two POSTs,
+        # and a `before_request` that refused those while serving `/health`
+        # would satisfy the whole class -- while taking every form on the site
+        # down. The refusal path is asserted for every route; the pass path has
+        # to name the routes that matter too.
+        sent = []
+        email_config = EmailConfig(
+            smtp_server="mail.example.com",
+            smtp_port=465,
+            smtp_security="ssl",
+            email_address="info@example.com",
+            email_password="placeholder-value",
+            recipients=["team@example.com"],
+            plain_text_confirmation_only=False,
+        )
+        sheets_config = SheetsConfig(
+            spreadsheet_id="",
+            worksheet="Sheet1",
+            service_account_file="",
+            service_account_json="",
+        )
+
+        payloads = {
+            "/send-email": {"firstName": "Julia", "email": "julia@example.com"},
+            "/yard-sign": {
+                "firstName": "Sam",
+                "email": "sam@example.com",
+                "address": "123 Riverfront Dr, Mankato, MN 56001",
+            },
+        }
+
+        for path, payload in payloads.items():
+            with self.subTest(path=path):
+                sent.clear()
+                with (
+                    self._configured(),
+                    mock.patch.multiple(
+                        app_module,
+                        _RATE_LIMIT_BUCKETS={},
+                        load_email_config=lambda *_a, **_kw: email_config,
+                        load_sheets_config=lambda *_a, **_kw: sheets_config,
+                        send_submission_email=lambda _config, submission: sent.append(submission),
+                        send_confirmation_email=lambda *_a, **_kw: None,
+                        send_yard_sign_request_email=lambda _config, submission: sent.append(
+                            submission
+                        ),
+                        send_yard_sign_confirmation_email=lambda *_a, **_kw: None,
+                        append_row=lambda *_a, **_kw: None,
+                    ),
+                ):
+                    response = self.client.post(
+                        path,
+                        json=payload,
+                        headers={app_module._EDGE_TOKEN_HEADER: self.TOKEN},
+                    )
+
+                self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+                self.assertEqual(len(sent), 1)
+
+    def test_the_unproxied_warning_is_throttled_without_losing_the_count(self) -> None:
+        # A caller refused here never reached the edge's rate limiting, so
+        # nothing else bounds how fast it can retry: one WARNING per refusal
+        # makes the log the cheapest thing on the origin to attack. One line per
+        # window is the fix, and the count is what keeps it a signal -- a
+        # throttle that dropped it would make a flood read like one request.
+        with (
+            self._configured(log_window=300.0),
+            self.assertLogs(app_module.logger, level="WARNING") as logs,
+        ):
+            for _ in range(50):
+                self.assertEqual(self.client.get("/health").status_code, 403)
+
+            self.assertEqual(len(logs.output), 1, logs.output)
+
+            # Expire the window rather than waiting 300 seconds for it. The 49
+            # refusals above are reported on the next line written, not the one
+            # that opened the window.
+            app_module._EDGE_LOG_STATE["next_at"] = 0.0
+            self.client.get("/health")
+            app_module._EDGE_LOG_STATE["next_at"] = 0.0
+            self.client.get("/health")
+
+        self.assertEqual(len(logs.output), 3, logs.output)
+        self.assertIn("0 more suppressed", logs.output[0])
+        self.assertIn("49 more suppressed", logs.output[1])
+        self.assertIn("0 more suppressed", logs.output[2])
+
+    def test_a_hostile_path_is_truncated_in_the_log(self) -> None:
+        with (
+            self._configured(enforced=False),
+            self.assertLogs(app_module.logger, level="WARNING") as logs,
+        ):
+            self.client.get("/" + "A" * 5000)
+
+        self.assertLess(len(logs.output[0]), 1000)
+
+
 if __name__ == "__main__":
     unittest.main()

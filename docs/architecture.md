@@ -251,6 +251,17 @@ take, so the case it is really for is an upstream slowdown — where every holde
 is a legitimate supporter and no rate limit is anywhere near being reached —
 piling workers up against the host's memory cap.
 
+Outside all of them is the edge itself
+([ADR-0020](adr/0020-authenticate-the-origin-path.md)). Cloudflare stamps every
+proxied request with a shared secret header, and both the frontend `.htaccess`
+and a `before_request` hook in the API refuse anything arriving without it — so
+a caller that reads the origin address off the MX record and connects directly
+no longer reaches either. That decision also records why the obvious version,
+an allowlist of Cloudflare's IP ranges, cannot work here: the host restores the
+real client address before access control sees it, so the allowlist refuses the
+proxy along with everyone else. Both enforcement points fail open until switched
+on, and the secret is deployment state with no representation in the checkout.
+
 **Observability.** New Relic Browser for client errors and Core Web Vitals, GA4
 for traffic ([ADR-0011](adr/0011-browser-side-observability.md)), and the New
 Relic Python agent in the Passenger app
