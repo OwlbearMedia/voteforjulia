@@ -122,6 +122,29 @@ jobs:
     environment: test
 
     steps:
+      # arm-edge-gate.sh has to be on disk before the .htaccess is uploaded, and
+      # `checkout` cleans the workspace — so it runs ahead of the artifact
+      # download rather than after it.
+      #
+      # **The default branch, NOT the PR head**, unlike every other checkout in
+      # this file. This job runs the checked-out script with the edge token
+      # in its environment, and the gate above admits any same-repository
+      # branch — so taking the script from the PR would let an unmerged branch
+      # rewrite it and read the token. The artifact stays PR-controlled: it is
+      # the thing being tested. Executable deploy code is not.
+      #
+      # The cost is that a PR changing the gate stanza cannot be test-deployed
+      # until the matching script change is on `main`, which is the merge-first
+      # sequencing this control already requires of the gate itself
+      # (docs/hosting.md). The pairing is covered by scripts/test_arm_edge_gate.py
+      # on every CI run regardless. deploy-production.yml keeps `head_sha`
+      # because there it is a commit on `main` by construction. See ADR-0020.
+      - name: Check out the deploy scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+
       - name: Download build output
         uses: actions/download-artifact@v8
         with:
@@ -154,6 +177,41 @@ jobs:
           overwrite: true
           strip_components: 1
 
+      # The .htaccess uploaded below is the only thing either workflow sends
+      # that carries a secret, and appleboy's actions skip host-key verification
+      # entirely when `fingerprint` is empty — scp-action documents that default
+      # as "skip verification", and easyssh-proxy uses InsecureIgnoreHostKey().
+      # Refuse to upload rather than upload unverified. Checked here because the
+      # upload itself is what would leak.
+      - name: Require a pinned host key before uploading the edge token
+        env:
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+          HOST_FINGERPRINT: ${{ secrets.SSH_HOST_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${EDGE_TOKEN:-}" ] && [ -z "${HOST_FINGERPRINT:-}" ]; then
+            echo "EDGE_SHARED_TOKEN is set but SSH_HOST_FINGERPRINT is not, so the token would be uploaded to an unverified host. Aborting." >&2
+            exit 1
+          fi
+
+      # Substituted on the runner, which is ephemeral and single-tenant, rather
+      # than over SSH on the shared host where the token has to come to rest
+      # anyway. What matters is that it happens in the DEPLOY job: the build
+      # job's output is an artifact, and an artifact is downloadable. Every
+      # guard around the substitution lives in the script, where CI can reach
+      # it — see scripts/test_arm_edge_gate.py.
+      #
+      # This resolves to the `test` ENVIRONMENT's secret, not a repository one —
+      # a different value from production's, under the same name. This pipeline
+      # deploys PR-head code into api_test and a PR-built .htaccess into the
+      # test docroot, either of which can read back whatever token is in scope,
+      # so a value shared with production would hand any unmerged branch the
+      # production edge credential. See ADR-0020.
+      - name: Arm the edge gate in the .htaccess about to be uploaded
+        env:
+          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
+        run: ./scripts/arm-edge-gate.sh dist/.htaccess
+
       - name: Upload .htaccess to test staging directory
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -162,16 +220,12 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           source: dist/.htaccess
           target: ./public_html_test_next
           overwrite: true
           strip_components: 1
 
-      # Same carry-over as production — see the long comment in
-      # [deploy-production.yml](deploy-production.yml) for why this exists at
-      # all. Test pairs its own two docroots (public_html_test + api_test) and
-      # never reads production's, so a block is never moved between
-      # environments by this step.
       - name: Carry cPanel IP Blocker rules into the staged .htaccess
         uses: appleboy/ssh-action@v1.2.5
         with:
