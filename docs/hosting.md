@@ -577,9 +577,13 @@ placeholder that the deploy substitutes, and
 so the substitution step has to be on `main` before the branch carrying the gate
 is deployed by it. Skipped once already: the combined branch put the literal
 `@@EDGE_TOKEN@@` on the test docroot, where it matched no real header and 403'd
-every path. Do not set the repository secret until the gate block is on `main`
+every path. Do not set the environment secret until the gate block is on `main`
 either; the substitution step aborts a deploy whose build has no placeholder in
-it, rather than reporting a gate it did not install.
+it, rather than reporting a gate it did not install. (The token is an
+environment secret in both environments — see
+[Every deploy secret is environment-scoped](#every-deploy-secret-is-environment-scoped)
+— so "set the secret" means setting it on `production` and `test`, never on the
+repository.)
 
 1. **Generate the two values.** Nobody issues these — they are yours to invent,
    and inventing them badly is the failure mode. Run this once per environment,
@@ -779,10 +783,13 @@ it, rather than reporting a gate it did not install.
    re-run the Cypress suite, then repeat 5–8 for production and `api`.
 
 **Rolling back** is clearing `EDGE_TOKEN_ENFORCED` and restarting for the API,
-or deleting the repository secret and redeploying for the frontend. Deleting the
-Transform Rule alone rolls back nothing — it takes the header away while both
-ends still demand it, which is the total outage. **Turn enforcement off before
-touching the rule.**
+or deleting `EDGE_SHARED_TOKEN` from that environment and redeploying for the
+frontend. **From the environment, not the repository** — there is no repository
+copy, so deleting "the repository secret" deletes nothing, the redeploy stamps
+the same token back into `.htaccess`, and the rollback reports success while the
+gate stays armed. Deleting the Transform Rule alone rolls back nothing — it takes
+the header away while both ends still demand it, which is the total outage.
+**Turn enforcement off before touching the rule.**
 
 #### Rotating the token
 
@@ -864,9 +871,11 @@ name — so the repository copies were doing nothing except staying readable.
 the environment.** `deploy-production.yml`'s `build-frontend` uses
 `NEW_RELIC_API_KEY` and is not a deploy job, so it had no `environment:` line;
 dropping the repository copy left the reference resolving to an empty string.
-Nothing goes red — [scripts/upload-sourcemaps.mjs](../scripts/upload-sourcemaps.mjs)
-exits 0 when the key is absent — so the deploy succeeds and the next production
-stack trace is unmapped. Before deleting a repository secret, list every job
+[scripts/upload-sourcemaps.mjs](../scripts/upload-sourcemaps.mjs) used to exit 0
+on an absent key, so nothing went red: the deploy succeeded and the next
+production stack trace was unmapped. It now exits 1, which turns that class of
+mistake into a failed build instead of a quiet gap — but the check below is still
+the cheaper way to find it. Before deleting a repository secret, list every job
 naming it and confirm each one declares an environment that holds it:
 
 ```

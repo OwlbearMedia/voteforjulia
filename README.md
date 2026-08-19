@@ -177,7 +177,9 @@ The source map mode is controlled by the `SOURCEMAP_MODE` env var (read in
 Relevant scripts:
 
 - `pnpm run upload-sourcemaps` — uploads `dist/**/*.js.map` to the New Relic
-  browser app (see `scripts/upload-sourcemaps.mjs`).
+  browser app (see `scripts/upload-sourcemaps.mjs`). **Exits non-zero if
+  `NEW_RELIC_API_KEY` is unset** rather than skipping quietly, so a
+  misconfigured production deploy fails instead of shipping unmapped traces.
 - `pnpm run strip-sourcemaps` — deletes `*.js.map` from `dist`.
 - `pnpm run build:deploy` — builds, uploads source maps, then strips them. This
   is what the production deploy runs.
@@ -429,7 +431,7 @@ On `production` only:
 
 On `test` only:
 
-- GOOGLE_SHEETS_SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON and GOOGLE_SHEETS_YARDSIGN_WORKSHEET (the same values the [E2E tests](#e2e-tests-cypress) need locally — the Cypress job in the test deploy reads the submitted rows back out of the sheet and deletes them, so without these the e2e job fails after an otherwise good deploy)
+- GOOGLE_SHEETS_SPREADSHEET_ID and GOOGLE_SERVICE_ACCOUNT_JSON (the same two values the [E2E tests](#e2e-tests-cypress) need locally — the Cypress job in the test deploy reads the submitted rows back out of the sheet and deletes them, so without these the e2e job fails after an otherwise good deploy)
 
 On the repository:
 
