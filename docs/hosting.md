@@ -61,7 +61,10 @@ Host vfj
 ```
 
 The four values are the same ones held as the `SSH_HOST`, `SSH_PORT`,
-`SSH_USERNAME` and `SSH_PRIVATE_KEY` repository secrets. `ssh -G vfj` prints what
+`SSH_USERNAME` and `SSH_PRIVATE_KEY` secrets. Those live on the `production` and
+`test` environments, not on the repository — see
+[Every deploy secret is environment-scoped](#every-deploy-secret-is-environment-scoped).
+`ssh -G vfj` prints what
 the alias resolves to without connecting, which is the quickest way to confirm it
 is set up and the source of the host and port in the fingerprint step below.
 
@@ -559,8 +562,11 @@ deployment branch policy admits only `main`, which a `pull_request` job's ref
 (`refs/pull/N/merge`) cannot satisfy. The jobs that need it already declare the
 right environment; nothing else in the repository can reach production's value.
 
-`SSH_HOST_FINGERPRINT` stays a repository secret: it is the same host either
-way, and a host key fingerprint is not a credential.
+`SSH_HOST_FINGERPRINT` holds the same value in both environments: it is the same
+host either way, and a host key fingerprint is not a credential. It is still
+stored per environment rather than on the repository, so that
+[the rule](#every-deploy-secret-is-environment-scoped) has no exceptions to
+remember.
 
 The order is what keeps this from being an outage. Every step fails open, so
 stopping halfway leaves the site working and the gap merely still open.
@@ -571,9 +577,13 @@ placeholder that the deploy substitutes, and
 so the substitution step has to be on `main` before the branch carrying the gate
 is deployed by it. Skipped once already: the combined branch put the literal
 `@@EDGE_TOKEN@@` on the test docroot, where it matched no real header and 403'd
-every path. Do not set the repository secret until the gate block is on `main`
+every path. Do not set the environment secret until the gate block is on `main`
 either; the substitution step aborts a deploy whose build has no placeholder in
-it, rather than reporting a gate it did not install.
+it, rather than reporting a gate it did not install. (The token is an
+environment secret in both environments — see
+[Every deploy secret is environment-scoped](#every-deploy-secret-is-environment-scoped)
+— so "set the secret" means setting it on `production` and `test`, never on the
+repository.)
 
 1. **Generate the two values.** Nobody issues these — they are yours to invent,
    and inventing them badly is the failure mode. Run this once per environment,
@@ -773,10 +783,13 @@ it, rather than reporting a gate it did not install.
    re-run the Cypress suite, then repeat 5–8 for production and `api`.
 
 **Rolling back** is clearing `EDGE_TOKEN_ENFORCED` and restarting for the API,
-or deleting the repository secret and redeploying for the frontend. Deleting the
-Transform Rule alone rolls back nothing — it takes the header away while both
-ends still demand it, which is the total outage. **Turn enforcement off before
-touching the rule.**
+or deleting `EDGE_SHARED_TOKEN` from that environment and redeploying for the
+frontend. **From the environment, not the repository** — there is no repository
+copy, so deleting "the repository secret" deletes nothing, the redeploy stamps
+the same token back into `.htaccess`, and the rollback reports success while the
+gate stays armed. Deleting the Transform Rule alone rolls back nothing — it takes
+the header away while both ends still demand it, which is the total outage.
+**Turn enforcement off before touching the rule.**
 
 #### Rotating the token
 
@@ -840,6 +853,39 @@ Consequences worth knowing:
 - **Bot Fight Mode**, at least until the e2e suite and the synthetic monitors
   have been observed passing with it on. It challenges by IP reputation, and
   both run from cloud ranges.
+
+## Every deploy secret is environment-scoped
+
+[The edge token's reasoning](#closing-the-direct-to-origin-path) is not specific to that token. **No secret the
+deploys use is stored on the repository** — every one of them lives on
+`production` or `test`. The repository level holds `CODECOV_TOKEN` and nothing
+else, because CI needs it and CI declares no environment.
+
+The `SSH_*` secrets were duplicated at both levels until 2026-08-18, which meant
+`ci.yml` could still read a production-capable private key from a branch by the
+route described there. The environment copies were already in place and
+already winning — an environment secret shadows a repository secret of the same
+name — so the repository copies were doing nothing except staying readable.
+
+**The trap when removing one: a job reads environment secrets only if it names
+the environment.** `deploy-production.yml`'s `build-frontend` uses
+`NEW_RELIC_API_KEY` and is not a deploy job, so it had no `environment:` line;
+dropping the repository copy left the reference resolving to an empty string.
+[scripts/upload-sourcemaps.mjs](../scripts/upload-sourcemaps.mjs) used to exit 0
+on an absent key, so nothing went red: the deploy succeeded and the next
+production stack trace was unmapped. It now exits 1, which turns that class of
+mistake into a failed build instead of a quiet gap — but the check below is still
+the cheaper way to find it. Before deleting a repository secret, list every job
+naming it and confirm each one declares an environment that holds it:
+
+```
+gh secret list; gh secret list --env production; gh secret list --env test
+```
+
+Adding `environment:` to a `workflow_run` job costs nothing here: such a job runs
+with `github.ref` set to the default branch, so `production`'s `main` branch
+policy admits it — the same reason [the note above](#deploy-workflow-changes-cannot-be-tested-from-a-pr)
+warns that the policy is not a trust boundary.
 
 ## Deploy workflow changes cannot be tested from a PR
 
