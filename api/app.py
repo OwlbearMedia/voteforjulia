@@ -960,7 +960,7 @@ _MANKATO_CONFIG = {
     },
     "get_involved": {
         "yard_sign": "/yard-sign",
-        "say_hello": "/send-email",
+        "volunteer": "/send-email",
     },
     "reminder": "Don't forget to vote on November 3rd!",
 }
