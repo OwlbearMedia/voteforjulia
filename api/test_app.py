@@ -184,6 +184,65 @@ class AppErrorShapeTests(unittest.TestCase):
         self.assertEqual(response.headers.get("Vary"), "Origin")
 
 
+class AppServiceRootTests(unittest.TestCase):
+    """`GET /` answers with the easter egg instead of a 404."""
+
+    def setUp(self) -> None:
+        self.client = app_module.app.test_client()
+
+    def test_the_root_is_a_json_200(self) -> None:
+        # The whole point: a scanner sweeping the origin gets an answer rather
+        # than a 404, while a path that really matches nothing still does not.
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "application/json")
+        self.assertEqual(self.client.get("/not-a-route").status_code, 404)
+
+    def test_it_is_cacheable(self) -> None:
+        # Pinned as a property of a fixed document, not as an origin-hit saving:
+        # the free tier caches by extension (ADR-0019), so nothing at the edge
+        # acts on this today. See the note in `service_root`.
+        self.assertEqual(
+            self.client.get("/").headers.get("Cache-Control"),
+            "public, max-age=3600",
+        )
+
+    def test_the_keys_keep_their_written_order(self) -> None:
+        # `jsonify` sorts keys, which would alphabetise the document and lose
+        # the thing it is imitating. Asserting the served order rather than the
+        # serializer's arguments, so a swap back to `jsonify` fails here.
+        served = json.loads(self.client.get("/").get_data(as_text=True))
+
+        self.assertEqual(list(served), list(app_module._MANKATO_CONFIG))
+        self.assertEqual(
+            list(served["favorites"]),
+            list(app_module._MANKATO_CONFIG["favorites"]),
+        )
+        self.assertNotEqual(list(served), sorted(served))
+
+    def test_every_path_it_quotes_is_a_real_route(self) -> None:
+        # The decoration may say anything; the endpoint paths in it are the one
+        # part a reader could act on. Renaming a route without editing the
+        # document would leave it directing people at a 404.
+        registered = {rule.rule for rule in app_module.app.url_map.iter_rules()}
+
+        def paths(node):
+            if isinstance(node, dict):
+                for value in node.values():
+                    yield from paths(value)
+            elif isinstance(node, list):
+                for value in node:
+                    yield from paths(value)
+            elif isinstance(node, str) and node.startswith("/"):
+                yield node
+
+        quoted = set(paths(app_module._MANKATO_CONFIG))
+
+        self.assertTrue(quoted, "the document quotes no endpoint paths to check")
+        self.assertEqual(quoted - registered, set())
+
+
 class AppRequestSizeTests(unittest.TestCase):
     """A body past MAX_CONTENT_LENGTH is refused before it is buffered."""
 
