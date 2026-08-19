@@ -124,6 +124,12 @@ _HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS = _int_setting("HEALTH_LONG_RATE_LIMIT_MAX_
 
 _HEALTH_DEEP_SCOPE = "health-deep"
 
+# Which tier refused a request, reported to New Relic on every 429. Both tiers
+# return an identical response, so this attribute is the only thing that tells
+# a blocked burst apart from a patient caller. See ADR-0021.
+_BURST_TIER = "burst"
+_HOURLY_TIER = "hourly"
+
 # How many submissions may be in flight at once, across every worker (ADR-0018).
 # The rate limit tiers bound how often one client may ask; this bounds how much
 # work can run at all, which is what an upstream slowdown turns into.
@@ -472,7 +478,12 @@ def _evict_to_cap() -> None:
     )
 
 
-def _consume_rate_limit(scope: str) -> int | None:
+def _consume_rate_limit(scope: str) -> tuple[int, str] | None:
+    """Refuse the request, or let it through.
+
+    Returns `(retry_after, tier)` when a tier refuses, so the caller can report
+    which one did. `None` means allowed.
+    """
     global _next_bucket_sweep_at
 
     now = monotonic()
@@ -503,14 +514,18 @@ def _consume_rate_limit(scope: str) -> int | None:
         # wait that is still inside it -- so a client that honours Retry-After
         # exactly gets a second 429 for doing the right thing.
         retry_after = max(1, ceil(bucket[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
-        return retry_after
+        return retry_after, _BURST_TIER
 
     bucket.append(now)
 
     # Second tier last: the cheap in-memory check short-circuits a burst before
     # anything touches the disk, and counting only requests the burst tier
     # allowed stops a refused request from spending the hourly allowance.
-    return _consume_long_rate_limit(scope, key)
+    retry_after = _consume_long_rate_limit(scope, key)
+    if retry_after is None:
+        return None
+
+    return retry_after, _HOURLY_TIER
 
 
 def _long_rate_limit_for(scope: str) -> int:
@@ -833,7 +848,32 @@ def _within_capacity(endpoint_name: str, run):
         release_submission_slot(token)
 
 
-def _rate_limited_response(retry_after: int):
+def _report_rate_limit(tier: str, scope: str) -> None:
+    """Tag the transaction with which tier refused it, and on which endpoint.
+
+    A 429 is a returned response, not a raised exception, so the agent records
+    it with no error and nothing distinguishing the two tiers. These attributes
+    are the whole signal the alert conditions run on. See ADR-0021.
+
+    Never the client address: `_rate_limit_key()` is a caller identity and
+    ADR-0014 keeps it out of anywhere it does not have to be.
+
+    Best-effort, like `_report_probe_failure` -- the agent is absent locally and
+    in CI, and reporting must never be the thing that refuses a supporter.
+    """
+    if _newrelic_agent is None:
+        return
+
+    try:
+        _newrelic_agent.add_custom_attribute("rate_limit.tier", tier)
+        _newrelic_agent.add_custom_attribute("rate_limit.scope", scope)
+    except Exception:  # pragma: no cover - never let reporting break a response
+        logger.debug("Could not report the %s rate-limit trip to New Relic", tier, exc_info=True)
+
+
+def _rate_limited_response(retry_after: int, *, tier: str, scope: str):
+    _report_rate_limit(tier, scope)
+
     response = jsonify({"error": "Too many requests. Please try again later."})
     response.status_code = 429
     response.headers["Retry-After"] = str(retry_after)
@@ -1108,9 +1148,10 @@ def _refresh_deep_health(now: float) -> _DeepHealthResult | None:
 def deep_health_check():
     global _deep_health_cache
 
-    retry_after = _consume_rate_limit(_HEALTH_DEEP_SCOPE)
-    if retry_after is not None:
-        return _rate_limited_response(retry_after)
+    refused = _consume_rate_limit(_HEALTH_DEEP_SCOPE)
+    if refused is not None:
+        retry_after, tier = refused
+        return _rate_limited_response(retry_after, tier=tier, scope=_HEALTH_DEEP_SCOPE)
 
     # Stamped before the probes, so Age may overstate but never understates.
     now = monotonic()
@@ -1150,9 +1191,11 @@ def send_email():
     if _origin_rejected("/send-email"):
         return _cross_site_response()
 
-    retry_after = _consume_rate_limit("send-email")
-    if retry_after is not None:
-        return _rate_limited_response(retry_after)
+    scope = "send-email"
+    refused = _consume_rate_limit(scope)
+    if refused is not None:
+        retry_after, tier = refused
+        return _rate_limited_response(retry_after, tier=tier, scope=scope)
 
     return _within_capacity(
         "/send-email",
@@ -1179,9 +1222,11 @@ def yard_sign():
     if _origin_rejected("/yard-sign"):
         return _cross_site_response()
 
-    retry_after = _consume_rate_limit("yard-sign")
-    if retry_after is not None:
-        return _rate_limited_response(retry_after)
+    scope = "yard-sign"
+    refused = _consume_rate_limit(scope)
+    if refused is not None:
+        retry_after, tier = refused
+        return _rate_limited_response(retry_after, tier=tier, scope=scope)
 
     return _within_capacity(
         "/yard-sign",

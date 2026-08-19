@@ -100,23 +100,25 @@ third form is a new route, not a new pipeline.
 with a few of the candidate's favourite things about the city. It is decoration and no client reads
 it, but it is not only decoration. The root is the most-requested path on the
 origin and effectively none of that is traffic the site sent — it is scanners,
-and it used to answer `404`. Two things follow from replacing that. Sweeps stop
-being the loudest entry in a log nobody was reading, and the dashboard's API
-error tile stops counting them: it is `percentage(count(*), WHERE
-http.statusCode >= 400)`, which — unlike the error-rate _alert_, where the New
-Relic agent ignores `404` by default — was reading scanner traffic as the API
-failing. A path that genuinely matches no route still answers `404`.
+and it used to answer `404`. Replacing that stops sweeps being the loudest entry
+in a log nobody was reading. A path that genuinely matches no route still
+answers `404`.
 
-That second effect only reaches sweeps that arrive through Cloudflare. Once
-`EDGE_TOKEN_ENFORCED` is armed on an environment
-([ADR-0020](adr/0020-authenticate-the-origin-path.md)), a direct-to-origin sweep
-is refused in `before_request` and never reaches this route — and a `403` counts
-toward the tile exactly as the old `404` did. It is worse than that for the
-alert: the agent's default `ignore_status_codes` contains `404` but not `403`,
-so arming the token turns sweep traffic the alert had always ignored into
-traffic it counts. That is a property of the refusal rather than of this route,
-and it is not new here, but this is the first thing written down that depends on
-it.
+**This passage used to claim a second effect, on the dashboard's API error tile
+and the error-rate alert, and that claim is obsolete as of 2026-08-19.** Both
+were counting `http.statusCode >= 400`, so scanner `404`s read as the API
+failing, and the reasoning ran on to warn that arming `EDGE_TOKEN_ENFORCED`
+([ADR-0020](adr/0020-authenticate-the-origin-path.md)) would convert those
+sweeps into `403`s that the agent does not ignore by default — turning traffic
+the alert had ignored into traffic it counted.
+
+Client errors no longer reach either one. The tile is now
+`percentage(count(*), WHERE http.statusCode >= 500)` and the alert that replaced
+the error-rate condition counts only 5xx, for the reasons in
+[ADR-0021](adr/0021-alert-on-signals-the-host-cannot-drop.md) — 4xx on this API
+is overwhelmingly scanners and rate-limit refusals, which is the defences
+working. **So arming the edge token has no monitoring consequence to weigh.**
+The easter egg keeps the log-noise rationale and loses the telemetry one.
 
 The document's shape is not a contract and nothing should parse it. The one part
 that is load-bearing is the endpoint paths quoted inside it, which a test in
@@ -339,5 +341,7 @@ than by discipline.
 | [0018](adr/0018-cap-concurrent-submissions.md)                   | Cap concurrent submissions, and close three smaller gaps        | Accepted                                                                                                                         |
 | [0019](adr/0019-cloudflare-in-front.md)                          | Put Cloudflare in front of the web hostnames                    | Accepted                                                                                                                         |
 | [0020](adr/0020-authenticate-the-origin-path.md)                 | Authenticate the edge-to-origin path with a shared secret       | Accepted                                                                                                                         |
+| [0021](adr/0021-alert-on-signals-the-host-cannot-drop.md)        | Alert on signals the host cannot drop                           | Accepted                                                                                                                         |
+| [0022](adr/0022-notify-the-candidate-not-just-the-engineer.md)   | Notify the candidate, not just the engineer                     | Accepted                                                                                                                         |
 
 New ADRs: see [adr/README.md](adr/README.md).

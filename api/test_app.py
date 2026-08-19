@@ -401,6 +401,86 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertEqual(len(self.confirmation_submissions), 1)
         self.assertEqual(len(self.sheet_rows), 1)
 
+    def test_burst_tier_429_is_reported_to_the_new_relic_agent(self) -> None:
+        # A 429 is a returned response, not a raised exception, so the agent
+        # records it with no error and nothing naming the tier. These two
+        # attributes are the entire signal the alert condition runs on.
+        agent = types.SimpleNamespace(
+            attributes=[],
+            add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
+        )
+        payload = {
+            "firstName": "Julia",
+            "email": "julia@example.com",
+            "message": "Count me in",
+        }
+
+        with mock.patch.object(app_module, "_newrelic_agent", agent):
+            self.client.post("/send-email", json=payload)
+            response = self.client.post("/send-email", json=payload)
+
+        self.assertEqual(response.status_code, 429)
+        self.assertIn(("rate_limit.tier", "burst"), agent.attributes)
+        self.assertIn(("rate_limit.scope", "send-email"), agent.attributes)
+
+    def test_an_allowed_request_reports_no_rate_limit_attributes(self) -> None:
+        agent = types.SimpleNamespace(
+            attributes=[],
+            add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
+        )
+        payload = {
+            "firstName": "Julia",
+            "email": "julia@example.com",
+            "message": "Count me in",
+        }
+
+        with mock.patch.object(app_module, "_newrelic_agent", agent):
+            response = self.client.post("/send-email", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(agent.attributes, [])
+
+    def test_the_client_address_is_never_reported(self) -> None:
+        # `_rate_limit_key()` is a caller identity (ADR-0014). A telemetry
+        # backend is not a place it has to be, so it does not go there.
+        app_module._TRUSTED_CLIENT_IP_HEADER = "X-Forwarded-For"
+        agent = types.SimpleNamespace(
+            attributes=[],
+            add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
+        )
+        payload = {
+            "firstName": "Julia",
+            "email": "julia@example.com",
+            "message": "Count me in",
+        }
+        headers = {"X-Forwarded-For": "203.0.113.77"}
+
+        with mock.patch.object(app_module, "_newrelic_agent", agent):
+            self.client.post("/send-email", json=payload, headers=headers)
+            response = self.client.post("/send-email", json=payload, headers=headers)
+
+        self.assertEqual(response.status_code, 429)
+        self.assertNotIn("203.0.113.77", str(agent.attributes))
+
+    def test_a_refusal_survives_a_broken_agent(self) -> None:
+        # Reporting may never be the thing that refuses a supporter.
+        def explode(*args, **kwargs):
+            raise RuntimeError("agent is unwell")
+
+        agent = types.SimpleNamespace(add_custom_attribute=explode)
+        payload = {
+            "firstName": "Julia",
+            "email": "julia@example.com",
+            "message": "Count me in",
+        }
+
+        with mock.patch.object(app_module, "_newrelic_agent", agent):
+            self.client.post("/send-email", json=payload)
+            response = self.client.post("/send-email", json=payload)
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.headers.get("Retry-After"), "60")
+
     def test_forwarding_headers_do_not_key_the_bucket_by_default(self) -> None:
         # THE regression test for the bypass. Nothing fronts this API, so a
         # forwarding header is a string the caller picked. While these were

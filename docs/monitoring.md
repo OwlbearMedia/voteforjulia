@@ -29,9 +29,15 @@ New Relic has no export-to-git story, so the definitions are kept here by hand:
 
 - **[monitoring/dashboard.json](../monitoring/dashboard.json)** — the "Vote for
   Julia — Site Health" dashboard, 20 widgets across two pages. Re-import via
-  Dashboards → Import dashboard.
+  Dashboards → Import dashboard. **The live copy is behind this file as of
+  2026-08-19**: two widgets that counted every response above HTTP 400 as a
+  failure were narrowed to 5xx, for the reason in
+  [ADR-0021](adr/0021-alert-on-signals-the-host-cannot-drop.md) — 4xx here is
+  overwhelmingly bots and rate-limit refusals, so "API error rate" was reporting
+  the defences working as though it were breakage.
 - **[monitoring/alerts.graphql](../monitoring/alerts.graphql)** — the synthetic
-  monitors, the alert policy, and its three conditions, as NerdGraph mutations.
+  monitors, the alert policy, its conditions, and Julia's notification
+  destination, channels and workflows, as NerdGraph mutations.
 
 **These drift.** Nothing syncs them; editing a widget in the UI does not update
 the file. If you change something in New Relic, change it here too, or the next
@@ -88,46 +94,96 @@ Two details in the monitor config that look optional and are not:
 - **The validation string is `"status":"ok"` with no space.** Flask's `jsonify`
   emits compact JSON. A copy taken from pretty-printed output never matches.
 
+### APM data here is a sample, not a census
+
+**Read this before trusting any `Transaction` number in this document.**
+
+Measured on 2026-08-19 over the preceding seven days:
+
+| Signal                               | Volume                |
+| ------------------------------------ | --------------------- |
+| `SyntheticCheck` for `/health/deep`  | 192/day, 100% SUCCESS |
+| `Transaction` for `voteforjulia-api` | 1–11 per **6 hours**  |
+
+192 successful probes a day should produce about 192 transactions a day. APM
+records roughly 3% of them.
+
+The cause is in [hosting.md](hosting.md#watch-worker-memory): this host "spawns
+them per request and reaps them when idle". The agent harvests on a 60-second
+cycle and registers with the collector in a background thread, so a worker that
+serves one probe and is reaped ships nothing. Under sustained load workers live
+long enough to harvest, so the loss is **biased toward idle periods** rather
+than uniform — which means recorded counts cannot be scaled back up by any fixed
+factor.
+
+Two consequences worth stating plainly:
+
+- **`SyntheticCheck` is the only complete signal in this account.** It is
+  produced by New Relic's infrastructure, not by a process this host can reap.
+  Alert conditions belong on it wherever they can be.
+- **An absolute count degrades more honestly than a percentage.** A ratio
+  implies a denominator this host cannot supply. A count says "at least this
+  many", which is what a sample actually supports.
+
+This is why the conditions below changed shape on 2026-08-19. See
+[ADR-0021](adr/0021-alert-on-signals-the-host-cannot-drop.md).
+
 ### Alert conditions
 
-All three sit on the **`voteforjulia — API`** policy (`PER_CONDITION`, so an
-SMTP outage and a Sheets outage open separate issues rather than collapsing into
+All sit on the **`voteforjulia — API`** policy (`PER_CONDITION`, so an SMTP
+outage and a Sheets outage open separate issues rather than collapsing into
 one).
 
-Read back from the account on 2026-08-10, all three exist and are enabled:
+| Condition                                        | ID         | Fires when                                                                   |
+| ------------------------------------------------ | ---------- | ---------------------------------------------------------------------------- |
+| Policy `voteforjulia — API`                      | `7831111`  | —                                                                            |
+| API dependency check failing (production)        | `64880222` | the production synthetic fails twice in a row                                |
+| API serving 5xx (production)                     | _new_      | any 5xx in a 5-minute window                                                 |
+| Synthetic monitor not running (production)       | _new_      | no synthetic check for 45 minutes                                            |
+| Rate limiter tripping — burst tier (production)  | _new_      | >20 burst refusals per 5 min, sustained 15 minutes                           |
+| Rate limiter tripping — hourly tier (production) | _new_      | >5 hourly refusals per 5 min on the **form** endpoints, sustained 30 minutes |
 
-| Condition                                 | ID         |
-| ----------------------------------------- | ---------- |
-| Policy `voteforjulia — API`               | `7831111`  |
-| API dependency check failing (production) | `64880222` |
-| API error rate above 5% (production)      | `64880233` |
-| API not reporting (production)            | `64880240` |
+The four new ones replace or extend what was there on 2026-08-10. **Fill in
+their IDs from the mutation output** — they are not known here because the
+read-only MCP server cannot create them.
+
+**Two conditions were retired on 2026-08-19, both for the sampling reason
+above:**
+
+- **`API error rate above 5%` (`64880233`) was a bot detector.** It asked for
+  `percentage(count(*), WHERE error IS true)`. The `error` intrinsic is set only
+  when an exception reaches the agent, and over 30 days the only transactions
+  carrying it were **12 HTTP 405s from bots probing with the wrong method** —
+  4.5% against a 5% threshold. Replaced by `API serving 5xx`, which reads the
+  status code and needs no exception.
+- **`API not reporting` (`64880240`) fired on healthy days.** It counted
+  `Transaction` with empty windows filled to 0, so it was measuring worker
+  lifetime. It opened issue `6d261d33` on 2026-08-17 during a stretch when the
+  synthetic was 192/192 green. Replaced by `Synthetic monitor not running`,
+  which asks the same question — is anything still watching? — of data this host
+  cannot drop.
+
+**The rate-limit conditions depend on an attribute the API must be emitting.**
+`rate_limit.tier` is added in [api/app.py](../api/app.py); a condition created
+before it deploys evaluates to nothing and sits green forever, which looks
+exactly like working. Confirm first:
+
+```
+SELECT count(*) FROM Transaction WHERE `rate_limit.tier` IS NOT NULL SINCE 1 day ago
+```
 
 **Conditions existing is not the same as being alerted.** A policy with no
 notification workflow and destination raises issues that sit in the UI and reach
-nobody, which looks identical to "nothing has gone wrong". The account had **no
-issues at all** as of 2026-08-10, which is consistent both with nothing breaking
-and with the conditions never having evaluated — so it is not evidence either
-way. Confirm a workflow exists (Alerts → Workflows) and send yourself a test
-notification; that is the only check that proves the path end to end.
+nobody, which looks identical to "nothing has gone wrong". Confirm a workflow
+exists (Alerts → Workflows) and send yourself a test notification; that is the
+only check that proves the path end to end.
 
-| Condition                    | Fires when                                    |
-| ---------------------------- | --------------------------------------------- |
-| API dependency check failing | the production synthetic fails twice in a row |
-| API error rate above 5%      | >5% of transactions error for 5 minutes       |
-| API not reporting            | no transactions for 30 minutes                |
-
-The third exists because **silence is not a signal**. If the worker dies or the
-agent crashes, error _rate_ has no data to be high on, so it uses
-`fillOption: STATIC, fillValue: 0` to make absence look like zero throughput.
-
-**Two of the three are coupled to the synthetic's period**, and neither
-dependency is visible from the New Relic UI. Lengthening the monitor to 15
-minutes on 2026-08-10 made the values in `alerts.graphql` wrong, and they were
-corrected in the same change — but **whether the live conditions were ever
-updated has not been established**, because a condition's signal block cannot be
-read back through the read-only MCP server. Check the two below in the UI before
-trusting either.
+**Two conditions are coupled to the synthetic's period**, and neither dependency
+is visible from the New Relic UI. Lengthening the monitor to 15 minutes on
+2026-08-10 made the values in `alerts.graphql` wrong, and they were corrected in
+the same change — but **whether the live conditions were ever updated has not
+been established**, because a condition's signal block cannot be read back
+through the read-only MCP server. Check both in the UI before trusting either.
 
 - **"API dependency check failing" — keep `aggregationWindow` equal to the
   period and `thresholdDuration` at twice it.** At the current 15 minutes that
@@ -136,12 +192,38 @@ trusting either.
   guarantees a filled zero between checks and the breach can never be sustained.
   It then fails silently, which is the worst way for an alert to fail. Detection
   now takes about 30 minutes — the cost of the longer period, not a choice.
-- **"API not reporting" needs six consecutive empty 5-minute windows**, and the
-  synthetic is most of this API's baseline traffic. At a 15-minute period a
-  check lands in every third window, so the longest run of zeros is two. A
-  30-minute period would make that run five against a threshold of six, and the
-  condition would start flapping. Lengthen `thresholdDuration` alongside any
-  further increase.
+- **"Synthetic monitor not running" has the same coupling**, for the same
+  reason: `aggregationWindow` 900 equals the period, and `thresholdDuration`
+  2700 is three consecutive empty windows. Lengthening the monitor period
+  without lengthening both would have it firing between ordinary checks.
+
+### What Julia is told
+
+Julia is on a separate notification path, in plain language, with no issue links
+and no condition names. She gets three emails per incident — one when it opens,
+one when it is acknowledged, one when it closes. The wording is in
+[monitoring/alerts.graphql](../monitoring/alerts.graphql) §10 and the reasoning
+is [ADR-0022](adr/0022-notify-the-candidate-not-just-the-engineer.md).
+
+She is wired to **two** conditions only: `API dependency check failing` and
+`Rate limiter tripping — hourly tier`. Both mean supporters are being turned
+away. She is deliberately not on `Synthetic monitor not running` (means we
+cannot see, not that the site is down) or the burst tier (a tripped burst
+limiter is the defences working).
+
+Three things about this path will surprise you at the wrong moment:
+
+- **The "Dylan is on it" email only sends if you press Acknowledge in New
+  Relic.** Fixing the problem without acknowledging means Julia hears that it
+  opened and that it closed, with silence in between — which reads as nobody
+  noticing. Acknowledge first, then fix.
+- **`violationTimeLimitSeconds` force-closes an issue that is still breaching**,
+  and a force-close sends the all-clear. At the default 259200 that is an
+  outage running 72 hours and Julia being told it is fixed. The hourly rate
+  limit condition is set to 2592000 (30 days) for this reason; the others are
+  worth raising too if an incident ever approaches the limit.
+- **`PER_CONDITION` means two conditions firing sends her two emails.** They are
+  separate issues by design and neither one knows about the other.
 
 ## When something fires
 
@@ -175,9 +257,18 @@ FROM SyntheticCheck WHERE result = 'FAILED' SINCE 2 hours ago
 
 ### A 503 from the submission cap
 
-`API error rate above 5%` counts these, deliberately — the site turning
-supporters away is worth knowing about. Tell them apart from a genuine fault by
-the log line, which names the cap:
+`API serving 5xx` counts these, deliberately — the site turning supporters away
+is worth knowing about.
+
+**This page claimed until 2026-08-19 that `API error rate above 5%` counted
+them. It did not.** That condition tested `error IS true`, which the agent sets
+only when an exception reaches it. A 503 from the cap is a `jsonify` response
+with a status code assigned — nothing raises, so nothing was counted, and the
+condition would have stayed green through every shed submission. The replacement
+reads `response.status` directly, which is why it works. The same mistake would
+have hidden every 429; see [ADR-0021](adr/0021-alert-on-signals-the-host-cannot-drop.md).
+
+Tell them apart from a genuine fault by the log line, which names the cap:
 
 ```
 /send-email refused: 12 submissions already in flight
@@ -190,6 +281,50 @@ all. Raising `MAX_CONCURRENT_SUBMISSIONS` is the wrong first move: the cap is
 sized against the account's memory limit, and lifting it trades a shed
 submission for an LVE fault that takes the whole account down.
 See [ADR-0018](adr/0018-cap-concurrent-submissions.md).
+
+### A rate limiter tripping
+
+**Usually this is good news.** A tripped limiter is a refused request, and the
+overwhelming majority of refused requests here are scanners. The alert exists so
+that the rare case — a real supporter who cannot submit a form — is not
+invisible, not because every trip needs action.
+
+Which tier fired says most of what you need:
+
+```
+SELECT count(*) FROM Transaction
+WHERE appName = 'voteforjulia-api' AND `rate_limit.tier` IS NOT NULL
+FACET `rate_limit.tier`, `rate_limit.scope` SINCE 6 hours ago
+```
+
+- **`burst`** (5 per 60s) — someone in a hurry. A double-click, a retry loop, a
+  scanner. Almost never worth acting on alone.
+- **`hourly`** (10 per hour, [ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md))
+  — a caller that paced itself under the burst limit for an hour. That is either
+  deliberate abuse or a supporter genuinely stuck in a retry loop, and it is the
+  one Julia is told about.
+
+`rate_limit.scope` names the endpoint (`send-email`, `yard-sign`,
+`health-deep`). **`health-deep` trips are almost always a scanner** hammering
+the probe, which is harmless and needs nothing. The one case worth acting on is
+the monitor refusing _itself_: it has a 30/hour allowance sized against its
+period, and if those have drifted apart it is now grading its own 429s. Tell
+them apart by the source — a monitor trip coincides with `SyntheticCheck`
+failures, a scanner's does not. If it is the monitor, raise the allowance rather
+than touching the alert.
+
+Julia is not told about `health-deep` trips at all: her condition filters to
+`send-email` and `yard-sign`, because a scanner exhausting the probe's allowance
+says nothing about whether a supporter can submit a form.
+
+**The client address is deliberately not recorded**, so New Relic cannot tell
+you who was refused ([ADR-0014](adr/0014-do-not-trust-forwarding-headers.md)).
+If you need that, it is in the host's `~/api/stderr.log`, not here.
+
+Counts here are a floor, not a total — see
+[APM data here is a sample](#apm-data-here-is-a-sample-not-a-census). The
+thresholds on both conditions were set without data and should be tuned once
+there is a week of it.
 
 ### If it is real
 
