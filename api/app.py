@@ -939,6 +939,56 @@ def _handle_form_submission(
         return _lost_submission_response(endpoint_name, "Internal server error.", 500)
 
 
+# The document the API root serves. Everything in it is decoration except the
+# two endpoint paths, which are real. See docs/architecture.md.
+#
+# Ordered for reading, not sorted: `jsonify` would alphabetise it, so
+# `service_root` serialises this by hand.
+_MANKATO_CONFIG = {
+    "campaign_status": "Active",
+    "poking_around": True,
+    "candidate": {
+        "name": "Julia Hamann",
+        "role": "Mayor of Mankato",
+        "url": "https://voteforjulia.com",
+    },
+    "favorites": {
+        "hangout": "Wine Cafe",
+        "park": "Jackson Park with Food Not Bombs",
+        "errand": "Farmers market",
+        "software_engineer": "Dylan Whitney",
+    },
+    "get_involved": {
+        "yard_sign": "/yard-sign",
+        "say_hello": "/send-email",
+    },
+    "reminder": "Don't forget to vote on November 3rd!",
+}
+
+# Pretty-printed because the intended reader is a person with a terminal.
+_MANKATO_CONFIG_BODY = json.dumps(_MANKATO_CONFIG, sort_keys=False, indent=2) + "\n"
+
+
+@app.route("/", methods=["GET"])
+def service_root():
+    """Answer the root with a joke instead of a 404.
+
+    Nothing is routed here and nothing needs to be, but the root is the most
+    requested path on the origin -- scanners, near enough all of it -- so the
+    404s were the loudest line in the log with no one reading them.
+    """
+    response = app.response_class(_MANKATO_CONFIG_BODY, mimetype="application/json")
+    # Honest about a fixed document, but do not expect it to save an origin
+    # hit: the free tier caches by extension (ADR-0019), so an extensionless
+    # JSON body is passed through. A Cache Rule that changed that would need
+    # the CORS echo in `add_cors_headers` dealt with first -- Cloudflare
+    # honours only `Vary: Accept-Encoding`, so the `Vary: Origin` set there
+    # would not stop one origin's `Access-Control-Allow-Origin` being served
+    # to another.
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return response, 200
+
+
 @app.route("/health", methods=["GET"])
 def health_check():
     return jsonify(

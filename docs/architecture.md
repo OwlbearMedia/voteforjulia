@@ -96,6 +96,33 @@ pipeline with different collaborators injected — `_handle_form_submission` tak
 the parser, validator, email senders, and sheet-row mapper as arguments — so a
 third form is a new route, not a new pipeline.
 
+`GET /` serves an easter egg: a mock configuration document for the campaign,
+with a few of the candidate's favourite things about the city. It is decoration and no client reads
+it, but it is not only decoration. The root is the most-requested path on the
+origin and effectively none of that is traffic the site sent — it is scanners,
+and it used to answer `404`. Two things follow from replacing that. Sweeps stop
+being the loudest entry in a log nobody was reading, and the dashboard's API
+error tile stops counting them: it is `percentage(count(*), WHERE
+http.statusCode >= 400)`, which — unlike the error-rate _alert_, where the New
+Relic agent ignores `404` by default — was reading scanner traffic as the API
+failing. A path that genuinely matches no route still answers `404`.
+
+That second effect only reaches sweeps that arrive through Cloudflare. Once
+`EDGE_TOKEN_ENFORCED` is armed on an environment
+([ADR-0020](adr/0020-authenticate-the-origin-path.md)), a direct-to-origin sweep
+is refused in `before_request` and never reaches this route — and a `403` counts
+toward the tile exactly as the old `404` did. It is worse than that for the
+alert: the agent's default `ignore_status_codes` contains `404` but not `403`,
+so arming the token turns sweep traffic the alert had always ignored into
+traffic it counts. That is a property of the refusal rather than of this route,
+and it is not new here, but this is the first thing written down that depends on
+it.
+
+The document's shape is not a contract and nothing should parse it. The one part
+that is load-bearing is the endpoint paths quoted inside it, which a test in
+[api/test_app.py](../api/test_app.py) checks against the URL map so a renamed
+route cannot leave it pointing at a 404.
+
 Layers, such as they are:
 
 ```
