@@ -349,8 +349,12 @@ conventions and the traps.
   e2e job also curls the site before running and uploads screenshots and video
   on failure.
 - **"The application redirected to … more than 20 times" was the host's WAF, not
-  the app** — and the WAF was **disabled site-wide on 2026-08-01**, so this
-  should no longer occur. When the runner's IP was graylisted, Imunify360
+  the app** — and the WAF has been off for **every** hostname the suite touches
+  since **2026-08-15**, so this should no longer occur. The 2026-08-01 request
+  this list credited until now covered `test.voteforjulia.com` alone;
+  `test-api.voteforjulia.com` stayed graylisted for two more weeks, producing a
+  separate intermittent failure — one that passed whenever a re-run happened to
+  draw a different runner address. When the runner's IP was graylisted, Imunify360
   answered every URL with a challenge page that reloaded itself every 5 seconds,
   and Cypress counted each reload as a redirect — so all three specs died on
   their first `cy.visit`, in a run where the app's own code never executed (the
