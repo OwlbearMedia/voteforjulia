@@ -166,9 +166,12 @@ FROM SyntheticCheck WHERE result = 'FAILED' SINCE 2 hours ago
   status code looks healthy and only the response validation catches it — a
   false positive on a working API.
 
-  **It was disabled site-wide on 2026-08-01**, so this should not happen. A
-  single-location failure is therefore worth taking seriously as evidence the
-  WAF is back, rather than dismissing as noise.
+  **Every hostname it could affect has been excluded since 2026-08-15** — the
+  2026-08-01 request this page credited until now covered
+  `test.voteforjulia.com` alone, and the rest went on being challenged for two
+  more weeks ([hosting.md](hosting.md#imunify360-waf-disabled)). So this should
+  not happen now, which is what makes a single-location failure worth taking
+  seriously as evidence the WAF is back rather than dismissing as noise.
 
 ### A 503 from the submission cap
 
@@ -241,10 +244,14 @@ logs the raw body for recovery.
 
 One useful side effect: `/health/deep` exercises the same cached client on every
 probe, so a stale connection is often discovered and discarded before a real
-submission meets it. **Lengthening the monitor's period widened that gap** — at
-the current 15 minutes the window in which a submission can be the first caller
-to touch a dead socket is three times what it was at 5, so treat this as a
-mitigation rather than a guard.
+submission meets it. Two things keep that a mitigation rather than a guard. The
+cache is a module-level dict in
+[sheets_service.py](../api/services/sheets_service.py), so it is **per Passenger
+worker** — a probe refreshes only the worker that served it, and a submission
+routed to any other worker still meets that worker's own idle socket. And
+**lengthening the monitor's period widened the gap**: at the current 15 minutes
+the window in which a submission can be the first caller to touch a dead socket
+is three times what it was at 5.
 
 ### Turning it off
 

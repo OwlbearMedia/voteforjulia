@@ -25,9 +25,16 @@ const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ?? 'https://voteforjulia.co
 );
 const DIST_DIR = resolve(process.cwd(), process.env.DIST_DIR ?? 'dist');
 
+// Fails rather than skipping: the only caller is `build:deploy`, which runs in
+// the production deploy alone, and a skipped upload is invisible until a stack
+// trace comes back unmapped weeks later. See docs/hosting.md#every-deploy-secret-is-environment-scoped.
 if (!API_KEY) {
-  console.warn('NEW_RELIC_API_KEY is not set. Skipping source map upload.');
-  process.exit(0);
+  console.error(
+    'NEW_RELIC_API_KEY is not set. Source maps would be uploaded nowhere, and the\n' +
+      'failure would only surface as an unmapped production stack trace. If the\n' +
+      'build job lost its `environment:` declaration, the key reads as empty.'
+  );
+  process.exit(1);
 }
 
 // Minimal Base64-VLQ codec needed to remap source indices after deduplication.

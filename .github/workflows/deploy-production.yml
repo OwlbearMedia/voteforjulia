@@ -50,6 +50,11 @@ jobs:
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    # Declared for the secret scope, not the gate: `NEW_RELIC_API_KEY` is a
+    # `production` environment secret, and a job that does not name the
+    # environment reads an empty string. Removing this line breaks the source
+    # map upload, not the deploy. No `url:` — this job deploys nothing.
+    environment: production
 
     steps:
       - name: Checkout repository
