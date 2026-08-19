@@ -70,9 +70,51 @@ tags:
   - name: Forms
     description: Supporter form submissions.
   - name: Ops
-    description: Health and diagnostics.
+    description: Health, diagnostics, and the service root.
 
 paths:
+  /:
+    get:
+      tags: [Ops]
+      summary: Service root
+      description: |
+        Returns a configuration document for the city of Mankato. It configures
+        nothing.
+
+        The root is the most-requested path on this origin and almost none of
+        it is traffic the site sent — scanners, near enough all of it. Every
+        sweep used to produce a `404`, which made the root the loudest line in
+        the log and the least worth reading. This is the reply instead.
+
+        **The body is decoration and carries no contract.** The two endpoint
+        paths quoted inside it are real; nothing else in it is promised, and
+        the shape changes whenever the joke does.
+
+        `Cache-Control` reflects that the document is fixed. It does not
+        currently save an origin hit — the Cloudflare free tier caches by file
+        extension ([ADR-0019](../docs/adr/0019-cloudflare-in-front.md)) and
+        passes an extensionless JSON body through.
+      operationId: serviceRoot
+      responses:
+        '200':
+          description: Always, for anything that reaches the route.
+          headers:
+            Cache-Control:
+              description: |
+                Always `public, max-age=3600`. Describes the document, which is
+                fixed; it is not currently acted on at the edge.
+              schema:
+                type: string
+              example: public, max-age=3600
+          content:
+            application/json:
+              schema:
+                type: object
+                description: An unspecified JSON object. Do not build on it.
+                additionalProperties: true
+        '403':
+          $ref: '#/components/responses/Unproxied'
+
   /health:
     get:
       tags: [Ops]
