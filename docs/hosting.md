@@ -1230,6 +1230,59 @@ Three things about that command are load-bearing:
 is what makes CI meaningful: it installs the same versions production runs. Keep
 it that way — with ranges, CI and the host resolve independently and can differ.
 
+#### When the install succeeds and the deploy fails anyway
+
+`install-modules` runs a post-install availability check, and it can fail on its
+own while the install underneath it worked. The `result` field then carries this
+instead of `success`:
+
+```
+An error occured during installation of modules. The operation was performed,
+but check availability of application has failed. Web application is
+inaccessible by its address "http://api.voteforjulia.com/" after the operation.
+```
+
+Read "The operation was performed" literally: the modules installed. Only the
+probe afterwards did not get an answer. The workflow guard is still right to
+treat this as fatal and stop before the restart — do not weaken it — but the
+first response is to re-run the job, not to go looking at dependencies.
+
+The probe is a `python-requests/2.31.0` GET from the host to
+`http://api.voteforjulia.com/`, direct to the origin rather than out through
+Cloudflare and back. Two things follow that are not obvious from the message:
+
+- **It does not care what `/` returns.** On 2026-08-19 at 03:34:03 the probe got
+  a `404` — the API had no root route then — and the selector reported
+  `{"result": "success"}` seven seconds later. So this failure is never a
+  statement about the root's response, however much the quoted URL suggests it.
+- **It fails when the app is unreachable**, which includes the window while the
+  selector is rebuilding the virtualenv underneath a running Passenger app. That
+  is the transient case, and it is why a re-run usually clears it.
+
+To tell a genuine failure from a missed probe, ask whether the request reached
+Python at all. Take the timestamp from the selector's own JSON and look for a
+transaction either side of it:
+
+```sql
+SELECT timestamp, request.uri, http.statusCode, request.headers.userAgent
+FROM Transaction WHERE appName = 'voteforjulia-api'
+SINCE '2026-08-19 17:30:00+0000' UNTIL '2026-08-19 17:45:00+0000'
+```
+
+A `python-requests` transaction means the app answered and the fault is
+something else — read the status code and stop assuming the install. No
+transaction at all means the probe never arrived, and a re-run is the move.
+
+One consolation when this does happen: because the job aborts before the prune
+step, `stderr.log` is still on the host. The prune deletes it on every
+successful deploy, so a failure of this kind is the one case where Passenger's
+own account of a bad spawn survives long enough to read.
+
+This is what happened on 2026-08-19 to the deploy of
+[#153](https://github.com/OwlbearMedia/voteforjulia/pull/153). The same commit
+was already running in the test environment, production stayed up on the
+previous release throughout, and re-running the job deployed it unchanged.
+
 ### New Relic agent environment
 
 The APM agent ([ADR-0013](adr/0013-server-side-apm.md)) is configured entirely

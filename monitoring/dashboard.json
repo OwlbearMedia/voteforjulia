@@ -151,7 +151,7 @@
           }
         },
         {
-          "title": "API error rate",
+          "title": "API 5xx rate",
           "layout": { "column": 7, "row": 10, "width": 3, "height": 3 },
           "linkedEntityGuids": null,
           "visualization": { "id": "viz.billboard" },
@@ -159,7 +159,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [8127277],
-                "query": "SELECT percentage(count(*), WHERE http.statusCode >= 400) AS 'Error %' FROM Transaction WHERE appName = 'voteforjulia-api'"
+                "query": "SELECT percentage(count(*), WHERE http.statusCode >= 500) AS '5xx %' FROM Transaction WHERE appName = 'voteforjulia-api'"
               }
             ],
             "platformOptions": { "ignoreTimeRange": false },
@@ -170,7 +170,7 @@
           }
         },
         {
-          "title": "Failed API calls",
+          "title": "API 5xx responses",
           "layout": { "column": 10, "row": 10, "width": 3, "height": 3 },
           "linkedEntityGuids": null,
           "visualization": { "id": "viz.line" },
@@ -178,7 +178,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [8127277],
-                "query": "SELECT count(*) FROM Transaction WHERE appName = 'voteforjulia-api' AND http.statusCode >= 400 TIMESERIES"
+                "query": "SELECT count(*) FROM Transaction WHERE appName = 'voteforjulia-api' AND http.statusCode >= 500 TIMESERIES"
               }
             ],
             "platformOptions": { "ignoreTimeRange": false },
