@@ -21,6 +21,7 @@ so restoration is automatic rather than hand-rolled in a `tearDown`.
 import logging
 import re
 import smtplib
+import types
 from dataclasses import replace
 from pathlib import Path
 
@@ -598,6 +599,47 @@ def test_long_window_429_carries_a_retry_after_and_the_standard_body(client, pip
     assert refused.get_json() == {"error": "Too many requests. Please try again later."}
     # Up to a full window, never zero or negative, and never past the window.
     assert 1 <= int(refused.headers["Retry-After"]) <= 3600
+
+
+def test_hourly_tier_429_is_reported_as_its_own_tier(client, pipeline, monkeypatch):
+    """The two tiers return an identical 429, so only this attribute separates them.
+
+    A burst trip is usually a double-click; an hourly trip is a caller pacing
+    itself under the burst limit for an hour, which is the one worth alerting
+    on. Collapsing them would make the alert unreadable. See ADR-0021.
+    """
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    attributes = []
+    agent = types.SimpleNamespace(
+        add_custom_attribute=lambda k, v: attributes.append((k, v)),
+    )
+    monkeypatch.setattr(app_module, "_newrelic_agent", agent)
+
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 429
+
+    assert ("rate_limit.tier", "hourly") in attributes
+    assert ("rate_limit.scope", "send-email") in attributes
+    assert ("rate_limit.tier", "burst") not in attributes
+
+
+def test_yard_sign_reports_its_own_scope(client, pipeline, monkeypatch):
+    """Both forms share the pipeline, so the scope has to come from the caller."""
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    attributes = []
+    agent = types.SimpleNamespace(
+        add_custom_attribute=lambda k, v: attributes.append((k, v)),
+    )
+    monkeypatch.setattr(app_module, "_newrelic_agent", agent)
+
+    assert client.post(YARD_SIGN_PATH, json=YARD_SIGN_PAYLOAD).status_code == 200
+    assert client.post(YARD_SIGN_PATH, json=YARD_SIGN_PAYLOAD).status_code == 429
+
+    assert ("rate_limit.scope", "yard-sign") in attributes
 
 
 def test_long_window_is_scoped_per_endpoint(client, pipeline, monkeypatch):

@@ -1,9 +1,26 @@
-# New Relic alerting setup for voteforjulia
-# Paste into https://api.newrelic.com/graphiql — run in order, each step's
-# output feeds the next. Account 8127277.
+# New Relic alerting setup for voteforjulia. Account 8127277.
+# Run in order; each step's output feeds the next.
 #
-# NOT TESTED: the MCP server is read-only, so none of this has been executed.
-# Verify field names against the explorer's schema pane as you go.
+# EXECUTED 2026-08-19 against account 8127277 with the New Relic CLI. Everything
+# below has been run and the resulting objects read back, so this is a record of
+# what exists rather than a proposal. Live IDs are noted inline.
+#
+# Rebuild with:
+#   newrelic nerdgraph query 'mutation(...) {...}' --variablesFile vars.json
+#
+# Two operational notes that cost real time:
+#
+# - **The CLI prints `{}` for a successful mutation as often as a failed one.**
+#   It is not a status. Three workflow creations failed silently this way. Add
+#   `--trace` and read the `request completed` body, or read the object back.
+# - **Complex NRQL and templates go in `--variablesFile`, not inline.** Shell
+#   quoting around a GraphQL string containing NRQL string literals is where the
+#   first hour went.
+#
+# Sections 5-8 alert on signals the host cannot drop — see ADR-0021. This host
+# delivers roughly 3% of its APM transactions, so anything conditioned on
+# `Transaction` alone is measuring a sample it cannot size. `SyntheticCheck` is
+# collected by New Relic and is complete.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Synthetic monitor — production
@@ -64,12 +81,29 @@ mutation CreateTestMonitor {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. Alert policy
+# 3. Alert policies — there are two, and the split is load-bearing
 # ─────────────────────────────────────────────────────────────────────────────
-# PER_CONDITION so an SMTP outage and a Sheets outage open separate issues
-# rather than collapsing into one.
+# PER_CONDITION on both, so an SMTP outage and a Sheets outage open separate
+# issues rather than collapsing into one.
+#
+# The split marks which alerts mean supporters are being turned away, as
+# opposed to something only the engineer cares about. Both notify the engineer
+# and nobody else.
+#
+# IT EXISTS FOR A REASON THAT IS GONE. A notification path to the candidate was
+# built against this policy and abandoned the same day (ADR-0022); the split was
+# how her workflow selected issues structurally, rather than by a condition-name
+# predicate that can silently match nothing. Kept because it still marks
+# severity-to-the-campaign and is what a rebuilt relay would need. Collapsing
+# the two into one policy is a reasonable future change.
+#
+# EVERY POLICY NEEDS ITS OWN WORKFLOW AND CHANNEL (section 11). A third one
+# added without them raises issues that reach nobody.
+#
+#   7831111  voteforjulia — API                 engineer-facing
+#   7922533  voteforjulia — Campaign visible    supporters are being turned away
 
-mutation CreatePolicy {
+mutation CreateEngineerPolicy {
   alertsPolicyCreate(
     accountId: 8127277
     policy: { name: "voteforjulia — API", incidentPreference: PER_CONDITION }
@@ -79,7 +113,20 @@ mutation CreatePolicy {
   }
 }
 
-# → note the returned id as <POLICY_ID>
+mutation CreateCampaignVisiblePolicy {
+  alertsPolicyCreate(
+    accountId: 8127277
+    policy: {
+      name: "voteforjulia — Campaign visible"
+      incidentPreference: PER_CONDITION
+    }
+  ) {
+    id
+    name
+  }
+}
+
+# → live: <POLICY_ID> = 7831111, <CAMPAIGN_POLICY_ID> = 7922533
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. Condition: dependency check failing
@@ -99,16 +146,26 @@ mutation CreatePolicy {
 # every 5 minutes, and moving it to EVERY_15_MINUTES on 2026-08-10 is what
 # made them wrong.
 #
-# WHAT THE LIVE CONDITION USES IS NOT KNOWN. A condition by this name exists
-# and is enabled (policy 7831111, condition 64880222), but the read-only MCP
-# server cannot return a condition's signal block, so nobody has read the
-# deployed aggregationWindow back. Check it in the UI before assuming this file
-# matches it — the file header's "NOT TESTED" warning applies here too.
+# THE LIVE CONDITION WAS READ BACK ON 2026-08-19 AND IT WAS WRONG. The previous
+# copy (64880222) still had aggregationWindow 300 and thresholdDuration 600 --
+# the 5-minute values. This file was corrected on 2026-08-10; the live condition
+# never was, so the arithmetic above applied and **it had been unable to fire for
+# nine days**. It was deleted and recreated as 66281097 with the values here.
+#
+# A user API key can read the signal block that the read-only MCP server cannot.
+# Re-check after any period change:
+#
+#   newrelic nerdgraph query 'query { actor { account(id: 8127277) { alerts {
+#     nrqlCondition(id: "66281097") { ... on AlertsNrqlStaticCondition {
+#       signal { aggregationWindow } terms { thresholdDuration } } } } } } }
+#
+# On the CAMPAIGN VISIBLE policy: a failure here means supporters cannot submit
+# a form. Live id 66281097.
 
 mutation ConditionSyntheticFailure {
   alertsNrqlConditionStaticCreate(
     accountId: 8127277
-    policyId: "<POLICY_ID>"
+    policyId: "<CAMPAIGN_POLICY_ID>"
     condition: {
       name: "API dependency check failing (production)"
       enabled: true
@@ -131,7 +188,12 @@ mutation ConditionSyntheticFailure {
           thresholdOccurrences: ALL
         }
       ]
-      violationTimeLimitSeconds: 259200
+      # 30 days, not the 259200 default. New Relic force-closes an issue when
+      # this expires whether or not it recovered, and a force-close sends a
+      # resolved notification — so at 72 hours a long weekend outage would
+      # report itself fixed while it was still broken. Both campaign-visible
+      # conditions carry the long limit; see ADR-0022.
+      violationTimeLimitSeconds: 2592000
     }
   ) {
     id
@@ -140,30 +202,60 @@ mutation ConditionSyntheticFailure {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. Condition: API error rate
+# 5. Condition: API serving 5xx  — REPLACES "API error rate above 5%" (64880233)
 # ─────────────────────────────────────────────────────────────────────────────
 # Catches failures the synthetic cannot see — a form endpoint 500ing while
 # /health/deep stays green.
+#
+# The condition this replaces asked for `percentage(count(*), WHERE error IS
+# true)`, and both halves of that were wrong here.
+#
+# `error IS true` is set only when an exception reaches the agent. A 503 from
+# the submission cap and a 429 from either rate limiter are *returned* Flask
+# responses, so the agent records a status code and no error. Read back over 30
+# days, the only transactions with `error IS true` in this account were 12 HTTP
+# 405s — bots probing with the wrong method. The condition was a bot detector.
+#
+# A *percentage* then made that worse. Recorded throughput here is 1-11
+# transactions per 6 hours (ADR-0021), so a single bot probe inside a 60-second
+# window is 100%, against a 5% threshold. It was one scan away from firing
+# continuously.
+#
+# So: an absolute count of 5xx, which reads the status code directly and needs
+# no exception. Verified against the account — parses, and returns 0 over 30
+# days, which is the true number of 5xx responses recorded in that period.
+#
+# An absolute count is also the honest shape under sampling. A ratio implies a
+# denominator this host cannot supply; a count says "at least this many", which
+# is exactly what a sample supports.
 
-mutation ConditionErrorRate {
+mutation ConditionServerErrors {
   alertsNrqlConditionStaticCreate(
     accountId: 8127277
     policyId: "<POLICY_ID>"
     condition: {
-      name: "API error rate above 5% (production)"
+      name: "API serving 5xx (production)"
       enabled: true
       nrql: {
-        query: "SELECT percentage(count(*), WHERE error IS true) FROM Transaction WHERE appName = 'voteforjulia-api'"
+        query: "SELECT count(*) FROM Transaction WHERE appName = 'voteforjulia-api' AND numeric(`response.status`) >= 500"
       }
       signal: {
-        aggregationWindow: 60
+        aggregationWindow: 300
         aggregationMethod: EVENT_FLOW
         aggregationDelay: 120
-        fillOption: NONE
+        fillOption: STATIC
+        fillValue: 0
       }
+      # ONE window, not two. `thresholdOccurrences: ALL` requires *every* window
+      # in thresholdDuration to breach, so a 600s duration over 300s windows
+      # needs a 5xx recorded in two consecutive windows. Under the sampling
+      # described above that is a coin flip on a real outage and impossible for
+      # a short burst of shed submissions — it would reintroduce exactly the
+      # blind spot this condition replaces. Any recorded 5xx is already evidence
+      # of several, so one window is the right bar.
       terms: [
         {
-          threshold: 5
+          threshold: 0
           operator: ABOVE
           priority: CRITICAL
           thresholdDuration: 300
@@ -179,21 +271,45 @@ mutation ConditionErrorRate {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 6. Condition: API stopped reporting entirely
+# 6. Condition: we have gone blind — REPLACES "API not reporting" (64880240)
 # ─────────────────────────────────────────────────────────────────────────────
-# fillOption STATIC/0 makes silence look like zero throughput, so a dead worker
-# or a crashed agent trips this instead of going quiet.
+# The intent of the old condition was right and its data source was wrong.
+# "Silence is not a signal" still holds: if nothing is watching, an outage looks
+# exactly like a quiet Tuesday. What changed is *whose* silence to measure.
+#
+# The old condition counted `Transaction` and filled empty windows with 0, so
+# any 30-minute stretch with no *recorded* transaction fired it. On this host
+# that is most stretches: Passenger spawns a worker per request and reaps it
+# when idle (docs/hosting.md), and a worker reaped before the agent's 60-second
+# harvest never ships what it recorded. It fired on 2026-08-17 (issue
+# 6d261d33) during a period when the synthetic was 192/192 green. It was
+# measuring worker lifetime, not availability.
+#
+# This one counts the synthetic's own checks instead. Those are produced by New
+# Relic's infrastructure, not by a process this host can reap, so an empty
+# window means the monitor genuinely stopped — disabled, out of budget, or a
+# New Relic outage. That is a real thing to know and nothing else reports it.
+#
+# Sizing: the monitor runs EVERY_15_MINUTES from two locations, so a 900s window
+# holds ~2 checks. thresholdDuration 2700 is three consecutive empty windows.
+# Keep aggregationWindow equal to the monitor period for the same reason as
+# section 4 — a shorter window guarantees a filled zero between checks.
+#
+# WARNING, not CRITICAL, and on the engineer-facing policy: it means we cannot
+# see, not that the site is down.
 
-mutation ConditionNoData {
+mutation ConditionMonitorNotRunning {
   alertsNrqlConditionStaticCreate(
     accountId: 8127277
     policyId: "<POLICY_ID>"
     condition: {
-      name: "API not reporting (production)"
+      name: "Synthetic monitor not running (production)"
       enabled: true
-      nrql: { query: "SELECT count(*) FROM Transaction WHERE appName = 'voteforjulia-api'" }
+      nrql: {
+        query: "SELECT count(*) FROM SyntheticCheck WHERE monitorName = 'voteforjulia-api /health/deep'"
+      }
       signal: {
-        aggregationWindow: 300
+        aggregationWindow: 900
         aggregationMethod: EVENT_FLOW
         aggregationDelay: 180
         fillOption: STATIC
@@ -204,7 +320,7 @@ mutation ConditionNoData {
           threshold: 1
           operator: BELOW
           priority: WARNING
-          thresholdDuration: 1800
+          thresholdDuration: 2700
           thresholdOccurrences: ALL
         }
       ]
@@ -213,5 +329,263 @@ mutation ConditionNoData {
   ) {
     id
     name
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Condition: burst rate limiter tripping
+# ─────────────────────────────────────────────────────────────────────────────
+# Depends on `rate_limit.tier`, added in api/app.py. THE ATTRIBUTE MUST BE
+# DEPLOYED AND REPORTING BEFORE THIS CONDITION IS CREATED. A condition on an
+# attribute nothing emits is not an error — it evaluates to nothing and sits
+# green forever, which is indistinguishable from working. Confirm first:
+#
+#   SELECT count(*) FROM Transaction
+#   WHERE `rate_limit.tier` IS NOT NULL SINCE 1 day ago
+#
+# The burst tier (5 requests / 60s) is mostly double-clicks and scanners, so
+# this is FYI-grade: a high threshold, a long duration, WARNING, and not on
+# policy. Its value is context next to a real incident, not a page.
+#
+# The threshold is a guess and should be tuned once there is a week of data.
+# Saying so is more useful than a derived-looking number: sampling loss is
+# biased — a burst keeps a worker alive long enough to harvest, an isolated
+# request does not — so recorded 429s over-represent bursts by an unknown
+# factor. Nobody can compute the right value from here.
+
+mutation ConditionBurstRateLimit {
+  alertsNrqlConditionStaticCreate(
+    accountId: 8127277
+    policyId: "<POLICY_ID>"
+    condition: {
+      name: "Rate limiter tripping — burst tier (production)"
+      enabled: true
+      nrql: {
+        query: "SELECT count(*) FROM Transaction WHERE appName = 'voteforjulia-api' AND `rate_limit.tier` = 'burst'"
+      }
+      signal: {
+        aggregationWindow: 300
+        aggregationMethod: EVENT_FLOW
+        aggregationDelay: 120
+        fillOption: STATIC
+        fillValue: 0
+      }
+      terms: [
+        {
+          threshold: 20
+          operator: ABOVE
+          priority: WARNING
+          thresholdDuration: 900
+          thresholdOccurrences: ALL
+        }
+      ]
+      violationTimeLimitSeconds: 259200
+    }
+  ) {
+    id
+    name
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Condition: hourly rate limiter tripping
+# ─────────────────────────────────────────────────────────────────────────────
+# The same attribute dependency as section 7 applies.
+#
+# This is the tier worth alerting on. The burst limiter catches anyone in a
+# hurry; this one (10/hour, ADR-0016) only catches a caller that paced itself
+# under the burst limit for an hour — which is either abuse or a supporter
+# genuinely unable to get a form to work. Both are worth a look, and neither is
+# visible any other way.
+#
+# CRITICAL, and on the CAMPAIGN VISIBLE policy: sustained refusals are the case
+# where the site is turning real people away.
+#
+# SCOPED TO THE TWO FORM ENDPOINTS ON PURPOSE. `/health/deep` has its own
+# 30/hour allowance, and a scanner exhausting *that* says nothing about whether
+# a supporter can submit a form. Without the scope filter the loudest and least
+# meaningful caller on the API would mark the site as campaign-affecting.
+
+mutation ConditionHourlyRateLimit {
+  alertsNrqlConditionStaticCreate(
+    accountId: 8127277
+    policyId: "<CAMPAIGN_POLICY_ID>"
+    condition: {
+      name: "Rate limiter tripping — hourly tier (production)"
+      enabled: true
+      nrql: {
+        query: "SELECT count(*) FROM Transaction WHERE appName = 'voteforjulia-api' AND `rate_limit.tier` = 'hourly' AND `rate_limit.scope` IN ('send-email', 'yard-sign')"
+      }
+      signal: {
+        aggregationWindow: 300
+        aggregationMethod: EVENT_FLOW
+        aggregationDelay: 120
+        fillOption: STATIC
+        fillValue: 0
+      }
+      terms: [
+        {
+          threshold: 5
+          operator: ABOVE
+          priority: CRITICAL
+          thresholdDuration: 1800
+          thresholdOccurrences: ALL
+        }
+      ]
+      violationTimeLimitSeconds: 2592000
+    }
+  ) {
+    id
+    name
+  }
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+# NOTIFICATIONS (sections 9-11)
+# ═════════════════════════════════════════════════════════════════════════════
+# Everything above raises issues. Nothing above emails anyone. Until 2026-08-19
+# the `voteforjulia — API` policy had NO workflow at all: every issue it raised
+# sat in the UI and reached nobody, which looks exactly like nothing going
+# wrong. Conditions existing is not the same as being alerted.
+#
+# ONLY THE ENGINEER IS NOTIFIED. A plain-language path to the candidate was
+# built here, verified, and deleted the same day. Do not rebuild it without
+# reading ADR-0022 first: New Relic's EMAIL channel schema offers exactly two
+# fields, `subject` and `customDetailsEmail` ("Additional information to put in
+# the email"), and everything above that appended paragraph — priority badge,
+# raw issue title, "Go to issue" button, policy name, condition name, NRQL — is
+# New Relic's and cannot be suppressed. No template work fixes it. A webhook
+# relay could, but it must not run on this host: the alert worth sending fires
+# when SMTP is down.
+#
+# TWO PLATFORM CONSTRAINTS, neither visible in the schema:
+#
+#   1. `notificationTriggers` MUST contain ACTIVATED. A workflow firing only on
+#      acknowledgement or closure is rejected with
+#        destinationConfigurations[0].notificationTriggers: Must contain ACTIVATED
+#   2. A CHANNEL BELONGS TO EXACTLY ONE WORKFLOW:
+#        Channels ids are already in use by workflows [...]
+#      Hence two identical channels below on one destination.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Destination
+# ─────────────────────────────────────────────────────────────────────────────
+# <DYLAN_EMAIL> IS A PLACEHOLDER AND MUST STAY ONE. This repository is public.
+# Substitute at the CLI, never in the file.
+
+mutation CreateEngineerDestination {
+  aiNotificationsCreateDestination(
+    accountId: 8127277
+    destination: {
+      type: EMAIL
+      name: "Dylan Whitney"
+      properties: [{ key: "email", value: "<DYLAN_EMAIL>" }]
+    }
+  ) {
+    destination { id name }
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10. Channels — one per workflow, because of constraint 2
+# ─────────────────────────────────────────────────────────────────────────────
+# Identical on purpose. The duplication is the platform's, not a preference.
+
+mutation CreateApiChannel {
+  aiNotificationsCreateChannel(
+    accountId: 8127277
+    channel: {
+      type: EMAIL
+      name: "Dylan - all alerts"
+      destinationId: "<DESTINATION_ID>"
+      product: IINT
+      properties: [{ key: "subject", value: "{{ issueTitle }}" }]
+    }
+  ) {
+    channel { id name }
+  }
+}
+
+mutation CreateCampaignChannel {
+  aiNotificationsCreateChannel(
+    accountId: 8127277
+    channel: {
+      type: EMAIL
+      name: "Dylan - campaign visible alerts"
+      destinationId: "<DESTINATION_ID>"
+      product: IINT
+      properties: [{ key: "subject", value: "{{ issueTitle }}" }]
+    }
+  ) {
+    channel { id name }
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11. Workflows — one per policy
+# ─────────────────────────────────────────────────────────────────────────────
+# `mutingRulesHandling` is REQUIRED. `issuesFilter.name` is free text.
+#
+# ONE PER POLICY IS NOT OPTIONAL. A third policy added later without its own
+# workflow and channel raises issues that reach nobody, silently.
+#
+# The predicate is `labels.policyIds` rather than a condition-name match on one
+# combined policy: `AiWorkflowsPredicateInput.attribute` is an unvalidated
+# String, so a wrong attribute is accepted, matches nothing, and leaves a
+# workflow that reports healthy and never fires.
+
+mutation CreateApiWorkflow {
+  aiWorkflowsCreateWorkflow(
+    accountId: 8127277
+    createWorkflowData: {
+      name: "Dylan - voteforjulia API policy"
+      workflowEnabled: true
+      destinationsEnabled: true
+      mutingRulesHandling: NOTIFY_ALL_ISSUES
+      issuesFilter: {
+        name: "API policy"
+        type: FILTER
+        predicates: [
+          {
+            attribute: "labels.policyIds"
+            operator: EXACTLY_MATCHES
+            values: ["<POLICY_ID>"]
+          }
+        ]
+      }
+      destinationConfigurations: [
+        {
+          channelId: "<API_CHANNEL_ID>"
+          notificationTriggers: [ACTIVATED, ACKNOWLEDGED, CLOSED]
+        }
+      ]
+    }
+  ) {
+    workflow { id name }
+    errors { description type }
+  }
+}
+
+# Then the same again with:
+#   name: "Dylan - campaign visible policy"
+#   issuesFilter.name: "Campaign visible - engineer"   (must differ)
+#   values: ["<CAMPAIGN_POLICY_ID>"]
+#   channelId: <CAMPAIGN_CHANNEL_ID>
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 12. Prove the path end to end
+# ─────────────────────────────────────────────────────────────────────────────
+# A workflow that matches nothing is created happily and reports healthy. The
+# only thing that proves delivery is sending one. A test always renders
+# state = ACTIVATED with New Relic's own sample issue data, so it verifies the
+# channel and the address, not the filter.
+
+mutation TestChannel {
+  aiNotificationsTestChannelById(
+    accountId: 8127277
+    channelId: "<CHANNEL_ID>"
+  ) {
+    result
+    details
   }
 }
