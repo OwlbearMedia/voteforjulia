@@ -65,22 +65,60 @@ nothing about whether a supporter can submit anything — but the email she woul
 receive says the forms may not be working. The filter that keeps the two apart
 lives in the NRQL, so it is invisible from the workflow that sends the mail.
 
-### Three workflows, not one template
+### One workflow and a branching template, because the platform forces it
 
-New Relic can send all three states through one channel with a handlebars
-template branching on issue state. That is tidier and was rejected.
+This record originally decided the opposite: three workflows, one issue state
+each, each with its own channel of fixed literal prose. The argument was that a
+malformed handlebars expression does not fail loudly — it sends the template
+source — and `{{#if state}}` in a candidate's inbox during an outage is worse
+than the outage.
 
-A malformed expression or an unavailable helper does not fail loudly — it sends
-the template source. The reader is a candidate mid-campaign, and `{{#if state}}`
-in her inbox during an outage is worse than the outage. Three channels with
-fixed literal prose have no such failure mode.
+**That design is not possible.** Building it on 2026-08-19 turned up two
+constraints, neither documented anywhere we had looked and neither visible in
+the GraphQL schema:
 
-The cost is duplication: three workflows repeat one issue filter, and nothing
-keeps them in step. Changing which conditions she hears about means editing
-three objects, and forgetting one produces a partial lifecycle — the worst
-outcome available. This is recorded in `alerts.graphql` next to the mutations
-and is a genuine argument for revisiting the decision if the filter ever gets
-more complicated than two condition names.
+- **`notificationTriggers` must contain `ACTIVATED`.** A workflow that fires
+  only on acknowledgement or only on closure is rejected with
+  `destinationConfigurations[0].notificationTriggers: Must contain ACTIVATED`.
+  So one-state-per-workflow cannot be expressed at all.
+- **A channel may belong to exactly one workflow.** Reusing one produces
+  `Channels ids are already in use by workflows [...]`.
+
+The first kills the design outright. Varying the wording by state therefore
+requires exactly what was rejected: one workflow carrying all three triggers,
+one channel, and a template that branches on `{{state}}`.
+
+The original concern was legitimate and does not go away, so it is answered by
+verification rather than by structure. Both conditional forms were confirmed
+against the live account before anything was pointed at Julia — a probe channel
+on the engineer's own address rendered `{{#if (eq state 'X')}}`, `{{#eq}}` and a
+doubly-nested `{{else}}` correctly. **That probe is the mitigation. Any future
+edit to her template repeats it against a non-candidate address first.**
+
+One property of the template is load-bearing and is not obvious from reading it:
+**only an explicit `CLOSED` produces the all-clear.** The branches are ordered
+`CLOSED` → `ACTIVATED` → everything else, so an unexpected state falls through
+to "Dylan is looking into it" rather than to "the website is working normally
+again". Reversing that order would make a surprise state tell the candidate her
+site is fixed when nobody has said so.
+
+### Who sees what is structural, not a string match
+
+Julia's workflow selects issues by **policy**, not by condition name. The two
+conditions she should hear about live on their own policy,
+`voteforjulia — Campaign visible`; everything else stays on
+`voteforjulia — API`.
+
+Filtering by condition name was the first design and is a trap.
+`AiWorkflowsPredicateInput.attribute` is an unvalidated `String`, so a wrong
+attribute — `conditionName` where the account wanted `accumulations.conditionName`,
+say — is accepted, matches nothing, and leaves a workflow that reports healthy
+and never fires. On the path to a non-technical stakeholder that is the worst
+available failure, and it is invisible until the incident it was built for.
+
+Two policies cost a second object to keep in step and buy a filter that cannot
+silently miss. The predicate used, `labels.policyIds`, is the one shape already
+proven working in this account.
 
 ### Wording
 
@@ -102,10 +140,21 @@ solely so the gap between "broken" and "fixed" is not silence.
   close notification is a close notification. At the default 259200 that is an
   outage running 72 hours and Julia being told it is over. The hourly rate-limit
   condition is set to 2592000 for this reason. The trade-off is that a genuinely
-  stuck issue stays open longer instead of resetting.
+  stuck issue stays open longer instead of resetting. **Both** of her conditions
+  carry it — the dependency check as much as the rate limit — because the
+  hazard belongs to the notification path, not to any one condition.
 - **`PER_CONDITION` incident preference means she can receive two openings for
   one underlying fault.** Kept anyway — collapsing them would undo the reason
   the policy is `PER_CONDITION` in the first place.
+- **Her whole path now hangs on one template.** The three-object design had the
+  property that a broken piece cost one email; a single branching template that
+  fails costs the entire lifecycle. Nothing about the platform lets us have the
+  other arrangement, so the residual risk is real and is carried by the probe
+  ritual above rather than removed.
+- **The engineer needs his own workflow per policy.** Splitting the conditions
+  across two policies means the engineer-facing coverage is two workflows and
+  two channels, not one, because a channel cannot be shared. Adding a third
+  policy later silently halves his coverage unless a workflow is added with it.
 - **Julia's address is not in the repository.** It is public. The mutations
   carry a `<JULIA_EMAIL>` placeholder and the live value exists only in the New
   Relic UI, which makes the destination one more thing that drifts silently and

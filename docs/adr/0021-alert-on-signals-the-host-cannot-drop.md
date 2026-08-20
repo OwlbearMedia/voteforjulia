@@ -66,6 +66,39 @@ was 192/192 green.
 A percentage was the wrong shape regardless. At 1–11 transactions per 6 hours, a
 single bot probe inside a 60-second window is 100%.
 
+### And the third condition was dead
+
+The one condition not built on `Transaction` was not working either, for an
+unrelated reason that only became visible once a write-capable credential made
+`signal` readable. Read back on 2026-08-19, the live
+`API dependency check failing` had:
+
+|                     | Live    | Required at a 15-minute period |
+| ------------------- | ------- | ------------------------------ |
+| `aggregationWindow` | **300** | 900                            |
+| `thresholdDuration` | **600** | 1800                           |
+
+Those are the pre-2026-08-10 values, from when the monitor ran every 5 minutes.
+`alerts.graphql` was corrected in the same change that lengthened the period.
+**The live condition never was.**
+
+The consequence is the silent failure [../monitoring.md](../monitoring.md)
+had already described in the abstract, arrived at concretely. Checks land in one
+900-second stretch out of every three; the other two windows fill with zero;
+`thresholdOccurrences: ALL` over a 600-second duration needs two _consecutive_
+300-second windows above threshold. Two consecutive breaching windows cannot
+occur. **The production outage alert had been incapable of firing for nine
+days**, on the single condition the whole policy exists for.
+
+Two things are worth separating here. The drift itself is ordinary — a file was
+corrected and the live system was not. What made it survive is that
+`monitoring.md` had _already written down the exact mechanism_, flagged that the
+live values were unverified, and named the check that would settle it; the check
+just could not be run, because the read-only MCP server cannot return a
+condition's `signal` block. The documentation was not missing. **The
+verification was impossible, and "unverified" was allowed to stay unverified
+indefinitely because nothing forced it.**
+
 ### The general shape
 
 This is the third drift surface in this project, and the first one where the

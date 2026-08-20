@@ -1,24 +1,26 @@
-# New Relic alerting setup for voteforjulia
-# Paste into https://api.newrelic.com/graphiql — run in order, each step's
-# output feeds the next. Account 8127277.
+# New Relic alerting setup for voteforjulia. Account 8127277.
+# Run in order; each step's output feeds the next.
 #
-# NOT TESTED: the MCP server is read-only, so none of this has been executed.
-# Verify field names against the explorer's schema pane as you go.
+# EXECUTED 2026-08-19 against account 8127277 with the New Relic CLI. Everything
+# below has been run and the resulting objects read back, so this is a record of
+# what exists rather than a proposal. Live IDs are noted inline.
 #
-# Two different confidence levels live in this file, and it is worth knowing
-# which you are reading:
+# Rebuild with:
+#   newrelic nerdgraph query 'mutation(...) {...}' --variablesFile vars.json
 #
-# - **The NRQL has been run** against account 8127277 and parses. Where a query
-#   is new, the comment says what it returned.
-# - **The mutation shapes have not.** Field names for `aiNotifications*` and
-#   `aiWorkflows*` (sections 9-11) are from memory and are the least trustworthy
-#   thing here. Check every one against the schema pane.
+# Two operational notes that cost real time:
 #
-# Sections 5-8 replace conditions built on `Transaction` data. This host drops
-# most of it — see ADR-0021 — so anything alerting on the API's own telemetry is
-# either measuring a sample it cannot size, or firing on silence that means
-# nothing. `SyntheticCheck` is collected by New Relic and is the only complete
-# signal in the account.
+# - **The CLI prints `{}` for a successful mutation as often as a failed one.**
+#   It is not a status. Three workflow creations failed silently this way. Add
+#   `--trace` and read the `request completed` body, or read the object back.
+# - **Complex NRQL and templates go in `--variablesFile`, not inline.** Shell
+#   quoting around a GraphQL string containing NRQL string literals is where the
+#   first hour went.
+#
+# Sections 5-8 alert on signals the host cannot drop — see ADR-0021. This host
+# delivers roughly 3% of its APM transactions, so anything conditioned on
+# `Transaction` alone is measuring a sample it cannot size. `SyntheticCheck` is
+# collected by New Relic and is complete.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Synthetic monitor — production
@@ -79,12 +81,25 @@ mutation CreateTestMonitor {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. Alert policy
+# 3. Alert policies — there are two, and the split is load-bearing
 # ─────────────────────────────────────────────────────────────────────────────
-# PER_CONDITION so an SMTP outage and a Sheets outage open separate issues
-# rather than collapsing into one.
+# PER_CONDITION on both, so an SMTP outage and a Sheets outage open separate
+# issues rather than collapsing into one.
+#
+# WHICH POLICY A CONDITION SITS ON DECIDES WHO IS EMAILED. Julia's workflow
+# filters on `labels.policyIds` and nothing else, so putting a condition on
+# 7922533 puts it in the candidate's inbox. There is no safe default.
+#
+# Why not one policy and a condition-name filter: `AiWorkflowsPredicateInput
+# .attribute` is an unvalidated String. A wrong attribute name is accepted,
+# matches nothing, and leaves a workflow that reports healthy and never fires —
+# on the path to a non-technical stakeholder, the worst available failure.
+# `labels.policyIds` is the shape proven working in this account. See ADR-0022.
+#
+#   7831111  voteforjulia — API                 engineer only
+#   7922533  voteforjulia — Campaign visible    engineer + Julia
 
-mutation CreatePolicy {
+mutation CreateEngineerPolicy {
   alertsPolicyCreate(
     accountId: 8127277
     policy: { name: "voteforjulia — API", incidentPreference: PER_CONDITION }
@@ -94,7 +109,20 @@ mutation CreatePolicy {
   }
 }
 
-# → note the returned id as <POLICY_ID>
+mutation CreateCampaignVisiblePolicy {
+  alertsPolicyCreate(
+    accountId: 8127277
+    policy: {
+      name: "voteforjulia — Campaign visible"
+      incidentPreference: PER_CONDITION
+    }
+  ) {
+    id
+    name
+  }
+}
+
+# → live: <POLICY_ID> = 7831111, <CAMPAIGN_POLICY_ID> = 7922533
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. Condition: dependency check failing
@@ -114,16 +142,26 @@ mutation CreatePolicy {
 # every 5 minutes, and moving it to EVERY_15_MINUTES on 2026-08-10 is what
 # made them wrong.
 #
-# WHAT THE LIVE CONDITION USES IS NOT KNOWN. A condition by this name exists
-# and is enabled (policy 7831111, condition 64880222), but the read-only MCP
-# server cannot return a condition's signal block, so nobody has read the
-# deployed aggregationWindow back. Check it in the UI before assuming this file
-# matches it — the file header's "NOT TESTED" warning applies here too.
+# THE LIVE CONDITION WAS READ BACK ON 2026-08-19 AND IT WAS WRONG. The previous
+# copy (64880222) still had aggregationWindow 300 and thresholdDuration 600 --
+# the 5-minute values. This file was corrected on 2026-08-10; the live condition
+# never was, so the arithmetic above applied and **it had been unable to fire for
+# nine days**. It was deleted and recreated as 66281097 with the values here.
+#
+# A user API key can read the signal block that the read-only MCP server cannot.
+# Re-check after any period change:
+#
+#   newrelic nerdgraph query 'query { actor { account(id: 8127277) { alerts {
+#     nrqlCondition(id: "66281097") { ... on AlertsNrqlStaticCondition {
+#       signal { aggregationWindow } terms { thresholdDuration } } } } } } }
+#
+# On the CAMPAIGN VISIBLE policy: this is one of the two conditions Julia hears
+# about. Live id 66281097.
 
 mutation ConditionSyntheticFailure {
   alertsNrqlConditionStaticCreate(
     accountId: 8127277
-    policyId: "<POLICY_ID>"
+    policyId: "<CAMPAIGN_POLICY_ID>"
     condition: {
       name: "API dependency check failing (production)"
       enabled: true
@@ -401,22 +439,32 @@ mutation ConditionHourlyRateLimit {
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
-# JULIA'S NOTIFICATIONS (sections 9-11)
+# NOTIFICATIONS (sections 9-12)
 # ═════════════════════════════════════════════════════════════════════════════
-# Everything above tells Dylan something is wrong. These three tell Julia, in
-# language that assumes nothing, and then tell her again when it is being worked
-# on and when it is over. See ADR-0022.
+# Everything above raises issues. Nothing above emails anyone. Until 2026-08-19
+# the `voteforjulia — API` policy had NO workflow at all: every issue it raised
+# sat in the UI and reached nobody, which looks exactly like nothing going
+# wrong. Conditions existing is not the same as being alerted.
 #
-# FIELD NAMES BELOW ARE UNVERIFIED — see the file header. The NRQL above was run
-# against the account; these mutation shapes were not, and `aiWorkflows` in
-# particular has moved between schema versions. Check each against the schema
-# pane and expect to correct something.
+# TWO PLATFORM CONSTRAINTS SHAPE ALL OF THIS, neither in the schema:
+#
+#   1. `notificationTriggers` MUST contain ACTIVATED. A workflow that fires only
+#      on acknowledgement or only on closure is rejected:
+#        destinationConfigurations[0].notificationTriggers: Must contain ACTIVATED
+#      So "one workflow per issue state" is not expressible. Varying wording by
+#      state requires ONE workflow with all three triggers and a template that
+#      branches on {{state}}.
+#   2. A CHANNEL BELONGS TO EXACTLY ONE WORKFLOW. Reusing one is rejected with
+#        Channels ids are already in use by workflows [...]
+#      Hence a separate channel per workflow even when the content is identical.
 #
 # ─────────────────────────────────────────────────────────────────────────────
-# 9. Destination — where Julia's mail goes
+# 9. Destinations
 # ─────────────────────────────────────────────────────────────────────────────
-# <JULIA_EMAIL> IS A PLACEHOLDER AND MUST STAY ONE. This repository is public.
-# Substitute the address in the GraphiQL window, never in the file.
+# <JULIA_EMAIL> AND <DYLAN_EMAIL> ARE PLACEHOLDERS AND MUST STAY ONE. This
+# repository is public. Substitute at the CLI, never in the file.
+#
+# → live: Julia Hamann = ed662313-..., Dylan Whitney = 3d0fc1da-...
 
 mutation CreateJuliaDestination {
   aiNotificationsCreateDestination(
@@ -428,164 +476,134 @@ mutation CreateJuliaDestination {
     }
   ) {
     destination { id name }
-    error { description type }
   }
 }
 
-# → note the returned id as <JULIA_DESTINATION_ID>
+mutation CreateDylanDestination {
+  aiNotificationsCreateDestination(
+    accountId: 8127277
+    destination: {
+      type: EMAIL
+      name: "Dylan Whitney"
+      properties: [{ key: "email", value: "<DYLAN_EMAIL>" }]
+    }
+  ) {
+    destination { id name }
+  }
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 10. Channels — one per issue state, each with fixed wording
+# 10. Julia's channel — one template, branching on issue state
 # ─────────────────────────────────────────────────────────────────────────────
-# Three channels rather than one channel with a `{{#if state}}` template.
+# Handlebars conditionals were VERIFIED against this account before anything was
+# pointed at Julia, using a throwaway channel on the engineer's own address:
+# `{{state}}`, `{{#if (eq state 'X')}}...{{else}}...{{/if}}`, `{{#eq}}` and a
+# doubly-nested else all render. Repeat that probe before ever editing this
+# template — a broken expression does not error, it emails her the source.
 #
-# The template approach is tidier and has a failure mode this one does not: if a
-# handlebars helper is unavailable or an expression is malformed, New Relic
-# sends the template source. The reader of these emails is a candidate mid-
-# campaign, and "{{#if state}}" in her inbox during an outage is worse than the
-# duplication here. Fixed prose cannot fail that way.
+# BRANCH ORDER IS LOAD-BEARING: CLOSED first, then ACTIVATED, then everything
+# else. Only an explicit CLOSED produces the all-clear, so an unexpected state
+# falls through to "Dylan is looking into it" rather than telling the candidate
+# her site is fixed when nobody has said so. Do not reorder.
 #
-# The cost is real and belongs written down: three channels and three workflows
-# repeat one filter, and nothing keeps them in step. Changing which conditions
-# Julia hears about means editing all three.
+# No condition names, no issue URLs, no numbers, no jargon.
 #
-# No issue URL and no condition name in any of these. Both lead somewhere she
-# cannot act on and would only invite a "what does this mean?" at a bad moment.
+# Send this as --variablesFile; the template will not survive shell quoting.
+# → live: 1d4adef3-...
 
-mutation CreateJuliaActivatedChannel {
+mutation CreateJuliaChannel {
   aiNotificationsCreateChannel(
     accountId: 8127277
     channel: {
       type: EMAIL
-      name: "Julia — problem detected"
+      name: "Julia - website status"
       destinationId: "<JULIA_DESTINATION_ID>"
       product: IINT
       properties: [
         {
           key: "subject"
-          value: "Vote for Julia — the website's forms may not be working"
+          value: "{{#if (eq state 'CLOSED')}}Vote for Julia - the website is working normally again{{else}}{{#if (eq state 'ACTIVATED')}}Vote for Julia - the website's forms may not be working{{else}}Vote for Julia - Dylan is looking into the website problem{{/if}}{{/if}}"
         }
         {
           key: "customDetailsEmail"
-          value: "Automatic monitoring has found a problem with the contact and volunteer forms on voteforjulia.com.\n\nSupporters trying to sign up may be seeing an error. Dylan has been alerted automatically — you do not need to call or message him.\n\nYou will get one more email when he starts looking into it, and another when it is fixed."
+          value: "{{#if (eq state 'CLOSED')}}The contact and volunteer forms on voteforjulia.com are working normally again. Automatic monitoring has confirmed it.\n\nIf anyone told you they had trouble signing up, it is worth asking them to try again.{{else}}{{#if (eq state 'ACTIVATED')}}Automatic monitoring has found a problem with the contact and volunteer forms on voteforjulia.com.\n\nSupporters trying to sign up may be seeing an error. Dylan has been alerted automatically - you do not need to call or message him.\n\nYou will get one more email when he starts looking into it, and another when it is fixed.{{else}}Dylan has seen the alert about voteforjulia.com and is working on it now.\n\nThere is nothing you need to do. You will get one more email when the forms are working normally again.{{/if}}{{/if}}"
         }
       ]
     }
   ) {
     channel { id name }
-    error { description type }
   }
 }
 
-mutation CreateJuliaAcknowledgedChannel {
+# The engineer's two channels are plain — one per workflow, because of
+# constraint 2 above. → live: e4946d19-... and 1442f0c2-...
+
+mutation CreateDylanApiChannel {
   aiNotificationsCreateChannel(
     accountId: 8127277
     channel: {
       type: EMAIL
-      name: "Julia — being worked on"
-      destinationId: "<JULIA_DESTINATION_ID>"
+      name: "Dylan - all alerts"
+      destinationId: "<DYLAN_DESTINATION_ID>"
       product: IINT
-      properties: [
-        {
-          key: "subject"
-          value: "Vote for Julia — Dylan is looking into the website problem"
-        }
-        {
-          key: "customDetailsEmail"
-          value: "Dylan has seen the alert about voteforjulia.com and is working on it now.\n\nThere is nothing you need to do. You will get one more email when the forms are working normally again."
-        }
-      ]
+      properties: [{ key: "subject", value: "{{ issueTitle }}" }]
     }
   ) {
     channel { id name }
-    error { description type }
   }
 }
 
-mutation CreateJuliaClosedChannel {
+mutation CreateDylanCampaignChannel {
   aiNotificationsCreateChannel(
     accountId: 8127277
     channel: {
       type: EMAIL
-      name: "Julia — resolved"
-      destinationId: "<JULIA_DESTINATION_ID>"
+      name: "Dylan - campaign visible alerts"
+      destinationId: "<DYLAN_DESTINATION_ID>"
       product: IINT
-      properties: [
-        {
-          key: "subject"
-          value: "Vote for Julia — the website is working normally again"
-        }
-        {
-          key: "customDetailsEmail"
-          value: "The contact and volunteer forms on voteforjulia.com are working normally again. Automatic monitoring has confirmed it.\n\nIf anyone told you they had trouble signing up, it is worth asking them to try again."
-        }
-      ]
+      properties: [{ key: "subject", value: "{{ issueTitle }}" }]
     }
   ) {
     channel { id name }
-    error { description type }
   }
 }
 
-# → note the three returned ids
-
 # ─────────────────────────────────────────────────────────────────────────────
-# 11. Workflows — one per trigger
+# 11. Workflows
 # ─────────────────────────────────────────────────────────────────────────────
-# Each filters the policy's issues down to the two conditions Julia should hear
-# about, and fires on exactly one issue state.
+# Three: Julia on the campaign policy, the engineer on each policy.
 #
-# She is deliberately NOT wired to:
-#   - "Synthetic monitor not running" — means we cannot see, not that she is
-#     losing supporters. Dylan's problem.
-#   - "Rate limiter tripping — burst tier" — a tripped burst limiter is the
-#     defences working. Telling a candidate her site is under attack every time
-#     a scanner finds it would teach her to ignore the email that matters.
+# `issuesFilter.name` is free text but each workflow needs its own filter
+# object. `mutingRulesHandling` is REQUIRED by the schema.
 #
-# Repeat this mutation three times, changing `name`, `notificationTriggers` and
-# `channelId` together. Getting one pair crossed sends the wrong wording for the
-# state, which is the failure this section is most likely to have.
+# The engineer needs one workflow PER POLICY — a third policy added later
+# silently halves his coverage unless a workflow is added with it.
 
-mutation CreateJuliaActivatedWorkflow {
+mutation CreateJuliaWorkflow {
   aiWorkflowsCreateWorkflow(
     accountId: 8127277
     createWorkflowData: {
-      name: "Julia — problem detected"
+      name: "Julia - website status"
       workflowEnabled: true
       destinationsEnabled: true
-      # `<POLICY_ID>` here too, not the literal 7831111. The live policy is
-      # 7831111, but section 3 creates one and every condition above refers to
-      # whatever it returned — hardcoding the old id in only this one place
-      # means a from-scratch run wires the workflows to a policy that has no
-      # conditions on it, and Julia silently gets nothing.
-      #
-      # Both attribute names are the likeliest thing in this file to be wrong.
-      # A predicate that matches nothing is not an error: the workflow is
-      # created, reports healthy, and never fires. After creating these, open
-      # the workflow in the UI and confirm it previews matching issues.
+      mutingRulesHandling: NOTIFY_ALL_ISSUES
       issuesFilter: {
-        name: "Site-affecting conditions"
+        name: "Campaign visible - Julia"
         type: FILTER
         predicates: [
           {
             attribute: "labels.policyIds"
             operator: EXACTLY_MATCHES
-            values: ["<POLICY_ID>"]
-          }
-          {
-            attribute: "accumulations.conditionName"
-            operator: CONTAINS
-            values: ["API dependency check failing", "hourly tier"]
+            values: ["<CAMPAIGN_POLICY_ID>"]
           }
         ]
       }
       destinationConfigurations: [
         {
-          channelId: "<JULIA_ACTIVATED_CHANNEL_ID>"
-          notificationTriggers: [ACTIVATED]
+          channelId: "<JULIA_CHANNEL_ID>"
+          notificationTriggers: [ACTIVATED, ACKNOWLEDGED, CLOSED]
         }
       ]
-      mutingRulesHandling: NOTIFY_ALL_ISSUES
     }
   ) {
     workflow { id name }
@@ -593,9 +611,30 @@ mutation CreateJuliaActivatedWorkflow {
   }
 }
 
-# Then the same again with:
-#   name: "Julia — being worked on"
-#   channelId: <JULIA_ACKNOWLEDGED_CHANNEL_ID>, notificationTriggers: [ACKNOWLEDGED]
-# and:
-#   name: "Julia — resolved"
-#   channelId: <JULIA_CLOSED_CHANNEL_ID>, notificationTriggers: [CLOSED]
+# Then the same twice more for the engineer, changing name, filter name,
+# channelId and the policy id in `values`:
+#
+#   "Dylan - voteforjulia API policy"   <POLICY_ID>           "Dylan - all alerts"
+#   "Dylan - campaign visible policy"   <CAMPAIGN_POLICY_ID>  "Dylan - campaign visible alerts"
+#
+# both with notificationTriggers: [ACTIVATED, ACKNOWLEDGED, CLOSED].
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 12. Prove the path end to end
+# ─────────────────────────────────────────────────────────────────────────────
+# A workflow that matches nothing is created happily and reports healthy. The
+# only thing that proves delivery is sending one.
+#
+# Test a channel pointed at YOUR OWN address, not the candidate's. A test always
+# renders state = ACTIVATED, so it exercises one branch of the template; the
+# other two are covered by the probe described in section 10.
+
+mutation TestChannel {
+  aiNotificationsTestChannelById(
+    accountId: 8127277
+    channelId: "<CHANNEL_ID>"
+  ) {
+    result
+    details
+  }
+}

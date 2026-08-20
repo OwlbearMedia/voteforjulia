@@ -130,22 +130,56 @@ This is why the conditions below changed shape on 2026-08-19. See
 
 ### Alert conditions
 
-All sit on the **`voteforjulia — API`** policy (`PER_CONDITION`, so an SMTP
-outage and a Sheets outage open separate issues rather than collapsing into
-one).
+**There are two policies, and which one a condition sits on decides who hears
+about it.** That split is the whole of Julia's filter — see
+[ADR-0022](adr/0022-notify-the-candidate-not-just-the-engineer.md). Both are
+`PER_CONDITION`, so an SMTP outage and a Sheets outage open separate issues
+rather than collapsing into one.
 
-| Condition                                        | ID         | Fires when                                                                   |
-| ------------------------------------------------ | ---------- | ---------------------------------------------------------------------------- |
-| Policy `voteforjulia — API`                      | `7831111`  | —                                                                            |
-| API dependency check failing (production)        | `64880222` | the production synthetic fails twice in a row                                |
-| API serving 5xx (production)                     | _new_      | any 5xx in a 5-minute window                                                 |
-| Synthetic monitor not running (production)       | _new_      | no synthetic check for 45 minutes                                            |
-| Rate limiter tripping — burst tier (production)  | _new_      | >20 burst refusals per 5 min, sustained 15 minutes                           |
-| Rate limiter tripping — hourly tier (production) | _new_      | >5 hourly refusals per 5 min on the **form** endpoints, sustained 30 minutes |
+Read back from the account on 2026-08-19, after the rebuild:
 
-The four new ones replace or extend what was there on 2026-08-10. **Fill in
-their IDs from the mutation output** — they are not known here because the
-read-only MCP server cannot create them.
+| Policy                            | ID        | Notifies            |
+| --------------------------------- | --------- | ------------------- |
+| `voteforjulia — API`              | `7831111` | Dylan               |
+| `voteforjulia — Campaign visible` | `7922533` | Dylan **and Julia** |
+
+| Condition                                        | ID         | Policy    | Fires when                                                                   |
+| ------------------------------------------------ | ---------- | --------- | ---------------------------------------------------------------------------- |
+| API dependency check failing (production)        | `66281097` | `7922533` | the production synthetic fails twice in a row                                |
+| Rate limiter tripping — hourly tier (production) | _pending_  | `7922533` | >5 hourly refusals per 5 min on the **form** endpoints, sustained 30 minutes |
+| Synthetic monitor not running (production)       | `66281163` | `7831111` | no synthetic check for 45 minutes                                            |
+| API serving 5xx (production)                     | `66281170` | `7831111` | any 5xx in a 5-minute window                                                 |
+| Rate limiter tripping — burst tier (production)  | _pending_  | `7831111` | >20 burst refusals per 5 min, sustained 15 minutes                           |
+
+The two _pending_ ones need `rate_limit.tier` deployed before they can be
+created — see the warning below.
+
+**Adding a condition means choosing a policy, and that choice is a decision
+about the candidate's inbox.** There is no default that is safe: put it on
+`7922533` and Julia is told about it.
+
+### The outage alert was dead for nine days
+
+Worth knowing because the same shape will recur. Until 2026-08-19 the live
+`API dependency check failing` ran with `aggregationWindow: 300` and
+`thresholdDuration: 600` — the values from before the monitor moved to a
+15-minute period on 2026-08-10. `alerts.graphql` was corrected that day; the
+live condition was not.
+
+At a 900-second period against 300-second windows, checks land in one window of
+every three and the rest fill with zero, so the two consecutive breaching
+windows `thresholdOccurrences: ALL` requires can never occur. **It could not
+fire.** This page had described that exact mechanism, flagged the live values as
+unverified, and named the check that would settle it — and the check was
+impossible, because the read-only MCP server cannot return a condition's
+`signal`. With a user API key it is one query. Re-read it after any period
+change:
+
+```
+newrelic nerdgraph query 'query { actor { account(id: 8127277) { alerts {
+  nrqlCondition(id: "66281097") { ... on AlertsNrqlStaticCondition {
+    name signal { aggregationWindow } terms { thresholdDuration } } } } } } }'
+```
 
 **Two conditions were retired on 2026-08-19, both for the sampling reason
 above:**
@@ -179,11 +213,18 @@ exists (Alerts → Workflows) and send yourself a test notification; that is the
 only check that proves the path end to end.
 
 **Two conditions are coupled to the synthetic's period**, and neither dependency
-is visible from the New Relic UI. Lengthening the monitor to 15 minutes on
-2026-08-10 made the values in `alerts.graphql` wrong, and they were corrected in
-the same change — but **whether the live conditions were ever updated has not
-been established**, because a condition's signal block cannot be read back
-through the read-only MCP server. Check both in the UI before trusting either.
+is visible from the New Relic UI. This page used to say the live values were
+unverified because the read-only MCP server cannot return a `signal` block —
+**that is no longer true and the answer was bad**: read back on 2026-08-19 the
+dependency check still held the 5-minute values and had been unable to fire for
+nine days (above). Both were rebuilt correctly. With a user API key this is one
+query, so verify rather than assume after any period change:
+
+```
+newrelic nerdgraph query 'query { actor { account(id: 8127277) { alerts {
+  nrqlCondition(id: "66281163") { ... on AlertsNrqlStaticCondition {
+    name signal { aggregationWindow } terms { thresholdDuration } } } } } } }'
+```
 
 - **"API dependency check failing" — keep `aggregationWindow` equal to the
   period and `thresholdDuration` at twice it.** At the current 15 minutes that
@@ -201,29 +242,46 @@ through the read-only MCP server. Check both in the UI before trusting either.
 
 Julia is on a separate notification path, in plain language, with no issue links
 and no condition names. She gets three emails per incident — one when it opens,
-one when it is acknowledged, one when it closes. The wording is in
-[monitoring/alerts.graphql](../monitoring/alerts.graphql) §10 and the reasoning
-is [ADR-0022](adr/0022-notify-the-candidate-not-just-the-engineer.md).
+one when it is acknowledged, one when it closes. The reasoning is
+[ADR-0022](adr/0022-notify-the-candidate-not-just-the-engineer.md).
 
-She is wired to **two** conditions only: `API dependency check failing` and
-`Rate limiter tripping — hourly tier`. Both mean supporters are being turned
-away. She is deliberately not on `Synthetic monitor not running` (means we
-cannot see, not that the site is down) or the burst tier (a tripped burst
-limiter is the defences working).
+**She hears about whatever is on policy `7922533`.** That is the entire filter —
+her workflow selects by `labels.policyIds`, not by condition name. Currently
+that is `API dependency check failing` and (once deployed)
+`Rate limiter tripping — hourly tier`, both of which mean supporters are being
+turned away.
 
-Three things about this path will surprise you at the wrong moment:
+The live objects, read back on 2026-08-19:
+
+| Object      | Name                              | Notes                                           |
+| ----------- | --------------------------------- | ----------------------------------------------- |
+| Destination | `Julia Hamann`                    | her address; **not in this repo, it is public** |
+| Channel     | `Julia - website status`          | one channel, template branches on `{{state}}`   |
+| Workflow    | `Julia - website status`          | policy `7922533`, ACTIVATED/ACKNOWLEDGED/CLOSED |
+| Destination | `Dylan Whitney`                   | engineer                                        |
+| Workflow    | `Dylan - voteforjulia API policy` | policy `7831111`, all three triggers            |
+| Workflow    | `Dylan - campaign visible policy` | policy `7922533`, all three triggers            |
+
+Four things about this path will surprise you at the wrong moment:
 
 - **The "Dylan is on it" email only sends if you press Acknowledge in New
   Relic.** Fixing the problem without acknowledging means Julia hears that it
   opened and that it closed, with silence in between — which reads as nobody
   noticing. Acknowledge first, then fix.
 - **`violationTimeLimitSeconds` force-closes an issue that is still breaching**,
-  and a force-close sends the all-clear. At the default 259200 that is an
-  outage running 72 hours and Julia being told it is fixed. The hourly rate
-  limit condition is set to 2592000 (30 days) for this reason; the others are
-  worth raising too if an incident ever approaches the limit.
+  and a force-close sends the all-clear. At the default 259200 that is an outage
+  running 72 hours and Julia being told it is fixed. Both of her conditions are
+  set to 2592000 (30 days) for this reason. **Any condition added to `7922533`
+  needs the same**, and nothing enforces it.
 - **`PER_CONDITION` means two conditions firing sends her two emails.** They are
   separate issues by design and neither one knows about the other.
+- **All three of her emails come from one template.** New Relic requires every
+  workflow to include the `ACTIVATED` trigger, so one-state-per-workflow is not
+  expressible; the wording branches on `{{state}}` instead. **Never edit that
+  template without sending a test through a channel pointed at your own address
+  first** — a broken expression sends her the handlebars source. The branch
+  order matters too: only an explicit `CLOSED` produces the all-clear, so a
+  surprise state cannot tell her the site is fixed.
 
 ## When something fires
 
