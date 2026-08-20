@@ -133,10 +133,16 @@ Concretely:
   a 429. Both tiers return identical responses, so without it a burst refusal
   and an hourly refusal are indistinguishable — and the hourly one is the only
   one worth waking up for.
-- **Thresholds on the rate-limit conditions are declared as guesses** in the
-  file, to be tuned after a week of data. Given a biased sampling loss of
-  unknown size, a derived-looking number would be false precision, and this
-  repository has been bitten by exactly that before (`INFLIGHT_TTL_SECONDS`).
+- **Thresholds on the rate-limit conditions count recorded refusals, and the
+  sampling rate was measured rather than assumed.** Tripping the limiter against
+  production on 2026-08-20 produced 9 refusals of which New Relic recorded 1 —
+  about 11%, better than the 3% baseline because a burst keeps a worker alive
+  long enough to harvest. The thresholds are set roughly 10x below the real
+  numbers they stand for. An earlier draft picked 20 and 5 from nothing; those
+  needed ~180 and ~45 real refusals per window and would have been silent
+  through anything short of an attack. Measuring took one loop of `curl` against
+  `/health/deep`, which is cached and sends no mail, and it is the difference
+  between a threshold and a decoration.
 
 **Absolute counts over percentages** is the part that generalises. A ratio
 implies a denominator the host cannot supply. A count claims only "at least this

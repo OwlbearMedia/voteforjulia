@@ -347,11 +347,13 @@ mutation ConditionMonitorNotRunning {
 # this is FYI-grade: a high threshold, a long duration, WARNING, and not on
 # policy. Its value is context next to a real incident, not a page.
 #
-# The threshold is a guess and should be tuned once there is a week of data.
-# Saying so is more useful than a derived-looking number: sampling loss is
-# biased — a burst keeps a worker alive long enough to harvest, an isolated
-# request does not — so recorded 429s over-represent bursts by an unknown
-# factor. Nobody can compute the right value from here.
+# THE THRESHOLD COUNTS RECORDED REFUSALS, NOT REAL ONES. Measured 2026-08-20 by
+# tripping the limiter against production: 9 refusals generated, 1 recorded.
+# Better than the ~3% APM baseline, because a burst keeps a worker alive long
+# enough to harvest, and still ~10x loss. So >3 recorded per 5-minute window is
+# roughly 30 real. An earlier draft used 20, which needed ~180 real refusals per
+# window and would have been silent through anything short of an attack.
+# Re-measure if the sampling changes. Live id 66284760.
 
 mutation ConditionBurstRateLimit {
   alertsNrqlConditionStaticCreate(
@@ -372,7 +374,7 @@ mutation ConditionBurstRateLimit {
       }
       terms: [
         {
-          threshold: 20
+          threshold: 3
           operator: ABOVE
           priority: WARNING
           thresholdDuration: 900
@@ -401,6 +403,11 @@ mutation ConditionBurstRateLimit {
 # CRITICAL, and on the CAMPAIGN VISIBLE policy: sustained refusals are the case
 # where the site is turning real people away.
 #
+# ABOVE 0 across two consecutive windows, not a count: at the ~10% capture rate
+# measured in section 7, one recorded refusal already implies about ten real
+# ones, and an hourly-tier trip on a form endpoint is a strong signal on its
+# own. Live id 66284763.
+#
 # SCOPED TO THE TWO FORM ENDPOINTS ON PURPOSE. `/health/deep` has its own
 # 30/hour allowance, and a scanner exhausting *that* says nothing about whether
 # a supporter can submit a form. Without the scope filter the loudest and least
@@ -425,10 +432,10 @@ mutation ConditionHourlyRateLimit {
       }
       terms: [
         {
-          threshold: 5
+          threshold: 0
           operator: ABOVE
           priority: CRITICAL
-          thresholdDuration: 1800
+          thresholdDuration: 600
           thresholdOccurrences: ALL
         }
       ]
