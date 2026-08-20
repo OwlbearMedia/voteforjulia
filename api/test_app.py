@@ -479,7 +479,10 @@ class AppRateLimitTests(unittest.TestCase):
             response = self.client.post("/send-email", json=payload)
 
         self.assertEqual(response.status_code, 429)
-        self.assertEqual(response.headers.get("Retry-After"), "60")
+        # A sane Retry-After, not an exact one. The window is 60s and both posts
+        # land in the same instant on a fast machine, but the agent blowing up
+        # in between is enough to tick the clock and make this 59 on CI.
+        self.assertIn(int(response.headers["Retry-After"]), range(1, 61))
 
     def test_forwarding_headers_do_not_key_the_bucket_by_default(self) -> None:
         # THE regression test for the bypass. Nothing fronts this API, so a
