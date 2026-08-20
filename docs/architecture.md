@@ -342,6 +342,6 @@ than by discipline.
 | [0019](adr/0019-cloudflare-in-front.md)                          | Put Cloudflare in front of the web hostnames                    | Accepted                                                                                                                         |
 | [0020](adr/0020-authenticate-the-origin-path.md)                 | Authenticate the edge-to-origin path with a shared secret       | Accepted                                                                                                                         |
 | [0021](adr/0021-alert-on-signals-the-host-cannot-drop.md)        | Alert on signals the host cannot drop                           | Accepted                                                                                                                         |
-| [0022](adr/0022-notify-the-candidate-not-just-the-engineer.md)   | Notify the candidate, not just the engineer                     | Accepted                                                                                                                         |
+| [0022](adr/0022-do-not-automate-the-candidates-alerts.md)        | Do not automate the candidate's alerts                          | Accepted                                                                                                                         |
 
 New ADRs: see [adr/README.md](adr/README.md).

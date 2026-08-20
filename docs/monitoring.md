@@ -36,7 +36,7 @@ New Relic has no export-to-git story, so the definitions are kept here by hand:
   overwhelmingly bots and rate-limit refusals, so "API error rate" was reporting
   the defences working as though it were breakage.
 - **[monitoring/alerts.graphql](../monitoring/alerts.graphql)** — the synthetic
-  monitors, the alert policy, its conditions, and Julia's notification
+  monitors, both alert policies, their conditions, and the notification
   destination, channels and workflows, as NerdGraph mutations.
 
 **These drift.** Nothing syncs them; editing a widget in the UI does not update
@@ -130,18 +130,21 @@ This is why the conditions below changed shape on 2026-08-19. See
 
 ### Alert conditions
 
-**There are two policies, and which one a condition sits on decides who hears
-about it.** That split is the whole of Julia's filter — see
-[ADR-0022](adr/0022-notify-the-candidate-not-just-the-engineer.md). Both are
+**There are two policies.** Both notify only Dylan; the split marks which
+alerts mean supporters are being turned away, as opposed to something only the
+engineer cares about. It exists because a notification path to the candidate was
+built against it and then abandoned — see
+[ADR-0022](adr/0022-do-not-automate-the-candidates-alerts.md), which also
+records that this is structure kept past its original reason. Both are
 `PER_CONDITION`, so an SMTP outage and a Sheets outage open separate issues
 rather than collapsing into one.
 
 Read back from the account on 2026-08-19, after the rebuild:
 
-| Policy                            | ID        | Notifies            |
-| --------------------------------- | --------- | ------------------- |
-| `voteforjulia — API`              | `7831111` | Dylan               |
-| `voteforjulia — Campaign visible` | `7922533` | Dylan **and Julia** |
+| Policy                            | ID        | Holds                                         |
+| --------------------------------- | --------- | --------------------------------------------- |
+| `voteforjulia — API`              | `7831111` | engineer-facing conditions                    |
+| `voteforjulia — Campaign visible` | `7922533` | conditions meaning supporters are turned away |
 
 | Condition                                        | ID         | Policy    | Fires when                                                                   |
 | ------------------------------------------------ | ---------- | --------- | ---------------------------------------------------------------------------- |
@@ -154,9 +157,10 @@ Read back from the account on 2026-08-19, after the rebuild:
 The two _pending_ ones need `rate_limit.tier` deployed before they can be
 created — see the warning below.
 
-**Adding a condition means choosing a policy, and that choice is a decision
-about the candidate's inbox.** There is no default that is safe: put it on
-`7922533` and Julia is told about it.
+**Adding a condition means choosing a policy, and adding a policy means adding
+a workflow.** A channel belongs to exactly one workflow, so a third policy
+created without its own workflow and channel raises issues that reach nobody —
+which is exactly the state this account was in before 2026-08-19.
 
 ### The outage alert was dead for nine days
 
@@ -238,50 +242,45 @@ newrelic nerdgraph query 'query { actor { account(id: 8127277) { alerts {
   2700 is three consecutive empty windows. Lengthening the monitor period
   without lengthening both would have it firing between ordinary checks.
 
-### What Julia is told
+### Julia is not on the alerting
 
-Julia is on a separate notification path, in plain language, with no issue links
-and no condition names. She gets three emails per incident — one when it opens,
-one when it is acknowledged, one when it closes. The reasoning is
-[ADR-0022](adr/0022-notify-the-candidate-not-just-the-engineer.md).
+**Nothing in New Relic emails the candidate.** Both workflows go to
+`dylan@voteforjulia.com` and her address is not stored in the account. If the
+site is turning supporters away, telling her is a phone call, not a
+notification.
 
-**She hears about whatever is on policy `7922533`.** That is the entire filter —
-her workflow selects by `labels.policyIds`, not by condition name. Currently
-that is `API dependency check failing` and (once deployed)
-`Rate limiter tripping — hourly tier`, both of which mean supporters are being
-turned away.
+This was built and then removed on 2026-08-19, and the reason is worth knowing
+before anyone rebuilds it: **New Relic's EMAIL channel does not let you write
+the email.** The schema exposes `subject` and `customDetailsEmail`, and the
+label on the second one is literally "Additional information to put in the
+email" — it is appended below a priority badge, the raw issue title, a **Go to
+issue** button, alert-event counts, and a table containing the policy name, the
+condition name and the NRQL. The subject is ours and reads well; nothing under
+it does. Full reasoning, including why a relay through this API would fail at
+exactly the wrong moment, is in
+[ADR-0022](adr/0022-do-not-automate-the-candidates-alerts.md).
 
-The live objects, read back on 2026-08-19:
+The live notification objects, read back on 2026-08-19:
 
-| Object      | Name                              | Notes                                           |
-| ----------- | --------------------------------- | ----------------------------------------------- |
-| Destination | `Julia Hamann`                    | her address; **not in this repo, it is public** |
-| Channel     | `Julia - website status`          | one channel, template branches on `{{state}}`   |
-| Workflow    | `Julia - website status`          | policy `7922533`, ACTIVATED/ACKNOWLEDGED/CLOSED |
-| Destination | `Dylan Whitney`                   | engineer                                        |
-| Workflow    | `Dylan - voteforjulia API policy` | policy `7831111`, all three triggers            |
-| Workflow    | `Dylan - campaign visible policy` | policy `7922533`, all three triggers            |
+| Object      | Name                              | Notes                                   |
+| ----------- | --------------------------------- | --------------------------------------- |
+| Destination | `Dylan Whitney`                   | the only destination in the account     |
+| Channel     | `Dylan - all alerts`              | used by the API-policy workflow         |
+| Channel     | `Dylan - campaign visible alerts` | a second channel is required, see below |
+| Workflow    | `Dylan - voteforjulia API policy` | policy `7831111`, all three triggers    |
+| Workflow    | `Dylan - campaign visible policy` | policy `7922533`, all three triggers    |
 
-Four things about this path will surprise you at the wrong moment:
+Three things about this will surprise you at the wrong moment:
 
-- **The "Dylan is on it" email only sends if you press Acknowledge in New
-  Relic.** Fixing the problem without acknowledging means Julia hears that it
-  opened and that it closed, with silence in between — which reads as nobody
-  noticing. Acknowledge first, then fix.
+- **A channel belongs to exactly one workflow.** Reusing one is rejected with
+  `Channels ids are already in use by workflows [...]`, which is why there are
+  two identical channels on one destination.
+- **`notificationTriggers` must contain `ACTIVATED`.** A workflow that fires
+  only on acknowledgement or closure cannot be created.
 - **`violationTimeLimitSeconds` force-closes an issue that is still breaching**,
-  and a force-close sends the all-clear. At the default 259200 that is an outage
-  running 72 hours and Julia being told it is fixed. Both of her conditions are
-  set to 2592000 (30 days) for this reason. **Any condition added to `7922533`
-  needs the same**, and nothing enforces it.
-- **`PER_CONDITION` means two conditions firing sends her two emails.** They are
-  separate issues by design and neither one knows about the other.
-- **All three of her emails come from one template.** New Relic requires every
-  workflow to include the `ACTIVATED` trigger, so one-state-per-workflow is not
-  expressible; the wording branches on `{{state}}` instead. **Never edit that
-  template without sending a test through a channel pointed at your own address
-  first** — a broken expression sends her the handlebars source. The branch
-  order matters too: only an explicit `CLOSED` produces the all-clear, so a
-  surprise state cannot tell her the site is fixed.
+  and a force-close sends a resolved notification. Both campaign-visible
+  conditions are set to 2592000 (30 days) rather than the 259200 default, so a
+  long outage does not quietly report itself fixed.
 
 ## When something fires
 
@@ -360,7 +359,7 @@ FACET `rate_limit.tier`, `rate_limit.scope` SINCE 6 hours ago
 - **`hourly`** (10 per hour, [ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md))
   — a caller that paced itself under the burst limit for an hour. That is either
   deliberate abuse or a supporter genuinely stuck in a retry loop, and it is the
-  one Julia is told about.
+  one worth acting on.
 
 `rate_limit.scope` names the endpoint (`send-email`, `yard-sign`,
 `health-deep`). **`health-deep` trips are almost always a scanner** hammering
@@ -371,9 +370,10 @@ them apart by the source — a monitor trip coincides with `SyntheticCheck`
 failures, a scanner's does not. If it is the monitor, raise the allowance rather
 than touching the alert.
 
-Julia is not told about `health-deep` trips at all: her condition filters to
-`send-email` and `yard-sign`, because a scanner exhausting the probe's allowance
-says nothing about whether a supporter can submit a form.
+The hourly condition filters to `send-email` and `yard-sign` and deliberately
+excludes `health-deep`: a scanner exhausting the probe's allowance says nothing
+about whether a supporter can submit a form, and this is the condition that
+marks an alert as campaign-visible.
 
 **The client address is deliberately not recorded**, so New Relic cannot tell
 you who was refused ([ADR-0014](adr/0014-do-not-trust-forwarding-headers.md)).
