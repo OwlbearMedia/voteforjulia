@@ -146,16 +146,15 @@ Read back from the account on 2026-08-19, after the rebuild:
 | `voteforjulia — API`              | `7831111` | engineer-facing conditions                    |
 | `voteforjulia — Campaign visible` | `7922533` | conditions meaning supporters are turned away |
 
-| Condition                                        | ID         | Policy    | Fires when                                                                   |
-| ------------------------------------------------ | ---------- | --------- | ---------------------------------------------------------------------------- |
-| API dependency check failing (production)        | `66281097` | `7922533` | the production synthetic fails twice in a row                                |
-| Rate limiter tripping — hourly tier (production) | _pending_  | `7922533` | >5 hourly refusals per 5 min on the **form** endpoints, sustained 30 minutes |
-| Synthetic monitor not running (production)       | `66281163` | `7831111` | no synthetic check for 45 minutes                                            |
-| API serving 5xx (production)                     | `66281170` | `7831111` | any 5xx in a 5-minute window                                                 |
-| Rate limiter tripping — burst tier (production)  | _pending_  | `7831111` | >20 burst refusals per 5 min, sustained 15 minutes                           |
+| Condition                                        | ID         | Policy    | Fires when                                                                             |
+| ------------------------------------------------ | ---------- | --------- | -------------------------------------------------------------------------------------- |
+| API dependency check failing (production)        | `66281097` | `7922533` | the production synthetic fails twice in a row                                          |
+| Rate limiter tripping — hourly tier (production) | `66284763` | `7922533` | any recorded hourly refusal on the **form** endpoints in two consecutive 5-min windows |
+| Synthetic monitor not running (production)       | `66281163` | `7831111` | no synthetic check for 45 minutes                                                      |
+| API serving 5xx (production)                     | `66281170` | `7831111` | any 5xx in a 5-minute window                                                           |
+| Rate limiter tripping — burst tier (production)  | `66284760` | `7831111` | >3 recorded burst refusals per 5 min, sustained 15 minutes                             |
 
-The two _pending_ ones need `rate_limit.tier` deployed before they can be
-created — see the warning below.
+All five were read back from the account on 2026-08-20 and are enabled.
 
 **Adding a condition means choosing a policy, and adding a policy means adding
 a workflow.** A channel belongs to exactly one workflow, so a third policy
@@ -201,14 +200,51 @@ above:**
   which asks the same question — is anything still watching? — of data this host
   cannot drop.
 
-**The rate-limit conditions depend on an attribute the API must be emitting.**
-`rate_limit.tier` is added in [api/app.py](../api/app.py); a condition created
-before it deploys evaluates to nothing and sits green forever, which looks
-exactly like working. Confirm first:
+### The rate-limit thresholds are counted in a ~11% sample
+
+Measured on 2026-08-20 by deliberately tripping the limiter against production:
+**9 refusals generated, 1 recorded.** That is better than the ~3% baseline
+above — a burst keeps a worker alive long enough to harvest — and still an
+order of magnitude of loss.
+
+Both rate-limit thresholds are therefore counted in _recorded_ refusals and are
+roughly 10x smaller than the real number they stand for:
+
+| Condition   | Recorded threshold                  | Implies roughly     |
+| ----------- | ----------------------------------- | ------------------- |
+| burst tier  | >3 per 5 min, sustained 15 min      | ~30 real per window |
+| hourly tier | >0 in two consecutive 5-min windows | ~10 real per window |
+
+The first draft used 20 and 5, which would have needed ~180 and ~45 real
+refusals per window. Both would have been silent through anything short of a
+sustained attack. **If you change the sampling — a longer-lived worker, a
+different host, `NEW_RELIC_STARTUP_TIMEOUT` — re-measure before trusting these
+numbers.**
+
+To re-measure, trip the limiter yourself and compare. Use `/health/deep`, not a
+form endpoint: it is cached, rate-limited by design, and sends no email and
+writes no spreadsheet row. Your own address keys a different bucket from the
+synthetic's, so this cannot starve the monitor.
 
 ```
-SELECT count(*) FROM Transaction WHERE `rate_limit.tier` IS NOT NULL SINCE 1 day ago
+for i in $(seq 1 24); do curl -s -o /dev/null -w "%{http_code} " \
+  https://api.voteforjulia.com/health/deep; sleep 4; done
 ```
+
+Then, after a harvest cycle:
+
+```
+SELECT count(*) FROM Transaction
+WHERE `rate_limit.tier` IS NOT NULL FACET `rate_limit.tier`, `rate_limit.scope`
+SINCE 30 minutes ago
+```
+
+**The burst tier is weaker than 5-per-60s suggests.** `_RATE_LIMIT_BUCKETS` is a
+module-level dict, so each Passenger worker keeps its own count and the
+effective ceiling is 5 x however many workers are alive. Seven rapid requests
+did not trip it; the first refusal came at about fifteen. The hourly tier is
+SQLite-backed and genuinely cross-worker, which is why it is the deterministic
+one to test against.
 
 **Conditions existing is not the same as being alerted.** A policy with no
 notification workflow and destination raises issues that sit in the UI and reach
