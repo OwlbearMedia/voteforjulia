@@ -2,6 +2,7 @@ import smtplib
 import unittest
 from email import message_from_string
 from email.message import Message
+from pathlib import Path
 from unittest.mock import patch
 
 from api.config import EmailConfig
@@ -18,6 +19,9 @@ from api.services.email_service import (
 
 def _decode_payload(part: Message) -> str:
     return part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8")
+
+
+EMAIL_TEMPLATE_DIR = Path(__file__).resolve().parent / "email"
 
 
 class FakeSmtpServer:
@@ -185,16 +189,19 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(parsed["To"], "supporter@example.com")
         self.assertEqual(parsed["Subject"], "Thanks for reaching out to Julia Hamann for Mayor")
         self.assertEqual(parsed.get_content_subtype(), "alternative")
-        self.assertIn("Hi Julia!", plain_text_payload)
-        self.assertIn(
-            "Thank you so much for reaching out to help promote my campaign", plain_text_payload
-        )
-        self.assertIn("All my best,", plain_text_payload)
-        self.assertIn("Julia", plain_text_payload)
-        self.assertIn("Hi Julia!", html_payload)
-        self.assertIn(
-            "Thank you so much for reaching out to help promote my campaign", html_payload
-        )
+        self.assertIn("Hi Julia,", plain_text_payload)
+        self.assertIn("Thank you for signing up to volunteer", plain_text_payload)
+        self.assertIn("Julia for Mayor Campaign Team", plain_text_payload)
+        # The social links are the email's only call to action, so a plain-text
+        # reader needs the URLs spelled out rather than link text.
+        self.assertIn("https://www.facebook.com/profile.php?id=61590411090366", plain_text_payload)
+        self.assertIn("https://www.instagram.com/voteforjuliahamann", plain_text_payload)
+        self.assertIn("Hi Julia,", html_payload)
+        self.assertIn("Thank you for signing up to volunteer", html_payload)
+        # The social links are the only call to action left in either part,
+        # so the HTML list has to be asserted as well as the plain text.
+        self.assertIn("https://www.facebook.com/profile.php?id=61590411090366", html_payload)
+        self.assertIn("https://www.instagram.com/voteforjuliahamann", html_payload)
         self.assertIn("Paid for by Julia Hamann for Mankato Mayor", html_payload)
         self.assertIn("https://voteforjulia.com/julia-hamann-for-mankato-mayor.png", html_payload)
 
@@ -223,8 +230,8 @@ class EmailServiceTests(unittest.TestCase):
         plain_text_payload = _decode_payload(parsed.get_payload()[0])
         html_payload = _decode_payload(parsed.get_payload()[1])
 
-        self.assertIn("Hi there!", plain_text_payload)
-        self.assertIn("Hi there!", html_payload)
+        self.assertIn("Hi there,", plain_text_payload)
+        self.assertIn("Hi there,", html_payload)
 
     @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
     def test_send_confirmation_email_can_send_plain_text_only(self) -> None:
@@ -251,8 +258,11 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(recipients, ["supporter@example.com"])
         self.assertEqual(parsed.get_content_type(), "text/plain")
         plain_text_payload = _decode_payload(parsed)
-        self.assertIn("Hi Julia!", plain_text_payload)
+        self.assertIn("Hi Julia,", plain_text_payload)
         self.assertIn("Paid for by Julia Hamann for Mankato Mayor", plain_text_payload)
+        # This body is the whole email when the config is set, so the social
+        # links have to survive here and not only in the HTML part.
+        self.assertIn("https://www.instagram.com/voteforjuliahamann", plain_text_payload)
 
     @patch("api.services.email_service.smtplib.SMTP", new=FakeSmtpServer)
     def test_send_submission_email_uses_starttls_when_configured(self) -> None:
@@ -551,3 +561,45 @@ class SafeGreetingTests(unittest.TestCase):
 
         self.assertIn(hostile, submission.to_email_body())
         self.assertIn(hostile, submission.to_sheet_row())
+
+
+class EmailTemplateWidthTests(unittest.TestCase):
+    """Both templates must cap their body at the 600px email convention.
+
+    The MJML output these were generated from carries the width twice, and only
+    one copy is obvious. The `<!--[if mso | IE]>` conditionals wrap each section
+    in a `width:600px` table, so Outlook has always been capped -- but every
+    other client reads the plain `<div style="margin:0px auto;">`, and without a
+    `max-width` there it renders full-bleed at whatever the window is. Testing
+    the Outlook path alone would pass while Gmail ran edge to edge.
+    """
+
+    def _templates(self) -> list[Path]:
+        # Globbed rather than listed, so a third template cannot be added and
+        # quietly escape the check.
+        found = sorted(EMAIL_TEMPLATE_DIR.glob("*.html"))
+        self.assertTrue(found, "no email templates found to check")
+        return found
+
+    def test_every_section_wrapper_is_capped(self) -> None:
+        for template in self._templates():
+            with self.subTest(template=template.name):
+                html = template.read_text(encoding="utf-8")
+                # The bare form is what MJML emits when the cap is dropped.
+                self.assertNotIn(
+                    '<div style="margin:0px auto;">',
+                    html,
+                    "a section wrapper lost its max-width and will render full-bleed",
+                )
+                self.assertIn('<div style="margin:0px auto;max-width:600px;">', html)
+
+    def test_the_cap_matches_the_outlook_conditional(self) -> None:
+        # If these ever disagree, Outlook and everything else lay out
+        # differently and only one of them gets looked at.
+        for template in self._templates():
+            with self.subTest(template=template.name):
+                html = template.read_text(encoding="utf-8")
+                self.assertEqual(
+                    html.count('<div style="margin:0px auto;max-width:600px;">'),
+                    html.count('role="presentation" style="width:600px;" width="600"'),
+                )
