@@ -686,11 +686,11 @@ class SupporterReplyHeaderTests(unittest.TestCase):
     def test_notification_routing_is_never_published_to_the_supporter(self) -> None:
         """THE regression test for this pair of headers.
 
-        `RECIPIENT_EMAIL_SIGNS` routes yard-sign notifications and is documented
-        as being allowed to differ -- a coordinator's own mailbox is its whole
-        purpose. The confirmation goes to an address an unauthenticated POST
-        chose, so sourcing `Reply-To` from that var would hand the coordinator's
-        address to anyone who asks for a sign.
+        Both recipient vars carry a coordinator's role mailbox alongside the
+        campaign address in production, verified 2026-08-20. The confirmation
+        goes to an address an unauthenticated POST chose, so sourcing
+        `Reply-To` from those vars hands staff addresses to anyone who submits
+        a form. The first version of this change did exactly that.
         """
         config = self._config(
             recipients=["yard-sign-coordinator@example.com"], reply="info@example.com"

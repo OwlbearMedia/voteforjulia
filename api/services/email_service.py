@@ -122,10 +122,13 @@ def _supporter_reply_address(config: EmailConfig) -> str:
     Not `From`: `EMAIL_ADDRESS` is the SMTP account the host authenticates as
     (`contact@` in production) and nobody reads it.
 
-    Not the notification recipients either. `RECIPIENT_EMAIL_SIGNS` exists to
-    route yard-sign notifications and may reasonably be a coordinator's personal
-    mailbox; putting it in `Reply-To` would publish it to everyone who requests
-    a sign, and an unauthenticated POST decides who receives that.
+    Not the notification recipients either. Both `RECIPIENT_EMAIL` and
+    `RECIPIENT_EMAIL_SIGNS` carry a role mailbox belonging to a coordinator
+    alongside the campaign address -- confirmed against production on
+    2026-08-20, not a hypothetical -- and a confirmation is delivered to an
+    address an unauthenticated POST supplied. Sourcing these headers from the
+    notification routing publishes staff addresses to every person who submits
+    a form.
 
     So: its own setting, defaulting to the address already in the site footer.
     Blank or malformed omits the headers rather than emitting a broken one.

@@ -1142,10 +1142,12 @@ Mail — per request, no restart:
 | `PLAIN_TEXT_CONFIRMATION_ONLY` | `false`                 | Drops the HTML part of confirmation emails.                                                                                                                                                                                    |
 
 **`SUPPORTER_REPLY_EMAIL` is separate from the recipient vars on purpose.** The
-`RECIPIENT_*` addresses route notifications inward and may reasonably be a
-coordinator's own mailbox; a confirmation goes to an address an unauthenticated
-POST supplied. Sourcing `Reply-To` from the notification routing would publish
-whoever handles yard signs to everyone who requests one. `EMAIL_ADDRESS` is no
+`RECIPIENT_*` addresses route notifications inward, and in production **both**
+of them carry a coordinator's role mailbox alongside the campaign address. A
+confirmation goes to an address an unauthenticated POST supplied, so sourcing
+`Reply-To` from the notification routing would publish staff addresses to every
+person who submits a form. This is not hypothetical: it was the first version of
+the 2026-08-20 change, caught in review before it shipped. `EMAIL_ADDRESS` is no
 good either — it is the SMTP account (`contact@` in production) and nobody reads
 it, which is why confirmations had no working reply path at all until
 2026-08-20.
