@@ -1152,6 +1152,32 @@ good either — it is the SMTP account (`contact@` in production) and nobody rea
 it, which is why confirmations had no working reply path at all until
 2026-08-20.
 
+**The recipient vars are a staff list, and nothing in the checkout says so.**
+Each carries the campaign address plus the role mailbox of the person who
+handles that form, so the set changes when someone joins or leaves the campaign
+rather than when the code does. Two consequences, and the second is the one that
+will be missed:
+
+- **Review them when anyone stops working on the campaign.** A departed
+  coordinator keeps receiving volunteer or yard-sign submissions — including
+  names, phone numbers and addresses — until the variable is edited. Nothing
+  expires, nothing warns, and a deploy will not touch it.
+- **They are a drift surface with no file behind them**, like `main`'s branch
+  protection, which lives only in the GitHub API. Whoever is on these lists is
+  knowable only by reading the cPanel selector config:
+
+  ```
+  ssh vfj '/usr/sbin/cloudlinux-selector get --json --interpreter python'
+  ```
+
+  Parse that with a JSON reader, not `tr`/`grep` — the values contain commas,
+  and splitting on them yields a truncated address that looks like a whole one.
+  That mistake is what made the disclosure above read as hypothetical.
+
+The names and addresses are deliberately not written down here. This repository
+is public, so recording them would publish exactly what the `Reply-To` change
+was written to prevent.
+
 Google Sheets — per request, no restart:
 
 | Variable                           | Default      | Notes                                                              |
