@@ -1128,17 +1128,27 @@ module import and take every form down rather than degrade
 
 Mail — per request, no restart:
 
-| Variable                       | Default                 | Notes                                                          |
-| ------------------------------ | ----------------------- | -------------------------------------------------------------- |
-| `EMAIL_ADDRESS`                | _none_                  | SMTP username and the `From` address. Unset ⇒ every form 500s. |
-| `EMAIL_PASSWORD`               | _none_                  | Unset ⇒ every form 500s. See the `$` rule.                     |
-| `SMTP_SERVER`                  | `mail.voteforjulia.com` |                                                                |
-| `SMTP_PORT`                    | `465`                   |                                                                |
-| `SMTP_SECURITY`                | `auto`                  | `auto` \| `ssl` \| `starttls`; `auto` means STARTTLS on 587.   |
-| `SMTP_TIMEOUT_SECONDS`         | `10`                    | Raises `ValueError` (JSON 500) if unparseable or ≤ 0.          |
-| `RECIPIENT_EMAIL`              | `info@voteforjulia.com` | Comma- or semicolon-separated.                                 |
-| `RECIPIENT_EMAIL_SIGNS`        | falls back to the above | Yard-sign notifications only.                                  |
-| `PLAIN_TEXT_CONFIRMATION_ONLY` | `false`                 | Drops the HTML part of confirmation emails.                    |
+| Variable                       | Default                 | Notes                                                                                                                                                                                                                          |
+| ------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `EMAIL_ADDRESS`                | _none_                  | SMTP username and the `From` address. Unset ⇒ every form 500s.                                                                                                                                                                 |
+| `EMAIL_PASSWORD`               | _none_                  | Unset ⇒ every form 500s. See the `$` rule.                                                                                                                                                                                     |
+| `SMTP_SERVER`                  | `mail.voteforjulia.com` |                                                                                                                                                                                                                                |
+| `SMTP_PORT`                    | `465`                   |                                                                                                                                                                                                                                |
+| `SMTP_SECURITY`                | `auto`                  | `auto` \| `ssl` \| `starttls`; `auto` means STARTTLS on 587.                                                                                                                                                                   |
+| `SMTP_TIMEOUT_SECONDS`         | `10`                    | Raises `ValueError` (JSON 500) if unparseable or ≤ 0.                                                                                                                                                                          |
+| `RECIPIENT_EMAIL`              | `info@voteforjulia.com` | Comma- or semicolon-separated.                                                                                                                                                                                                 |
+| `RECIPIENT_EMAIL_SIGNS`        | falls back to the above | Yard-sign notifications only. **Never shown to a supporter** — see `SUPPORTER_REPLY_EMAIL`.                                                                                                                                    |
+| `SUPPORTER_REPLY_EMAIL`        | `info@voteforjulia.com` | `Reply-To` on both confirmations, and the `List-Unsubscribe` target on the volunteer one. The only address here that supporters see. A single address; blank or malformed omits both headers rather than sending a broken one. |
+| `PLAIN_TEXT_CONFIRMATION_ONLY` | `false`                 | Drops the HTML part of confirmation emails.                                                                                                                                                                                    |
+
+**`SUPPORTER_REPLY_EMAIL` is separate from the recipient vars on purpose.** The
+`RECIPIENT_*` addresses route notifications inward and may reasonably be a
+coordinator's own mailbox; a confirmation goes to an address an unauthenticated
+POST supplied. Sourcing `Reply-To` from the notification routing would publish
+whoever handles yard signs to everyone who requests one. `EMAIL_ADDRESS` is no
+good either — it is the SMTP account (`contact@` in production) and nobody reads
+it, which is why confirmations had no working reply path at all until
+2026-08-20.
 
 Google Sheets — per request, no restart:
 

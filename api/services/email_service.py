@@ -12,7 +12,7 @@ from html import escape
 from pathlib import Path
 
 from api.config import EmailConfig
-from api.models import Submission, YardSignRequest
+from api.models import Submission, YardSignRequest, looks_like_email
 
 _CONFIRMATION_TEMPLATE = Path(__file__).resolve().parents[1] / "email" / "email-template.html"
 _YARD_SIGN_CONFIRMATION_TEMPLATE = (
@@ -116,6 +116,47 @@ def _set_common_headers(msg: Message, *, from_address: str, to_address: str, sub
     msg["Subject"] = subject
 
 
+def _supporter_reply_address(config: EmailConfig) -> str:
+    """The address published to supporters, which is none of the obvious ones.
+
+    Not `From`: `EMAIL_ADDRESS` is the SMTP account the host authenticates as
+    (`contact@` in production) and nobody reads it.
+
+    Not the notification recipients either. `RECIPIENT_EMAIL_SIGNS` exists to
+    route yard-sign notifications and may reasonably be a coordinator's personal
+    mailbox; putting it in `Reply-To` would publish it to everyone who requests
+    a sign, and an unauthenticated POST decides who receives that.
+
+    So: its own setting, defaulting to the address already in the site footer.
+    Blank or malformed omits the headers rather than emitting a broken one.
+    """
+    address = config.supporter_reply_address.strip()
+    return address if looks_like_email(address) else ""
+
+
+def _set_supporter_reply_headers(
+    msg: Message, config: EmailConfig, *, offer_unsubscribe: bool
+) -> None:
+    """Give a confirmation a reply path, and the volunteer one an exit.
+
+    `offer_unsubscribe` is false for the yard-sign receipt on purpose: it
+    enrols nobody in anything, and inviting an unsubscribe from a one-off
+    receipt produces a request the campaign has no list to action.
+
+    The volunteer confirmation does promise periodic updates, so it owes an
+    opt-out. A `mailto:` rather than an RFC 8058 one-click URL because the list
+    is a spreadsheet a coordinator reads -- an endpoint writing to a table
+    nothing consults before sending would look like a control and not be one.
+    """
+    address = _supporter_reply_address(config)
+    if not address:
+        return
+
+    msg["Reply-To"] = address
+    if offer_unsubscribe:
+        msg["List-Unsubscribe"] = f"<mailto:{address}?subject=Unsubscribe>"
+
+
 def _build_submission_message(config: EmailConfig, submission: Submission) -> MIMEMultipart:
     msg = MIMEMultipart()
     _set_common_headers(
@@ -178,6 +219,7 @@ def _build_confirmation_message(config: EmailConfig, submission: Submission) -> 
         to_address=submission.email,
         subject="Thanks for reaching out to Julia Hamann for Mayor",
     )
+    _set_supporter_reply_headers(msg, config, offer_unsubscribe=True)
     return msg
 
 
@@ -316,6 +358,7 @@ def _build_yard_sign_confirmation_message(
         to_address=yard_sign_request.email,
         subject="Thanks for requesting a yard sign for Julia Hamann for Mayor",
     )
+    _set_supporter_reply_headers(msg, config, offer_unsubscribe=False)
     return msg
 
 
