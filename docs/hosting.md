@@ -1128,17 +1128,55 @@ module import and take every form down rather than degrade
 
 Mail — per request, no restart:
 
-| Variable                       | Default                 | Notes                                                          |
-| ------------------------------ | ----------------------- | -------------------------------------------------------------- |
-| `EMAIL_ADDRESS`                | _none_                  | SMTP username and the `From` address. Unset ⇒ every form 500s. |
-| `EMAIL_PASSWORD`               | _none_                  | Unset ⇒ every form 500s. See the `$` rule.                     |
-| `SMTP_SERVER`                  | `mail.voteforjulia.com` |                                                                |
-| `SMTP_PORT`                    | `465`                   |                                                                |
-| `SMTP_SECURITY`                | `auto`                  | `auto` \| `ssl` \| `starttls`; `auto` means STARTTLS on 587.   |
-| `SMTP_TIMEOUT_SECONDS`         | `10`                    | Raises `ValueError` (JSON 500) if unparseable or ≤ 0.          |
-| `RECIPIENT_EMAIL`              | `info@voteforjulia.com` | Comma- or semicolon-separated.                                 |
-| `RECIPIENT_EMAIL_SIGNS`        | falls back to the above | Yard-sign notifications only.                                  |
-| `PLAIN_TEXT_CONFIRMATION_ONLY` | `false`                 | Drops the HTML part of confirmation emails.                    |
+| Variable                       | Default                 | Notes                                                                                                                                                                                                                          |
+| ------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `EMAIL_ADDRESS`                | _none_                  | SMTP username and the `From` address. Unset ⇒ every form 500s.                                                                                                                                                                 |
+| `EMAIL_PASSWORD`               | _none_                  | Unset ⇒ every form 500s. See the `$` rule.                                                                                                                                                                                     |
+| `SMTP_SERVER`                  | `mail.voteforjulia.com` |                                                                                                                                                                                                                                |
+| `SMTP_PORT`                    | `465`                   |                                                                                                                                                                                                                                |
+| `SMTP_SECURITY`                | `auto`                  | `auto` \| `ssl` \| `starttls`; `auto` means STARTTLS on 587.                                                                                                                                                                   |
+| `SMTP_TIMEOUT_SECONDS`         | `10`                    | Raises `ValueError` (JSON 500) if unparseable or ≤ 0.                                                                                                                                                                          |
+| `RECIPIENT_EMAIL`              | `info@voteforjulia.com` | Comma- or semicolon-separated.                                                                                                                                                                                                 |
+| `RECIPIENT_EMAIL_SIGNS`        | falls back to the above | Yard-sign notifications only. **Never shown to a supporter** — see `SUPPORTER_REPLY_EMAIL`.                                                                                                                                    |
+| `SUPPORTER_REPLY_EMAIL`        | `info@voteforjulia.com` | `Reply-To` on both confirmations, and the `List-Unsubscribe` target on the volunteer one. The only address here that supporters see. A single address; blank or malformed omits both headers rather than sending a broken one. |
+| `PLAIN_TEXT_CONFIRMATION_ONLY` | `false`                 | Drops the HTML part of confirmation emails.                                                                                                                                                                                    |
+
+**`SUPPORTER_REPLY_EMAIL` is separate from the recipient vars on purpose.** The
+`RECIPIENT_*` addresses route notifications inward, and in production **both**
+of them carry a coordinator's role mailbox alongside the campaign address. A
+confirmation goes to an address an unauthenticated POST supplied, so sourcing
+`Reply-To` from the notification routing would publish staff addresses to every
+person who submits a form. This is not hypothetical: it was the first version of
+the 2026-08-20 change, caught in review before it shipped. `EMAIL_ADDRESS` is no
+good either — it is the SMTP account (`contact@` in production) and nobody reads
+it, which is why confirmations had no working reply path at all until
+2026-08-20.
+
+**The recipient vars are a staff list, and nothing in the checkout says so.**
+Each carries the campaign address plus the role mailbox of the person who
+handles that form, so the set changes when someone joins or leaves the campaign
+rather than when the code does. Two consequences, and the second is the one that
+will be missed:
+
+- **Review them when anyone stops working on the campaign.** A departed
+  coordinator keeps receiving volunteer or yard-sign submissions — including
+  names, phone numbers and addresses — until the variable is edited. Nothing
+  expires, nothing warns, and a deploy will not touch it.
+- **They are a drift surface with no file behind them**, like `main`'s branch
+  protection, which lives only in the GitHub API. Whoever is on these lists is
+  knowable only by reading the cPanel selector config:
+
+  ```
+  ssh vfj '/usr/sbin/cloudlinux-selector get --json --interpreter python'
+  ```
+
+  Parse that with a JSON reader, not `tr`/`grep` — the values contain commas,
+  and splitting on them yields a truncated address that looks like a whole one.
+  That mistake is what made the disclosure above read as hypothetical.
+
+The names and addresses are deliberately not written down here. This repository
+is public, so recording them would publish exactly what the `Reply-To` change
+was written to prevent.
 
 Google Sheets — per request, no restart:
 

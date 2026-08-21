@@ -12,7 +12,7 @@ from html import escape
 from pathlib import Path
 
 from api.config import EmailConfig
-from api.models import Submission, YardSignRequest
+from api.models import Submission, YardSignRequest, looks_like_email
 
 _CONFIRMATION_TEMPLATE = Path(__file__).resolve().parents[1] / "email" / "email-template.html"
 _YARD_SIGN_CONFIRMATION_TEMPLATE = (
@@ -116,6 +116,50 @@ def _set_common_headers(msg: Message, *, from_address: str, to_address: str, sub
     msg["Subject"] = subject
 
 
+def _supporter_reply_address(config: EmailConfig) -> str:
+    """The address published to supporters, which is none of the obvious ones.
+
+    Not `From`: `EMAIL_ADDRESS` is the SMTP account the host authenticates as
+    (`contact@` in production) and nobody reads it.
+
+    Not the notification recipients either. Both `RECIPIENT_EMAIL` and
+    `RECIPIENT_EMAIL_SIGNS` carry a role mailbox belonging to a coordinator
+    alongside the campaign address -- confirmed against production on
+    2026-08-20, not a hypothetical -- and a confirmation is delivered to an
+    address an unauthenticated POST supplied. Sourcing these headers from the
+    notification routing publishes staff addresses to every person who submits
+    a form.
+
+    So: its own setting, defaulting to the address already in the site footer.
+    Blank or malformed omits the headers rather than emitting a broken one.
+    """
+    address = config.supporter_reply_address.strip()
+    return address if looks_like_email(address) else ""
+
+
+def _set_supporter_reply_headers(
+    msg: Message, config: EmailConfig, *, offer_unsubscribe: bool
+) -> None:
+    """Give a confirmation a reply path, and the volunteer one an exit.
+
+    `offer_unsubscribe` is false for the yard-sign receipt on purpose: it
+    enrols nobody in anything, and inviting an unsubscribe from a one-off
+    receipt produces a request the campaign has no list to action.
+
+    The volunteer confirmation does promise periodic updates, so it owes an
+    opt-out. A `mailto:` rather than an RFC 8058 one-click URL because the list
+    is a spreadsheet a coordinator reads -- an endpoint writing to a table
+    nothing consults before sending would look like a control and not be one.
+    """
+    address = _supporter_reply_address(config)
+    if not address:
+        return
+
+    msg["Reply-To"] = address
+    if offer_unsubscribe:
+        msg["List-Unsubscribe"] = f"<mailto:{address}?subject=Unsubscribe>"
+
+
 def _build_submission_message(config: EmailConfig, submission: Submission) -> MIMEMultipart:
     msg = MIMEMultipart()
     _set_common_headers(
@@ -133,24 +177,23 @@ def _build_confirmation_content(submission: Submission) -> tuple[str, str]:
     greeting_name = _safe_greeting(submission.first_name, "there")
     plain_text_body = "\n".join(
         [
-            f"Hi {greeting_name}!",
+            f"Hi {greeting_name},",
             "",
-            "Thank you so much for reaching out to help promote my campaign. I am incredibly grateful for your support!",
+            "Thank you for signing up to volunteer with Julia's campaign for Mayor of Mankato! We're excited to have you on the team as we work together to make our community even better!",
             "",
-            "Right now, I am in the stage of gathering information and figuring out where volunteers are needed most. I will get you added to our volunteer list and be in touch as more direct needs arise.",
+            "As a volunteer, you'll receive periodic email updates with opportunities to get involved, campaign news, and ways you can help spread the word. Don't worry, we promise not to flood your inbox with too many emails.",
             "",
-            "If you're looking for a yard sign, they will be coming soon as well. I'm gathering some donations to get those printing costs covered, and will get those shared out as soon as possible!",
+            "One of the easiest and most effective ways to support the campaign right now is by following Julia on social media and engaging with our posts. When you like, comment, and share campaign updates, you help us reach more voters across Mankato. You can also invite your friends to follow the campaign, too!",
             "",
-            "For now, please keep planting my name in every ear you can and be sure they know about the primary vote coming up on August 11th! The primary narrows the mayoral candidates down to two for November.",
+            "Follow Julia's Campaign:",
             "",
-            "It's also super helpful if you follow my campaign on Facebook and Instagram, invite others, and share posts as they come up to encourage folks to get engaged or donate if they can.",
-            "Facebook: https://www.facebook.com/profile.php?id=61590411090366",
-            "Instagram: https://www.instagram.com/voteforjuliahamann",
+            "- Facebook: https://www.facebook.com/profile.php?id=61590411090366",
+            "- Instagram: https://www.instagram.com/voteforjuliahamann",
             "",
-            "We've got an exciting season ahead of us and I can't wait to connect with you in person!",
+            "Thanks again for signing up to volunteer. We'll be in touch soon!",
             "",
-            "All my best,",
-            "Julia",
+            "Best,",
+            "Julia for Mayor Campaign Team",
             "",
             "Paid for by Julia Hamann for Mankato Mayor",
             "https://voteforjulia.com",
@@ -179,6 +222,7 @@ def _build_confirmation_message(config: EmailConfig, submission: Submission) -> 
         to_address=submission.email,
         subject="Thanks for reaching out to Julia Hamann for Mayor",
     )
+    _set_supporter_reply_headers(msg, config, offer_unsubscribe=True)
     return msg
 
 
@@ -317,6 +361,7 @@ def _build_yard_sign_confirmation_message(
         to_address=yard_sign_request.email,
         subject="Thanks for requesting a yard sign for Julia Hamann for Mayor",
     )
+    _set_supporter_reply_headers(msg, config, offer_unsubscribe=False)
     return msg
 
 

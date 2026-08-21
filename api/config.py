@@ -79,6 +79,9 @@ class EmailConfig:
     recipients: list[str]
     plain_text_confirmation_only: bool
     timeout_seconds: float = DEFAULT_SMTP_TIMEOUT_SECONDS
+    # Published to supporters, so deliberately not the notification routing
+    # above. See _supporter_reply_address in services/email_service.py.
+    supporter_reply_address: str = DEFAULT_RECIPIENT_EMAIL
 
 
 @dataclass(frozen=True)
@@ -109,6 +112,7 @@ def load_email_config(recipient_env: str = "RECIPIENT_EMAIL") -> EmailConfig:
         recipients=parse_recipients(recipients_raw),
         plain_text_confirmation_only=env_bool("PLAIN_TEXT_CONFIRMATION_ONLY", False),
         timeout_seconds=env_positive_number("SMTP_TIMEOUT_SECONDS", DEFAULT_SMTP_TIMEOUT_SECONDS),
+        supporter_reply_address=env("SUPPORTER_REPLY_EMAIL", DEFAULT_RECIPIENT_EMAIL),
     )
 
 
