@@ -29,12 +29,9 @@ New Relic has no export-to-git story, so the definitions are kept here by hand:
 
 - **[monitoring/dashboard.json](../monitoring/dashboard.json)** — the "Vote for
   Julia — Site Health" dashboard, 20 widgets across two pages. Re-import via
-  Dashboards → Import dashboard. **The live copy is behind this file as of
-  2026-08-19**: two widgets that counted every response above HTTP 400 as a
-  failure were narrowed to 5xx, for the reason in
-  [ADR-0021](adr/0021-alert-on-signals-the-host-cannot-drop.md) — 4xx here is
-  overwhelmingly bots and rate-limit refusals, so "API error rate" was reporting
-  the defences working as though it were breakage.
+  Dashboards → Import dashboard, or push it with the API as described
+  [below](#pushing-dashboardjson-back-to-new-relic). Live and file agreed as of
+  2026-08-20.
 - **[monitoring/alerts.graphql](../monitoring/alerts.graphql)** — the synthetic
   monitors, both alert policies, their conditions, and the notification
   destination, channels and workflows, as NerdGraph mutations.
@@ -47,6 +44,52 @@ omits widget `layout`, so merge rather than overwrite.
 
 There is also an older `voteforjulia` dashboard from 2026-06-02, predating this
 setup and not tracked here.
+
+### Pushing dashboard.json back to New Relic
+
+**`monitoring/dashboard.json` is an _export_ artifact and `dashboardUpdate` will
+not accept it unmodified.** The UI's Import dashboard reads export format, so
+for a one-off that is still the shortest path. Going through the API needs two
+corrections, and both fail loudly enough to waste an evening:
+
+- **`link` is a string on export and an object on input.** The JavaScript error
+  detail widget carries `"link": "https://…"`; `DashboardWidgetLinkInput` wants
+  `{ url: "https://…" }`. Nothing else in the file has this shape.
+- **`rawConfiguration` is a JSON scalar, so it must be passed as a GraphQL
+  variable.** Inlined into the query document it is parsed as an object literal
+  and validated field by field, which produces `Unknown field` for every
+  `nrqlQueries`, `platformOptions`, `thresholds`, `facet` and `yAxisLeft` in the
+  file — one error per widget, and none of them says what is actually wrong.
+
+**Prefer `dashboardUpdateWidgetsInPage` to a whole-dashboard update.** It takes
+the page GUID and the widgets you actually changed, so untouched widgets are
+never round-tripped through the conversion above, and a widget you did not
+intend to edit cannot be quietly reshaped by it. Widget `id`s and page GUIDs
+come from the entity:
+
+```
+newrelic nerdgraph query 'query { actor { entity(guid: "<DASHBOARD_GUID>") {
+  ... on DashboardEntity { pages { guid name widgets { id title } } } } } }'
+```
+
+Then send `{"guid": "<PAGE_GUID>", "widgets": [...]}` as a variables file, each
+widget carrying `id`, `title`, `visualization`, `layout` and `rawConfiguration`
+copied from this repo's copy:
+
+```
+newrelic nerdgraph query 'mutation($guid: EntityGuid!, $widgets: [DashboardUpdateWidgetInput!]!) {
+  dashboardUpdateWidgetsInPage(guid: $guid, widgets: $widgets) { errors { description type } } }' \
+  --variablesFile widgets.json
+```
+
+The dashboard is `ODEyNzI3N3xWSVp8REFTSEJPQVJEfGRhOjEyOTczMDE2`; its Overview
+page is `ODEyNzI3N3xWSVp8REFTSEJPQVJEfDUwMDIwODk5`.
+
+**Read the widgets back afterwards.** `dashboardUpdateWidgetsInPage` returns
+`errors: null` on success, and the New Relic CLI prints `{}` for a successful
+mutation as readily as a failed one — see the note at the top of
+[alerts.graphql](../monitoring/alerts.graphql). Neither is evidence the change
+landed.
 
 ## What is watched
 
