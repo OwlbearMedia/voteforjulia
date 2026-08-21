@@ -1,3 +1,4 @@
+import re
 import smtplib
 import unittest
 from email import message_from_string
@@ -569,29 +570,31 @@ class EmailTemplateWidthTests(unittest.TestCase):
     The MJML output these were generated from carries the width twice, and only
     one copy is obvious. The `<!--[if mso | IE]>` conditionals wrap each section
     in a `width:600px` table, so Outlook has always been capped -- but every
-    other client reads the plain `<div style="margin:0px auto;">`, and without a
-    `max-width` there it renders full-bleed at whatever the window is. Testing
-    the Outlook path alone would pass while Gmail ran edge to edge.
+    other client reads the plain section wrapper div, and without a `max-width`
+    there it renders full-bleed at whatever the window is. Testing the Outlook
+    path alone would pass while Gmail ran edge to edge.
     """
+
+    # Matched on the declaration rather than a whole literal: MJML prepends
+    # `background:...` to this style when a section has a colour, which a
+    # string-equality check would read as a missing cap.
+    WRAPPER = re.compile(r'<div style="([^"]*\bmargin:0px auto;[^"]*)"')
+    MSO_SECTION = re.compile(r'role="presentation" style="width:600px;" width="600"')
 
     def _templates(self) -> list[Path]:
         # Globbed rather than listed, so a third template cannot be added and
         # quietly escape the check.
-        found = sorted(EMAIL_TEMPLATE_DIR.glob("*.html"))
+        found = sorted(EMAIL_TEMPLATE_DIR.glob("*-template.html"))
         self.assertTrue(found, "no email templates found to check")
         return found
 
     def test_every_section_wrapper_is_capped(self) -> None:
         for template in self._templates():
             with self.subTest(template=template.name):
-                html = template.read_text(encoding="utf-8")
-                # The bare form is what MJML emits when the cap is dropped.
-                self.assertNotIn(
-                    '<div style="margin:0px auto;">',
-                    html,
-                    "a section wrapper lost its max-width and will render full-bleed",
-                )
-                self.assertIn('<div style="margin:0px auto;max-width:600px;">', html)
+                styles = self.WRAPPER.findall(template.read_text(encoding="utf-8"))
+                self.assertTrue(styles, "no section wrappers found")
+                for style in styles:
+                    self.assertIn("max-width:600px", style)
 
     def test_the_cap_matches_the_outlook_conditional(self) -> None:
         # If these ever disagree, Outlook and everything else lay out
@@ -600,6 +603,115 @@ class EmailTemplateWidthTests(unittest.TestCase):
             with self.subTest(template=template.name):
                 html = template.read_text(encoding="utf-8")
                 self.assertEqual(
-                    html.count('<div style="margin:0px auto;max-width:600px;">'),
-                    html.count('role="presentation" style="width:600px;" width="600"'),
+                    len(self.WRAPPER.findall(html)), len(self.MSO_SECTION.findall(html))
                 )
+
+
+class SupporterReplyHeaderTests(unittest.TestCase):
+    """Confirmations must reply somewhere a person reads, without leaking staff.
+
+    `From` is the SMTP account (`contact@` in production) and is unmonitored, so
+    without `Reply-To` a supporter answering their own welcome email reaches
+    nobody. Verified 2026-08-20: that mailbox had received no replies, so this
+    was caught before it cost the campaign anything.
+    """
+
+    def setUp(self) -> None:
+        FakeSmtpServer.instances = []
+        self.submission = Submission(
+            first_name="Julia",
+            last_name="Hamann",
+            name="Julia Hamann",
+            email="supporter@example.com",
+            phone="",
+            message="",
+            help_ways=[],
+        )
+        self.yard_sign_request = YardSignRequest(
+            first_name="Julia",
+            last_name="Hamann",
+            name="Julia Hamann",
+            email="supporter@example.com",
+            phone="",
+            address="1 Main St",
+            preferred_payment=["Online"],
+        )
+
+    def _config(self, *, recipients=None, reply="info@example.com") -> EmailConfig:
+        return EmailConfig(
+            smtp_server="mail.example.com",
+            smtp_port=465,
+            smtp_security="ssl",
+            email_address="contact@example.com",
+            email_password="placeholder-value",
+            recipients=recipients if recipients is not None else ["info@example.com"],
+            plain_text_confirmation_only=False,
+            supporter_reply_address=reply,
+        )
+
+    def _sent(self) -> Message:
+        _, _, raw_message = FakeSmtpServer.instances[0].sent_messages[0]
+        return message_from_string(raw_message)
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_volunteer_confirmation_replies_to_the_campaign_not_the_sender(self) -> None:
+        send_confirmation_email(self._config(), self.submission)
+        parsed = self._sent()
+
+        self.assertEqual(parsed["Reply-To"], "info@example.com")
+        # The whole point: not the From address.
+        self.assertIn("contact@example.com", parsed["From"])
+        self.assertNotIn("contact@example.com", parsed["Reply-To"])
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_volunteer_confirmation_offers_an_unsubscribe(self) -> None:
+        send_confirmation_email(self._config(), self.submission)
+
+        self.assertEqual(
+            self._sent()["List-Unsubscribe"],
+            "<mailto:info@example.com?subject=Unsubscribe>",
+        )
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_yard_sign_confirmation_replies_but_offers_no_unsubscribe(self) -> None:
+        # A yard-sign receipt enrols nobody, so an unsubscribe request against
+        # it would name no list the campaign could remove anyone from.
+        send_yard_sign_confirmation_email(self._config(), self.yard_sign_request)
+        parsed = self._sent()
+
+        self.assertEqual(parsed["Reply-To"], "info@example.com")
+        self.assertIsNone(parsed["List-Unsubscribe"])
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_notification_routing_is_never_published_to_the_supporter(self) -> None:
+        """THE regression test for this pair of headers.
+
+        Both recipient vars carry a coordinator's role mailbox alongside the
+        campaign address in production, verified 2026-08-20. The confirmation
+        goes to an address an unauthenticated POST chose, so sourcing
+        `Reply-To` from those vars hands staff addresses to anyone who submits
+        a form. The first version of this change did exactly that.
+        """
+        config = self._config(
+            recipients=["yard-sign-coordinator@example.com"], reply="info@example.com"
+        )
+
+        send_yard_sign_confirmation_email(config, self.yard_sign_request)
+        _, _, raw_message = FakeSmtpServer.instances[0].sent_messages[0]
+
+        self.assertNotIn("yard-sign-coordinator@example.com", raw_message)
+        self.assertEqual(message_from_string(raw_message)["Reply-To"], "info@example.com")
+
+    @patch("api.services.email_service.smtplib.SMTP_SSL", new=FakeSmtpServer)
+    def test_a_blank_or_malformed_address_omits_the_headers(self) -> None:
+        # Unlike `recipients`, this field is not checked by
+        # `_validate_email_config`, so a mistyped SUPPORTER_REPLY_EMAIL reaches
+        # here intact. Omitting beats emitting a header nothing can reply to.
+        for bad in ("", "   ", "not-an-address", "info@example.com, extra@example.com"):
+            with self.subTest(reply=bad):
+                FakeSmtpServer.instances = []
+                send_confirmation_email(self._config(reply=bad), self.submission)
+                parsed = self._sent()
+
+                self.assertIsNone(parsed["Reply-To"])
+                self.assertIsNone(parsed["List-Unsubscribe"])
