@@ -58,7 +58,13 @@ except Exception:  # pragma: no cover - the agent is absent locally and in CI
 
 app = Flask(__name__)
 
-logging.basicConfig(level=logging.INFO)
+# `format` is load-bearing: the default omits the timestamp, and `stderr.log`
+# is appended to across restarts. See docs/monitoring.md#is-it-real. New Relic
+# is unaffected -- its agent forwards `record.getMessage()`, before formatting.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
