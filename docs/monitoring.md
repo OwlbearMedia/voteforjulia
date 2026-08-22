@@ -365,8 +365,59 @@ Three things about this will surprise you at the wrong moment:
 
 ### Is it real?
 
-**Check whether every location failed at once.** This is the fastest
-discriminator and it is the one thing that is not obvious from the UI:
+**Read the check duration before anything else. It usually names the failing
+dependency on its own.** Each probe runs under its own timeout — 10s for SMTP,
+15s for Sheets ([api/config.py](../api/config.py)) — and a healthy
+`/health/deep` is about 1.5s: an SMTP handshake well under a second plus a
+Sheets metadata read of a few hundred milliseconds. A failed check whose
+duration sits just above one of those bounds has therefore already told you
+which dependency hung, before you open a single log.
+
+```
+SELECT timestamp, locationLabel, result, error, duration
+FROM SyntheticCheck WHERE monitorName = 'voteforjulia-api /health/deep'
+SINCE 3 hours ago ORDER BY timestamp ASC
+```
+
+- **~16.5s** → Sheets. A normal SMTP handshake plus one 15s Sheets timeout.
+- **~10s, or a multiple of it, plus a normal Sheets read** → SMTP. The figure
+  to recognise is 10s rather than exactly 10s: `SMTP_TIMEOUT_SECONDS` bounds
+  each socket operation, not the session, and a login is a dozen or so of them
+  (see `_SMTP_OPERATIONS_PER_SESSION` in [api/app.py](../api/app.py)), so a
+  server that stalls on several drags the probe out to a multiple.
+- **Fast, or no 503 at all** → the app did not answer. A **520** is Cloudflare
+  reporting that the origin returned nothing parseable, which is a dead worker
+  rather than a failed probe.
+
+Both probes always run — `_run_deep_health_probes` does not short-circuit when
+SMTP fails — so the two figures add rather than replace each other.
+
+Read the _successful_ checks either side too. Latency climbing toward a timeout
+and then falling back is a transient upstream slowdown, not a broken
+credential.
+
+**Worked example, 2026-08-21.** The one real firing of this condition so far.
+Sheets latency ramped over about an hour — 3.2s, 5.8s, 9.8s, then a 15.9s
+check that still _passed_ because it came in just under the timeout — before
+two checks crossed 15s and returned 503. Durations then fell to ~1.6s and
+stayed there. The single error line in New Relic read
+`Deep health check failed for sheets`, and the failing check took 16.583s
+against a 15.0s Sheets timeout. Nothing was wrong with SMTP, which had accepted
+mail 33 minutes earlier and did so again afterwards.
+
+**Trust the timestamp, not the tail of `stderr.log`.** That file is appended to
+across restarts and carries no visible boundary between one incident and the
+next, so an unrelated traceback from weeks ago sits there reading as current.
+On 2026-08-21 the first thing found in it was a block of SMTP authentication
+errors from an entirely different period, which pointed the whole diagnosis at
+the wrong dependency. Match the log line's timestamp to the failed check's
+before believing it. A Sheets failure is easy to misread this way in its own
+right: `verify_sheets_access` refreshes an OAuth token, so its traceback is
+dense with `google.auth` frames and looks like an authentication problem at a
+glance.
+
+**Check whether every location failed at once.** The next-fastest
+discriminator, and the one thing that is not obvious from the UI:
 
 ```
 SELECT monitorName, result, locationLabel, responseStatus
@@ -390,6 +441,14 @@ FROM SyntheticCheck WHERE result = 'FAILED' SINCE 2 hours ago
   more weeks ([hosting.md](hosting.md#imunify360-waf-disabled)). So this should
   not happen now, which is what makes a single-location failure worth taking
   seriously as evidence the WAF is back rather than dismissing as noise.
+
+  **A genuine dependency failure can still look location-specific, so run the
+  duration check above before acting on this one.** Both 2026-08-21 failures
+  were Columbus with San Francisco green between them, which reads as the WAF
+  and was not: Sheets was slow for every caller, and which 15-minute poll
+  happened to cross the 15s timeout was chance. Two locations at a 15-minute
+  period is a coarse sample, and an intermittent fault lands on one of them
+  more often than the phrase "one location" suggests.
 
 ### A 503 from the submission cap
 
@@ -483,11 +542,27 @@ again rather than concluding the alert was noise.
   2026-07-30 failure mode; check `EMAIL_PASSWORD` for a `$`
   ([hosting.md](hosting.md#app-env-vars-must-not-contain-)) before anything else.
 - `"sheets": "fail"` → service account credentials, or the sheet stopped being
-  shared with it.
+  shared with it — but check the failed check's duration before assuming
+  either. A probe that took ~16.5s hit the 15s timeout, which is Google being
+  slow rather than anything about the credentials, and is the one cause
+  observed so far (2026-08-21). Credentials fail fast.
 
 The response deliberately says only `fail` — the underlying exception text
 quotes credentials, so it is never returned to an unauthenticated caller. The
-detail goes to the agent instead, tagged with which dependency broke:
+detail goes to the agent instead, and **`Log` is the copy to reach for first**:
+
+```
+SELECT timestamp, message, level FROM Log
+WHERE message LIKE 'Deep health check failed%' SINCE 24 hours ago
+```
+
+One line per failed probe, naming the dependency. Observed to survive at least
+one case where the agent's copy below did not (2026-08-21); the reason it does
+has not been established, so treat it as the more reliable of the two rather
+than as guaranteed.
+
+The same failure is also tagged on the agent's side, which adds the exception
+class and the traceback:
 
 ```
 SELECT count(*) FROM TransactionError
@@ -495,11 +570,28 @@ WHERE appName = 'voteforjulia-api' FACET health.dependency, error.class
 SINCE 24 hours ago
 ```
 
+**Do not read an empty result here as "no failure".** This is the sampling
+above, and a health probe is its worst case: one failing check on an otherwise
+idle host is exactly the pattern Passenger reaps before the agent's 60-second
+harvest. On 2026-08-21 this query returned nothing for the incident window —
+New Relic recorded a single `deep_health_check` transaction across those seven
+hours, a 200 — while the `Log` query above returned the line that identified
+Sheets. Over three days APM held 55 of ~576 checks, about 10%.
+
+[ADR-0021](adr/0021-alert-on-signals-the-host-cannot-drop.md) records the
+opposite expectation — that this attribute "is still how a 503 gets attributed
+to SMTP or Sheets after the fact; that use never needed completeness". The
+first real firing of the condition showed it does need completeness: with one
+failing probe rather than a run of them, a 10% sample usually holds nothing.
+The attribute is still worth having when it lands, for the traceback. It is not
+the thing to check first.
+
 That attribute exists because the first version swallowed the exception
 entirely: nine production 503s recorded a status code and nothing else, and
 finding out they were all Sheets took an SSH session into
-`~/api/stderr.log`. The full traceback is still there if the agent's copy is
-not enough.
+`~/api/stderr.log`. The full traceback is still there if neither copy above is
+enough — but see the warning about that file's timestamps in
+[Is it real?](#is-it-real).
 
 ### Stale Sheets connections
 
