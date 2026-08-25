@@ -151,6 +151,21 @@ jobs:
           name: test-frontend-dist
           path: dist
 
+      # Every step below pins the host key, and an empty `fingerprint` is not an
+      # error in appleboy's actions — easyssh-proxy selects
+      # InsecureIgnoreHostKey(), so an unset secret turns all of them back into
+      # no verification at all, silently. Fail before the first connection
+      # rather than after. See ADR-0023.
+      - name: Require a pinned host key before connecting
+        env:
+          HOST_FINGERPRINT: ${{ secrets.SSH_HOST_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOST_FINGERPRINT:-}" ]; then
+            echo "SSH_HOST_FINGERPRINT is unset for this environment; every SSH and SCP step in this job would skip host-key verification. Aborting." >&2
+            exit 1
+          fi
+
       - name: Prepare clean staging directory on test server
         uses: appleboy/ssh-action@v1.2.5
         with:
@@ -159,6 +174,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           script: |
             set -euo pipefail
             rm -rf ./public_html_test_next
@@ -172,27 +188,11 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           source: dist/**
           target: ./public_html_test_next
           overwrite: true
           strip_components: 1
-
-      # The .htaccess uploaded below is the only thing either workflow sends
-      # that carries a secret, and appleboy's actions skip host-key verification
-      # entirely when `fingerprint` is empty — scp-action documents that default
-      # as "skip verification", and easyssh-proxy uses InsecureIgnoreHostKey().
-      # Refuse to upload rather than upload unverified. Checked here because the
-      # upload itself is what would leak.
-      - name: Require a pinned host key before uploading the edge token
-        env:
-          EDGE_TOKEN: ${{ secrets.EDGE_SHARED_TOKEN }}
-          HOST_FINGERPRINT: ${{ secrets.SSH_HOST_FINGERPRINT }}
-        run: |
-          set -euo pipefail
-          if [ -n "${EDGE_TOKEN:-}" ] && [ -z "${HOST_FINGERPRINT:-}" ]; then
-            echo "EDGE_SHARED_TOKEN is set but SSH_HOST_FINGERPRINT is not, so the token would be uploaded to an unverified host. Aborting." >&2
-            exit 1
-          fi
 
       # Substituted on the runner, which is ephemeral and single-tenant, rather
       # than over SSH on the shared host where the token has to come to rest
@@ -234,6 +234,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           script: |
             set -euo pipefail
             staged=./public_html_test_next/.htaccess
@@ -280,6 +281,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           script: |
             set -euo pipefail
             if [ ! -d ./public_html_test_next ]; then
@@ -323,6 +325,45 @@ jobs:
             | LC_ALL=C sort > api/deploy-manifest.txt
           echo "Manifest lists $(wc -l < api/deploy-manifest.txt) runtime file(s)."
 
+      # Every step below pins the host key, and an empty `fingerprint` is not an
+      # error in appleboy's actions — easyssh-proxy selects
+      # InsecureIgnoreHostKey(), so an unset secret turns all of them back into
+      # no verification at all, silently. Fail before the first connection
+      # rather than after. See ADR-0023.
+      - name: Require a pinned host key before connecting
+        env:
+          HOST_FINGERPRINT: ${{ secrets.SSH_HOST_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOST_FINGERPRINT:-}" ]; then
+            echo "SSH_HOST_FINGERPRINT is unset for this environment; every SSH and SCP step in this job would skip host-key verification. Aborting." >&2
+            exit 1
+          fi
+
+      # **Ordering invariant: the first connection in this job must be one whose
+      # failure leaves the host untouched.** Any failure here -- a rotated host
+      # key, an unreachable host -- then costs a red run and nothing else. Put
+      # the scp first and the same failure lands after the new source is on
+      # disk but before the install, prune and restart, so the next Passenger
+      # restart boots new code against old dependencies. Asserted by
+      # scripts/test_deploy_workflows.py. See ADR-0023.
+      - name: Reach the server before uploading anything
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
+          script: |
+            set -euo pipefail
+            if [ ! -d ./api_test ]; then
+              echo "App root ./api_test is missing; aborting before the upload." >&2
+              exit 1
+            fi
+            echo "Reached the server; ./api_test is present."
+
       - name: Upload api contents to test api directory
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -331,6 +372,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           source: api/**
           target: ./api_test
           overwrite: true
@@ -348,6 +390,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           script: |
             set -euo pipefail
             output=$(/usr/sbin/cloudlinux-selector install-modules --json \
@@ -375,6 +418,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           script: |
             set -euo pipefail
             cd ./api_test
@@ -438,6 +482,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           script: |
             mkdir -p ./api_test/tmp
             touch ./api_test/tmp/restart.txt

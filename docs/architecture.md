@@ -343,5 +343,6 @@ than by discipline.
 | [0020](adr/0020-authenticate-the-origin-path.md)                 | Authenticate the edge-to-origin path with a shared secret       | Accepted                                                                                                                         |
 | [0021](adr/0021-alert-on-signals-the-host-cannot-drop.md)        | Alert on signals the host cannot drop                           | Accepted                                                                                                                         |
 | [0022](adr/0022-do-not-automate-the-candidates-alerts.md)        | Do not automate the candidate's alerts                          | Accepted                                                                                                                         |
+| [0023](adr/0023-pin-the-deploy-host-key.md)                      | Pin the SSH host key on every step of the deploy pipeline       | Accepted                                                                                                                         |
 
 New ADRs: see [adr/README.md](adr/README.md).
