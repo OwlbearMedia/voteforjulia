@@ -131,6 +131,16 @@ it before the first connection, that the first connection in a job is not an
 upload, and that the two actions are still the versions whose host-key
 preference was measured.
 
+One assertion is stated over every workflow rather than over the two, because
+the others read `uses: appleboy/...` steps in two named files and are therefore
+blind to any other way of opening a session — another publisher's action, or a
+hand-rolled `ssh` in a `run:` block. The first version of it exempted the deploy
+workflows from that scan, which left the evasion available in exactly the two
+files the rest of this record is about; caught by Copilot on
+[#166](https://github.com/OwlbearMedia/voteforjulia/pull/166), after a
+`/code-review high` that had looked at the same function and improved its reach
+elsewhere.
+
 ## Consequences
 
 - **A host key rotation is now a total deploy outage rather than a partial

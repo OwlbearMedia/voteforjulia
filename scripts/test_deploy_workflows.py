@@ -100,34 +100,51 @@ def test_the_actions_are_the_versions_whose_host_key_order_was_checked(
 
 # A step that reaches the host without going through `appleboy`. Matches an ssh
 # family command at the start of a line in a `run:` block, so prose and flags
-# that merely contain the word do not trip it.
+# that merely contain the word do not trip it. Only `run:` is scanned: the
+# `script:` of an appleboy step already executes on the host, so an `ssh` there
+# is the host reaching somewhere else and none of this file's business.
 RAW_SSH = re.compile(r"^\s*(?:ssh|scp|sftp|rsync)\s", re.MULTILINE)
 
+# Anything else that looks like it opens a session. Matching the name is a
+# heuristic and may catch an action that only loads a key rather than
+# connecting; treat a hit as a prompt to decide which it is, not as a verdict.
+CONNECTING_ACTION = re.compile(r"ssh|scp|sftp|rsync")
+APPROVED_ACTIONS = ("appleboy/ssh-action", "appleboy/scp-action")
 
-def test_no_other_workflow_connects_to_the_host() -> None:
-    """Pinning the deploys is only the whole pipeline while they are the only
-    things that connect.
 
-    Deliberately broader than the assertions above: those read parsed steps in
-    two named files, so a third workflow -- or a hand-rolled `ssh` in a `run:`
-    block -- would be invisible to every one of them, and this file would keep
-    passing while the gap it exists for reopened.
+def test_nothing_reaches_the_host_outside_the_pinned_steps() -> None:
+    """Every connection must be an `appleboy` step in a deploy workflow.
+
+    The assertions above read `uses: appleboy/...` steps in two named files, so
+    everything else that could open a session is invisible to all of them: a
+    third workflow, an action from another publisher, or a hand-rolled `ssh` in
+    a `run:` block -- **including one added to a deploy workflow itself**, which
+    an earlier version of this test skipped over while claiming to be the broad
+    check. Found by Copilot on #166.
+
+    So the rule is stated over every workflow rather than over the two: a step
+    that connects has to be one of the approved actions, and it has to live
+    where the pin, guard and ordering assertions can see it.
     """
     offenders = []
     for path in sorted(WORKFLOWS.iterdir()):
-        if path.suffix not in (".yml", ".yaml") or path.name in DEPLOY_WORKFLOWS:
+        if path.suffix not in (".yml", ".yaml"):
             continue
         workflow = yaml.safe_load(path.read_text())
         for name, job in (workflow.get("jobs") or {}).items():
             for step in job.get("steps", []):
+                where = f"{path.name} / {name}: {step.get('name') or step.get('uses')!r}"
                 uses = step.get("uses", "")
-                run = step.get("run", "")
-                if any(k in uses for k in ("ssh-action", "scp-action")):
-                    offenders.append(f"{path.name} / {name}: uses {uses}")
-                elif RAW_SSH.search(run):
-                    offenders.append(f"{path.name} / {name}: {step.get('name')!r} runs ssh")
+                if RAW_SSH.search(step.get("run", "")):
+                    offenders.append(f"{where} -- reaches the host from a `run:` block")
+                elif uses.startswith(APPROVED_ACTIONS):
+                    if path.name not in DEPLOY_WORKFLOWS:
+                        offenders.append(f"{where} -- connects from outside the deploy workflows")
+                elif CONNECTING_ACTION.search(uses):
+                    offenders.append(f"{where} -- connects through an unapproved action")
     assert not offenders, (
-        f"{offenders} reaches the host but is not covered by the assertions in this file"
+        f"{offenders}: reaches the host without the pin, guard and ordering "
+        f"that the rest of this file asserts"
     )
 
 
