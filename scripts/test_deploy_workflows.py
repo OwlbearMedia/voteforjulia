@@ -12,6 +12,7 @@ before production. See ADR-0023.
 """
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -81,6 +82,59 @@ def test_every_job_that_connects_guards_the_pin_before_connecting(
         assert guards[0] < first_connection, (
             f"{name}: {GUARD_STEP!r} runs after the first connection, so an "
             f"unset fingerprint is caught only once it no longer matters"
+        )
+
+
+def test_the_guard_refuses_an_empty_fingerprint(workflow: dict) -> None:
+    """Run the guard rather than recognising it by name.
+
+    Matching the step name proves a step is there, which is not the property
+    being relied on: strip the emptiness check, drop the `env` binding, or add
+    `continue-on-error`, and a named step still sits in the job while an unset
+    secret goes back to permitting unverified connections. Found by Copilot on
+    #166 -- the assertion above located the guard by name and called that a
+    test of it.
+
+    The `run:` block is plain shell, so it can simply be executed both ways.
+    """
+    for name, job in workflow["jobs"].items():
+        if not connecting_steps(job):
+            continue
+        guard = next((s for s in job["steps"] if s.get("name") == GUARD_STEP), None)
+        assert guard is not None, f"{name}: no {GUARD_STEP!r} step"
+
+        assert (guard.get("env") or {}).get("HOST_FINGERPRINT") == PINNED, (
+            f"{name}: the guard does not read {PINNED}, so it would pass while "
+            f"the value the pins resolve to is missing"
+        )
+        assert "if" not in guard and not guard.get("continue-on-error"), (
+            f"{name}: the guard is skippable, which makes it decorative"
+        )
+
+        for label, env in (
+            ("empty", {"HOST_FINGERPRINT": ""}),
+            ("unset", {}),
+        ):
+            refused = subprocess.run(
+                ["bash", "-c", guard["run"]],
+                env={"PATH": "/usr/bin:/bin", **env},
+                capture_output=True,
+                text=True,
+            )
+            assert refused.returncode != 0, (
+                f"{name}: the guard exits 0 on an {label} fingerprint, so the "
+                f"deploy would continue with host-key verification disabled"
+            )
+
+        allowed = subprocess.run(
+            ["bash", "-c", guard["run"]],
+            env={"PATH": "/usr/bin:/bin", "HOST_FINGERPRINT": "SHA256:" + "a" * 43},
+            capture_output=True,
+            text=True,
+        )
+        assert allowed.returncode == 0, (
+            f"{name}: the guard rejects a real fingerprint, which would stop "
+            f"every deploy: {allowed.stderr.strip()}"
         )
 
 

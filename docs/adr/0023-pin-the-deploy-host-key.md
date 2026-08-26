@@ -127,8 +127,10 @@ workflow — so a step added without a pin cannot be caught by deploying the
 branch that adds it ([hosting.md](../hosting.md#deploy-workflow-changes-cannot-be-tested-from-a-pr)).
 CI is the only place it is catchable before production. The tests assert that
 every connecting step pins the fingerprint, that every job that connects guards
-it before the first connection, that the first connection in a job is not an
-upload, and that the two actions are still the versions whose host-key
+it before the first connection, that the guard actually refuses an empty value
+— it is executed, not recognised by its step name, since a named step with its
+emptiness check removed is not a guard — that the first connection in a job is
+not an upload, and that the two actions are still the versions whose host-key
 preference was measured.
 
 One assertion is stated over every workflow rather than over the two, because
