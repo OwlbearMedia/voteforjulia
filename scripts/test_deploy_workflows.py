@@ -152,12 +152,63 @@ def test_the_actions_are_the_versions_whose_host_key_order_was_checked(
             )
 
 
-# A step that reaches the host without going through `appleboy`. Matches an ssh
-# family command at the start of a line in a `run:` block, so prose and flags
-# that merely contain the word do not trip it. Only `run:` is scanned: the
-# `script:` of an appleboy step already executes on the host, so an `ssh` there
-# is the host reaching somewhere else and none of this file's business.
-RAW_SSH = re.compile(r"^\s*(?:ssh|scp|sftp|rsync)\s", re.MULTILINE)
+# A step that reaches the host without going through `appleboy`. Only `run:` is
+# scanned: the `script:` of an appleboy step already executes on the host, so an
+# `ssh` there is the host reaching somewhere else and none of this file's
+# business.
+#
+# Matching only at the start of a line was the first version and was far too
+# narrow -- `setup && ssh ...`, `cd x; ssh ...`, `ENV=v ssh ...` and
+# `$(ssh ...)` all slipped past it (Copilot, #166). So the detector looks for
+# the command in any *command position* instead: after a separator, a pipeline
+# operator, a subshell or a command substitution, and through the prefixes that
+# keep the following word a command. This is not a shell parser and does not
+# try to be one; the forms it covers are pinned in RAW_SSH_FORMS below.
+#
+# Case-sensitive on purpose. The guard step's own message contains "every SSH
+# and SCP step", and prose about SSH is common in these files -- an
+# uppercase-insensitive match would flag both.
+_COMMAND_POSITION = r"(?:^|[\n;&|(){}`]|\$\()"
+_COMMAND_PREFIX = (
+    r"(?:\s*(?:"
+    r"[A-Za-z_][A-Za-z0-9_]*=[^\s;&|]*"  # FOO=bar ssh ...
+    r"|command|env|exec|nohup|sudo|time|if|while|until|then|else|do|!"
+    r"|timeout\s+\S+"
+    r"|xargs(?:\s+-\S+)*"
+    r")\s+)*"
+)
+RAW_SSH = re.compile(
+    _COMMAND_POSITION + r"\s*" + _COMMAND_PREFIX + r"(?:ssh|scp|sftp|rsync)\s",
+    re.MULTILINE,
+)
+
+# (fragment, should it be flagged) -- the forms an unpinned connection could
+# plausibly be written in, and the near misses that must not cost a false
+# alarm. Extend this rather than trusting the regex to be read correctly.
+RAW_SSH_FORMS = [
+    ("ssh host true", True),
+    ("scp -P 50288 a user@host:b", True),
+    ("rsync -e ssh dist/ host:/var/www/", True),
+    ("setup && ssh host true", True),
+    ("cd /tmp; ssh host true", True),
+    ("command ssh host true", True),
+    ("ENV=value ssh host true", True),
+    ("timeout 30 ssh host true", True),
+    ("if ssh host true; then echo ok; fi", True),
+    ("out=$(ssh host uptime)", True),
+    ("find . -print0 | xargs -0 scp -t host:", True),
+    ("sudo ssh host true", True),
+    ("# the deploy reaches the host over ssh", False),
+    ("ssh-keygen -F '[host]:50288' -l", False),
+    ('echo "unset; every SSH and SCP step would skip verification"', False),
+    ("echo pushed", False),
+]
+
+
+@pytest.mark.parametrize("fragment,flagged", RAW_SSH_FORMS)
+def test_the_raw_connection_detector_covers_the_shell_forms(fragment: str, flagged: bool) -> None:
+    assert bool(RAW_SSH.search(fragment)) is flagged, fragment
+
 
 # Anything else that looks like it opens a session. Matching the name is a
 # heuristic and may catch an action that only loads a key rather than

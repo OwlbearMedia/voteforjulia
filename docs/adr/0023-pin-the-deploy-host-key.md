@@ -143,6 +143,17 @@ files the rest of this record is about; caught by Copilot on
 `/code-review high` that had looked at the same function and improved its reach
 elsewhere.
 
+**A detector for hand-rolled commands is only as good as the shell forms it
+knows about**, and the first two versions matched an ssh-family command only as
+the first token on a line — so `setup && ssh …`, `cd x; ssh …`, `ENV=v ssh …`,
+`timeout 30 ssh …` and `$(ssh …)` all passed. It now matches in any command
+position: after a separator, a pipeline operator, a subshell or a command
+substitution, and through the prefixes that keep the next word a command. It is
+not a shell parser and does not try to be one, so the forms it covers are pinned
+as a table of fragments with their expected verdicts, extended rather than
+trusted to be read correctly from the regex. The match is case-sensitive because
+the guard step's own message contains "every SSH and SCP step".
+
 ## Consequences
 
 - **A host key rotation is now a total deploy outage rather than a partial
