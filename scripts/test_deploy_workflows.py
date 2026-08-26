@@ -38,6 +38,16 @@ REVIEWED_VERSIONS = {
     "appleboy/scp-action": "v0.1.7",
 }
 
+# The action tag alone does not pin the client, and the two actions differ in
+# how they get one. `scp-action` is a Docker action whose image
+# (ghcr.io/appleboy/drone-scp:1.6.14) carries the binary, so its tag settles it.
+# `ssh-action` downloads `drone-ssh` at run time -- its entrypoint defaults to
+# 1.8.2 at v1.2.5, but it also takes a `version:` input wired straight to
+# `DRONE_SSH_VERSION`. One `with: version:` line therefore swaps the client, and
+# with it the x/crypto version that decides the host-key preference, while the
+# tag assertion stays green. Found by Copilot on #166.
+REVIEWED_CLIENT_OVERRIDE = {"appleboy/ssh-action": "1.8.2"}
+
 
 def load(name: str) -> dict:
     return yaml.safe_load((WORKFLOWS / name).read_text())
@@ -138,17 +148,33 @@ def test_the_guard_refuses_an_empty_fingerprint(workflow: dict) -> None:
         )
 
 
-def test_the_actions_are_the_versions_whose_host_key_order_was_checked(
+def test_the_client_whose_host_key_order_was_measured_is_the_one_that_runs(
     workflow: dict,
 ) -> None:
+    """Two links, because pinning the tag only pins one of them.
+
+    The tag fixes `ssh-action`'s entrypoint, and the entrypoint's default fixes
+    the `drone-ssh` build that gets downloaded -- but only while nothing
+    overrides it, and the action offers a `version:` input that does exactly
+    that. Both have to hold for the client to be the one measured against the
+    host.
+    """
     for name, job in workflow["jobs"].items():
         for step in connecting_steps(job):
             action, _, version = step["uses"].partition("@")
+            where = f"{name} / {step['name']}"
             assert version == REVIEWED_VERSIONS[action], (
-                f"{name} / {step['name']}: {action} moved to {version}. "
-                f"Re-derive which host key the client negotiates before raising "
-                f"this -- see the note above REVIEWED_VERSIONS and "
-                f"docs/hosting.md"
+                f"{where}: {action} moved to {version}. Re-derive which host "
+                f"key the client negotiates before raising this -- see the note "
+                f"above REVIEWED_VERSIONS and docs/hosting.md"
+            )
+            override = (step.get("with") or {}).get("version")
+            if override is None:
+                continue
+            assert str(override) == REVIEWED_CLIENT_OVERRIDE.get(action), (
+                f"{where}: pins the client to {override!r} rather than taking "
+                f"the measured default. Re-run the two-fingerprint check in "
+                f"docs/hosting.md against that build before raising this"
             )
 
 

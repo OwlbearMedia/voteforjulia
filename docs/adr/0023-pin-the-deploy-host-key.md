@@ -169,6 +169,16 @@ mismatch` rather than anything mentioning rotation. The recovery is one secret
   that into a CI failure on the Dependabot PR instead, where the fix is to
   re-derive the key type before raising the pin. It will fire on a routine bump
   and look like an obstacle; that is the point.
+- **The action tag is not the client**, and only one of the two actions makes it
+  so. `scp-action` is a Docker action carrying its binary in the image;
+  `ssh-action` downloads `drone-ssh` at run time, defaulting to 1.8.2 at v1.2.5
+  but accepting a `version:` input wired to `DRONE_SSH_VERSION`. One line in a
+  `with:` block therefore swaps the client, and with it the x/crypto version
+  that chooses the host key — no tag changes, and a bump-watching assertion sees
+  nothing. Asserted separately, so the measured client is pinned by both links
+  rather than by the visible one. Found by Copilot on
+  [#166](https://github.com/OwlbearMedia/voteforjulia/pull/166); it is the same
+  shape as the two findings above it, one layer further down.
 - **The fingerprint is deployment state with no representation in the
   checkout**, joining the Cloudflare Transform Rule, the `monitoring/`
   definitions, the cPanel environment variables and `main`'s branch protection.
