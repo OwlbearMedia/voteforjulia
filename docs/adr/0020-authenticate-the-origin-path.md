@@ -215,8 +215,8 @@ create the Transform Rule, confirm the header arrives, then enforce.
   exposure there is integrity rather than disclosure, and pinning them all would
   put a total deploy outage one host-key rotation away. Tracked as
   [#148](https://github.com/OwlbearMedia/voteforjulia/issues/148).
-  **Superseded 2026-08-25 by [0023](0023-pin-the-deploy-host-key.md):** all
-  eighteen steps are pinned. The outage argument above does not survive
+  **Superseded 2026-08-25 by [0023](0023-pin-the-deploy-host-key.md):** every
+  SSH and SCP step in both workflows is pinned. The outage argument above does not survive
   measurement — the pinned `.htaccess` upload runs early in each frontend
   deploy, so a rotated key already broke those deploys while this paragraph was
   treating that cost as something still to be avoided.

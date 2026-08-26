@@ -11,6 +11,7 @@ branch that adds it (docs/hosting.md). CI is the only place it is catchable
 before production. See ADR-0023.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -97,17 +98,36 @@ def test_the_actions_are_the_versions_whose_host_key_order_was_checked(
             )
 
 
+# A step that reaches the host without going through `appleboy`. Matches an ssh
+# family command at the start of a line in a `run:` block, so prose and flags
+# that merely contain the word do not trip it.
+RAW_SSH = re.compile(r"^\s*(?:ssh|scp|sftp|rsync)\s", re.MULTILINE)
+
+
 def test_no_other_workflow_connects_to_the_host() -> None:
     """Pinning the deploys is only the whole pipeline while they are the only
-    things that connect."""
-    others = [
-        p
-        for p in sorted(WORKFLOWS.glob("*.yml"))
-        if p.name not in DEPLOY_WORKFLOWS and "appleboy/" in p.read_text()
-    ]
-    assert not others, (
-        f"{[p.name for p in others]} connects to the host but is not covered by "
-        f"the assertions in this file"
+    things that connect.
+
+    Deliberately broader than the assertions above: those read parsed steps in
+    two named files, so a third workflow -- or a hand-rolled `ssh` in a `run:`
+    block -- would be invisible to every one of them, and this file would keep
+    passing while the gap it exists for reopened.
+    """
+    offenders = []
+    for path in sorted(WORKFLOWS.iterdir()):
+        if path.suffix not in (".yml", ".yaml") or path.name in DEPLOY_WORKFLOWS:
+            continue
+        workflow = yaml.safe_load(path.read_text())
+        for name, job in (workflow.get("jobs") or {}).items():
+            for step in job.get("steps", []):
+                uses = step.get("uses", "")
+                run = step.get("run", "")
+                if any(k in uses for k in ("ssh-action", "scp-action")):
+                    offenders.append(f"{path.name} / {name}: uses {uses}")
+                elif RAW_SSH.search(run):
+                    offenders.append(f"{path.name} / {name}: {step.get('name')!r} runs ssh")
+    assert not offenders, (
+        f"{offenders} reaches the host but is not covered by the assertions in this file"
     )
 
 

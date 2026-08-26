@@ -568,8 +568,12 @@ stored per environment rather than on the repository, so that
 [the rule](#every-deploy-secret-is-environment-scoped) has no exceptions to
 remember.
 
-The order is what keeps this from being an outage. Every step fails open, so
-stopping halfway leaves the site working and the gap merely still open.
+The order is what keeps this from being an outage. Every step below fails open,
+so stopping halfway leaves the site working and the gap merely still open —
+**except step 4**, which is why it is step 4. Once the pin is expected, an unset
+`SSH_HOST_FINGERPRINT` aborts all four deploy jobs rather than deploying
+unverified ([ADR-0023](adr/0023-pin-the-deploy-host-key.md)), so on an account
+where it has never been set, nothing deploys until it is.
 
 **Step 0 is a merge, and it is not optional.** The `.htaccess` gate ships as a
 placeholder that the deploy substitutes, and
@@ -677,7 +681,8 @@ repository.)
    | `scp-action@v0.1.7` | `drone-scp` 1.6.14 | v0.17.0    | `supportedHostKeyAlgos` | `ecdsa-sha2-nistp256` |
    | `ssh-action@v1.2.5` | `drone-ssh` 1.8.2  | v0.45.0    | `defaultHostKeyAlgos`   | `ecdsa-sha2-nistp256` |
 
-   They agree, so one stored value serves all eighteen steps — but **read the
+   They agree, so one stored value serves every step in the pipeline — but
+   **read the
    variable the handshake actually proposes, not the one named "supported"**.
    Modern `x/crypto` has both, and they differ: v0.45.0's `supportedHostKeyAlgos`
    leads with `rsa-sha2-256` and is only the list of what the package

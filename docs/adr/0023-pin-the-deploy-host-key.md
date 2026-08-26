@@ -59,7 +59,7 @@ offers RSA, ECDSA and Ed25519.
 **The two actions run different Go binaries with different `x/crypto` versions**
 — `scp-action@v0.1.7` is `drone-scp` 1.6.14 on v0.17.0; `ssh-action@v1.2.5`
 downloads `drone-ssh` 1.8.2, on v0.45.0. Both propose `ecdsa-sha2-nistp256`
-first, so one stored value serves all eighteen steps, and the fingerprint
+first, so one stored value serves every step, and the fingerprint
 already in use is correct for the steps being added.
 
 They agree by luck rather than by construction, and the reading that gets there
@@ -91,7 +91,8 @@ the first row mean something: the fingerprint is being compared, not skipped.
 deploy job refuses to start when `SSH_HOST_FINGERPRINT` is unset.
 
 The guard is the other half of the control. Without it, removing the secret
-turns all 18 pins back into `InsecureIgnoreHostKey()` with no error anywhere —
+turns all twenty pins back into `InsecureIgnoreHostKey()` with no error
+anywhere —
 the pins verify the host, and the guard is what stops the deploy from proceeding
 unverified when the value behind them is missing. 0020's version of that guard
 was conditional on the edge token being set, which covered the step whose
