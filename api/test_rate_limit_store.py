@@ -201,6 +201,35 @@ def test_an_allowed_request_is_recorded_once_and_a_refused_one_not_at_all(db_pat
     assert recorded == 3
 
 
+def test_retry_after_covers_a_window_holding_more_than_its_limit(db_path):
+    """A full window and an overfull one need different arithmetic.
+
+    `MIN(ts)` over the whole window is the row that frees the caller only when
+    the window holds exactly its limit. Hold more -- an old worker inserting
+    under the wider hourly window during the mixed-version restart this design
+    explicitly supports, or a limit lowered in cPanel against rows already on
+    disk -- and the oldest row expiring still leaves the caller over the limit.
+
+    Measured before the fix: refused at t=1010 with `Retry-After: 50`, and a
+    client honouring it exactly was refused again at t=1060. That is the bug
+    ADR-0014 fixed for rounding, arriving by a different route.
+    """
+    # Seven requests inside a minute, allowed because the tier in force at the
+    # time had room for them.
+    for offset in range(7):
+        assert consume("k", tiers=tiers(10, 60), db_path=db_path, now=1000.0 + offset) == ALLOWED
+
+    verdict = consume("k", tiers=tiers(5, 60), db_path=db_path, now=1010.0)
+
+    # Four rows have to leave the window, not one: the newest five start at
+    # t=1002, so nothing is served until that row expires at t=1062.
+    assert verdict.refusal == Refusal(BURST, 52)
+    # The property the header promises, and the one that failed before: waiting
+    # exactly this long is enough.
+    retry_after = verdict.refusal.retry_after
+    assert consume("k", tiers=tiers(5, 60), db_path=db_path, now=1010.0 + retry_after) == ALLOWED
+
+
 def test_counts_survive_a_separate_process(db_path, tmp_path):
     """The property the whole module exists for (ADR-0016).
 

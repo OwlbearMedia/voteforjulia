@@ -193,16 +193,25 @@ def consume(
             connection.execute("DELETE FROM hits WHERE ts <= ?", (prune_cutoff,))
 
             for tier in tiers:
+                # The newest `limit` rows, never all of them. A window can hold
+                # more than its limit -- an old worker inserting under a wider
+                # window during a mixed-version restart, or a limit lowered in
+                # config -- and then the oldest row is not the one whose expiry
+                # frees the caller. Counting only these makes `MIN` the row that
+                # actually does: the (count - limit + 1)-th oldest. With the
+                # window merely full the two are the same row.
                 row = connection.execute(
-                    "SELECT COUNT(*), MIN(ts) FROM hits WHERE key = ? AND ts > ?",
-                    (key, current - tier.window_seconds),
+                    "SELECT COUNT(*), MIN(ts) FROM ("
+                    "  SELECT ts FROM hits WHERE key = ? AND ts > ? ORDER BY ts DESC LIMIT ?"
+                    ")",
+                    (key, current - tier.window_seconds, tier.limit),
                 ).fetchone()
-                count, oldest = (row[0], row[1]) if row else (0, None)
+                count, frees_the_window = (row[0], row[1]) if row else (0, None)
 
-                if count >= tier.limit and oldest is not None:
+                if count >= tier.limit and frees_the_window is not None:
                     # Round up: truncating advertises a retry still inside the
                     # window.
-                    retry_after = max(1, ceil(oldest + tier.window_seconds - current))
+                    retry_after = max(1, ceil(frees_the_window + tier.window_seconds - current))
                     return Verdict(Refusal(tier.name, retry_after), True)
 
             connection.execute("INSERT INTO hits (key, ts) VALUES (?, ?)", (key, current))

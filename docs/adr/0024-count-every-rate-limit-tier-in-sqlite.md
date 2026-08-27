@@ -93,8 +93,11 @@ table under a worker that has not forgotten — a hand or test operation, never
 part of serving a request.
 
 It is also the shape the old tier wanted to be. A flood costs one store round
-trip per key per window instead of one per request, and unlike a counter it
-engages during the flood rather than before it.
+trip per key, per worker, per window instead of one per request, and unlike a
+counter it engages during the flood rather than before it. Per worker because
+this dictionary is a module global like everything else in a Passenger process
+— the difference from the counter it replaces is that being process-local costs
+disk here rather than correctness.
 
 **3. A fallback burst counter runs while, and only while, the store is
 unreachable.** Both tiers are one call now, so without this a database the app
@@ -166,8 +169,12 @@ have caused one key at a time.
   is now stopped a tier earlier. That is the campaign-visible condition, so the
   change is worth knowing — the patient caller it was sized against is
   unaffected either way.
-- **A refused caller costs one store round trip per window instead of zero.**
-  Bounded by the refusal cache, and paid only by callers who are being refused.
+- **A burst refusal costs one store round trip per worker per window instead of
+  zero.** Only the burst tier changes here: an hourly refusal already queried
+  SQLite on every attempt, because reaching that tier at all meant the burst
+  tier had allowed the request. Bounded by the refusal cache, which is
+  per-worker, so the cost is one round trip for each live worker the caller
+  lands on rather than one globally — and paid only by callers being refused.
 - **Nothing to migrate, and the deploy order does not matter.** The schema is
   unchanged — same `hits` table, same columns, same rows — so an old worker and
   a new one can serve out of the same file during a restart. The old one simply
