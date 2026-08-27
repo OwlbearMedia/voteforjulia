@@ -261,7 +261,9 @@ without being a limit anybody can be misled by. Both tiers fail open together,
 because they are one call: a limiter that loses its database falls back to
 holding the burst window in each worker — ADR-0009's original design, weaker but
 not nothing — and leaves the hourly allowance unbounded until the file is
-readable again. Both forms also carry a
+readable again. A failed database is then left alone for ten seconds rather than
+asked again per request, because its five-second busy timeout would otherwise
+hold a worker per request on exactly the path that exists to be cheap. Both forms also carry a
 `display: none` honeypot field, which is the only one of these controls that
 still works after an attacker changes IP. No CAPTCHA — the forms are low-value
 targets and a CAPTCHA would cost real conversions on a volunteer form.

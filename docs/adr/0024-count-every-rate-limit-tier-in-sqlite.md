@@ -92,6 +92,15 @@ wrongly refused supporter. The one way it over-refuses is `reset()` clearing the
 table under a worker that has not forgotten — a hand or test operation, never
 part of serving a request.
 
+That claim survives only if the deadline is **exact**. `Retry-After` is rounded
+up, because a client has to be able to obey it literally and a truncated value
+sends them back inside the window ([0014](0014-do-not-trust-forwarding-headers.md)).
+Rounding is the right answer for the header and the wrong one for the cache: a
+deadline built from it holds the refusal up to a second past the moment the
+window clears, which is the cache inventing a refusal rather than repeating one.
+So `Refusal` carries the exact `expires_in` and exposes `retry_after` as the
+rounded view of it, and the two consumers take the one they need.
+
 It is also the shape the old tier wanted to be. A flood costs one store round
 trip per key, per worker, per window instead of one per request, and unlike a
 counter it engages during the flood rather than before it. Per worker because
@@ -132,7 +141,28 @@ distinction is easy to lose in a refactor and the loss is silent, so it is
 pinned at both failure paths in the store, including the mid-transaction one
 that every unusable-file test misses.
 
-**4. `RATE_LIMIT_MAX_BUCKETS` becomes `RATE_LIMIT_MAX_TRACKED_KEYS`,** and now
+**4. A database that just failed is not asked again for ten seconds.**
+`_connect` carries a five-second busy timeout, so without this the fallback
+above is reached only by paying that timeout on every request — including the
+requests it is about to refuse, which is precisely a flood. Each one holds a
+Passenger worker for five seconds and writes an exception to the log, which
+turns a database incident into the worker pile-up [0018](0018-cap-concurrent-submissions.md)
+exists to prevent, arriving on the path that was supposed to be the cheap one.
+
+`STORE_BACKOFF_SECONDS` lives in the store rather than in `app.py` so every
+entry point is covered by construction. `acquire` and `release` hold the same
+timeout against the same file, and a submission would otherwise pay it twice
+more on its way through the concurrency cap — the fix landing on the case in
+front of you while its siblings keep the hole open. Each keeps its own fail-open
+answer; what it skips is the wait before reaching it.
+
+There is no health signal to wait for. The first call after the window simply
+tries, so one request per worker per window probes and the rest are answered
+from the last failure. The cost is that **recovery is delayed by up to the
+window**: for ten seconds after the database is readable again, a worker that
+has not probed is still on its per-worker fallback.
+
+**5. `RATE_LIMIT_MAX_BUCKETS` becomes `RATE_LIMIT_MAX_TRACKED_KEYS`,** and now
 bounds both in-process dictionaries. The cap and its low-water mark are
 unchanged. The refusal cache evicts the entries nearest their deadline, costing
 a store round trip and nothing else. The fallback counters are cleared
@@ -154,11 +184,14 @@ have caused one key at a time.
   weakening and it is where 0016's reasoning still governs: refusing a real
   volunteer is the worse failure. The honeypot, the origin check and
   Cloudflare's rules are unaffected either way.
-- **A store outage is visible only in the logs.** Every failure logs, but
-  nothing pages, and the 429s the fallback issues are indistinguishable from
-  ordinary burst refusals in telemetry — same `rate_limit.tier`. Making the
-  degraded mode legible to New Relic needs an attribute and an alert to read it,
-  which is a monitoring decision rather than part of this one.
+- **A store outage is visible only in the logs, and now less loudly.** Every
+  failure logs, but nothing pages, and the 429s the fallback issues are
+  indistinguishable from ordinary burst refusals in telemetry — same
+  `rate_limit.tier`. The backoff also cuts the logging from once per request to
+  once per worker per window, which is the right trade for a log nobody is
+  tailing but does mean an incident is quieter. Making the degraded mode legible
+  to New Relic needs an attribute and an alert to read it, which is a monitoring
+  decision rather than part of this one.
 - **The burst tier will refuse more traffic than it used to**, because it is now
   doing what it says. The alert threshold in
   [../monitoring.md](../monitoring.md#the-rate-limit-thresholds-are-counted-in-a-11-sample) was calibrated

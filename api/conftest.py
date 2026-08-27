@@ -23,8 +23,17 @@ def isolated_rate_limit_store(tmp_path, monkeypatch):
     Patching the module attribute is what makes it cover requests served through
     the Flask test client too — `consume` resolves `DEFAULT_DB_PATH` at call
     time, so app.py needs no test-only seam.
+
+    The backoff is cleared either side for the same reason. It is a module
+    global that a single failing call arms for ten seconds, so one test using an
+    unusable database would otherwise hand every test after it an `UNAVAILABLE`
+    from a database that is perfectly fine — and the failures would land on
+    whichever tests happened to run next.
     """
     monkeypatch.setattr(rate_limit_store, "DEFAULT_DB_PATH", tmp_path / "rate-limit.sqlite3")
+    rate_limit_store.clear_backoff()
+    yield
+    rate_limit_store.clear_backoff()
 
 
 @pytest.fixture(autouse=True)

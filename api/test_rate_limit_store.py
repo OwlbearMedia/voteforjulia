@@ -62,7 +62,10 @@ def test_the_request_past_the_limit_is_refused(db_path):
     for _ in range(3):
         consume("k", tiers=tiers(3, 60), db_path=db_path)
 
-    assert consume("k", tiers=tiers(3, 60), db_path=db_path).refusal == Refusal(BURST, 60)
+    refusal = consume("k", tiers=tiers(3, 60), db_path=db_path).refusal
+
+    assert refusal.tier == BURST
+    assert refusal.retry_after == 60
 
 
 def test_keys_are_counted_separately(db_path):
@@ -100,7 +103,11 @@ def test_retry_after_covers_the_rest_of_the_window(db_path):
 
     verdict = consume("k", tiers=tiers(1, 60), db_path=db_path, now=1030.4)
 
-    assert verdict.refusal == Refusal(BURST, 30)
+    # 29.6 seconds left, advertised as 30. The exact value is what an in-process
+    # cache of this refusal has to use; the rounded one is what the header says.
+    assert verdict.refusal.tier == BURST
+    assert verdict.refusal.expires_in == pytest.approx(29.6)
+    assert verdict.refusal.retry_after == 30
     retry_after = verdict.refusal.retry_after
     # And honouring it exactly is enough: at now + retry_after the window is
     # clear. This is the assertion that would fail if the value were rounded
@@ -223,7 +230,7 @@ def test_retry_after_covers_a_window_holding_more_than_its_limit(db_path):
 
     # Four rows have to leave the window, not one: the newest five start at
     # t=1002, so nothing is served until that row expires at t=1062.
-    assert verdict.refusal == Refusal(BURST, 52)
+    assert verdict.refusal == Refusal(BURST, 52.0)
     # The property the header promises, and the one that failed before: waiting
     # exactly this long is enough.
     retry_after = verdict.refusal.retry_after
@@ -478,6 +485,81 @@ def test_concurrent_workers_cannot_both_take_the_last_slot(db_path):
     )
     # And the losers got a usable Retry-After rather than a bare refusal.
     assert all(1 <= result.refusal.retry_after <= 3600 for result in results if result != ALLOWED)
+
+
+# --- Not asking a database that just failed, ADR-0024 -----------------------
+
+
+def _connect_that_always_fails(attempts: list):
+    def failing_connect(path):
+        attempts.append(path)
+        raise sqlite3.OperationalError("disk I/O error")
+
+    return failing_connect
+
+
+def test_a_failed_database_is_not_asked_again_until_the_backoff_expires(db_path, monkeypatch):
+    """The busy timeout is five seconds, and a flood must not pay it per request.
+
+    Without this, an incident turns every request -- including the ones the
+    caller's fallback is about to refuse -- into a five-second wait holding a
+    Passenger worker, which is the pile-up ADR-0018 exists to prevent, arriving
+    on the path meant to be the cheap one.
+    """
+    attempts = []
+    monkeypatch.setattr(rate_limit_store, "_connect", _connect_that_always_fails(attempts))
+
+    assert consume("k", tiers=tiers(1, 60), db_path=db_path, now=1000.0) == UNAVAILABLE
+    for offset in (0.1, 1.0, 9.9):
+        assert consume("k", tiers=tiers(1, 60), db_path=db_path, now=1000.0 + offset) == UNAVAILABLE
+
+    assert len(attempts) == 1, "the database was asked again inside the backoff window"
+
+    # And the window has to end, or one failure disables the shared tiers for
+    # the life of the worker. STORE_BACKOFF_SECONDS later, one probe goes.
+    assert (
+        consume(
+            "k",
+            tiers=tiers(1, 60),
+            db_path=db_path,
+            now=1000.0 + rate_limit_store.STORE_BACKOFF_SECONDS,
+        )
+        == UNAVAILABLE
+    )
+
+    assert len(attempts) == 2, "the backoff never expired"
+
+
+def test_the_backoff_covers_every_entry_point_rather_than_only_consume(db_path, monkeypatch):
+    """`acquire` and `release` share the file, so they share the timeout.
+
+    Covering `consume` alone would leave a submission paying the busy timeout
+    twice more on its way through the concurrency cap -- the fix landing on the
+    case in front of you while its siblings keep the hole open.
+    """
+    attempts = []
+    monkeypatch.setattr(rate_limit_store, "_connect", _connect_that_always_fails(attempts))
+
+    # Armed through `acquire`, to show the state is shared rather than per
+    # function: nothing calls `consume` until after the failure.
+    assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path, now=1000.0) is not None
+    assert len(attempts) == 1
+
+    assert consume("k", tiers=tiers(1, 60), db_path=db_path, now=1000.1) == UNAVAILABLE
+    assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path, now=1000.2) is not None
+    release("some-token", db_path=db_path, now=1000.3)
+
+    assert len(attempts) == 1, "an entry point kept asking a database known to be down"
+
+
+def test_a_working_database_never_arms_the_backoff(db_path):
+    # The other half. A backoff armed by anything short of a real failure would
+    # silently downgrade the shared tiers to the caller's per-worker fallback.
+    for offset in range(3):
+        assert consume("k", tiers=tiers(10, 60), db_path=db_path, now=1000.0 + offset) == ALLOWED
+    assert acquire(SCOPE, limit=2, ttl_seconds=60, db_path=db_path, now=1003.0) is not None
+
+    assert not rate_limit_store._in_backoff(1003.0)
 
 
 # --- The concurrent-submission cap, ADR-0018 --------------------------------

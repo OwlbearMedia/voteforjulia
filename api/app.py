@@ -574,11 +574,14 @@ def _degraded_burst_limit(key: str, now: float) -> tuple[int, str] | None:
 def _cached_refusal(key: str, now: float) -> tuple[int, str] | None:
     """Re-serve a refusal the store already issued, without touching the disk.
 
-    Sound because the deadline is the store's own answer: until the request that
-    filled the window leaves it, the count cannot fall, so every tier that
-    refused still refuses. The one way this over-refuses is `reset()`, which
-    clears the table under a worker that has not forgotten -- by hand, or in a
-    test, never in the request path.
+    Sound because the deadline is the store's own exact answer: until the
+    request that filled the window leaves it, the count cannot fall, so every
+    tier that refused still refuses. Exact matters -- deriving the deadline from
+    the rounded-up header instead would hold the entry for up to a second past
+    the window, which is this cache inventing a refusal rather than repeating
+    one. The one way it still over-refuses is `reset()`, which clears the table
+    under a worker that has not forgotten -- by hand, or in a test, never in the
+    request path.
     """
     entry = _RATE_LIMIT_REFUSALS.get(key)
     if entry is None:
@@ -647,8 +650,12 @@ def _consume_rate_limit(scope: str) -> tuple[int, str] | None:
     # Only what the store refused, never what it allowed, and never what the
     # fallback above decided. Remembering either would make this a counter
     # again, and a per-worker counter is the defect ADR-0024 removes.
+    #
+    # `expires_in` and not `retry_after`: the rounded-up header value would keep
+    # this entry alive for up to a second after the window clears, which is the
+    # cache inventing a refusal of its own rather than repeating one.
     refusal = verdict.refusal
-    _RATE_LIMIT_REFUSALS[key] = (now + refusal.retry_after, refusal.tier)
+    _RATE_LIMIT_REFUSALS[key] = (now + refusal.expires_in, refusal.tier)
     return refusal.retry_after, refusal.tier
 
 

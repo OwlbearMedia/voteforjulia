@@ -45,10 +45,22 @@ class Tier(NamedTuple):
 
 
 class Refusal(NamedTuple):
-    """The tier that refused a request, and how long until one is allowed."""
+    """The tier that refused a request, and how long until one is allowed.
+
+    `expires_in` is exact, and `retry_after` is the whole-second view of it for
+    the header. Both are needed: rounding up is what makes the header safe to
+    obey literally (ADR-0014), and rounding up is exactly what an in-process
+    cache of this refusal must not do, because it would hold the refusal past
+    the moment the window clears. See ADR-0024.
+    """
 
     tier: str
-    retry_after: int
+    expires_in: float
+
+    @property
+    def retry_after(self) -> int:
+        """Whole seconds, rounded up and never below one. The `Retry-After` value."""
+        return max(1, ceil(self.expires_in))
 
 
 class Verdict(NamedTuple):
@@ -68,6 +80,39 @@ class Verdict(NamedTuple):
 # reads `== ALLOWED` rather than unpacking a tuple of two falsy-looking values.
 ALLOWED = Verdict(None, True)
 UNAVAILABLE = Verdict(None, False)
+
+
+# How long to stop asking a database that just failed. `_connect` carries a
+# five-second busy timeout, so without this every request during an incident
+# waits out that timeout before its caller can fall back -- including the
+# requests the fallback is about to refuse, which is precisely a flood. Workers
+# then pile up on the path that exists to keep them cheap, which is the cost
+# ADR-0018 was written about. See ADR-0024 for this.
+#
+# Kept here rather than in app.py so every entry point below is covered by
+# construction: `acquire` and `release` carry the same timeout on the same file
+# and would otherwise each keep paying it.
+STORE_BACKOFF_SECONDS = 10.0
+
+# Wall clock, like every other timestamp in here, so an injected `now` drives
+# it. One probe per worker per window re-opens the path: there is no success
+# signal to wait for, the next call after the window simply tries again.
+_backoff_until = 0.0
+
+
+def _in_backoff(now: float) -> bool:
+    return now < _backoff_until
+
+
+def _note_unreachable(now: float) -> None:
+    global _backoff_until
+    _backoff_until = now + STORE_BACKOFF_SECONDS
+
+
+def clear_backoff() -> None:
+    """Forget that the database ever failed. For tests, and for clearing by hand."""
+    global _backoff_until
+    _backoff_until = 0.0
 
 
 # Under `tmp/`, the one directory the deploy's prune step leaves alone. Resolved
@@ -169,6 +214,11 @@ def consume(
     path = db_path or DEFAULT_DB_PATH
     current = time() if now is None else now
 
+    if _in_backoff(current):
+        # Answer from the last failure rather than waiting for this one. The
+        # caller's fallback is already the right answer and costs nothing.
+        return UNAVAILABLE
+
     # The widest window, because the narrower tiers count the same rows. Pruning
     # at anything shorter would delete the history the hour-long tier is for.
     prune_cutoff = current - max(tier.window_seconds for tier in tiers)
@@ -180,6 +230,7 @@ def consume(
         # file sitting where the directory should be, raises NotADirectoryError
         # rather than anything sqlite3 defines.
         logger.exception("Rate-limit store unavailable at %s; allowing request", path)
+        _note_unreachable(current)
         return UNAVAILABLE
 
     try:
@@ -209,10 +260,11 @@ def consume(
                 count, frees_the_window = (row[0], row[1]) if row else (0, None)
 
                 if count >= tier.limit and frees_the_window is not None:
-                    # Round up: truncating advertises a retry still inside the
-                    # window.
-                    retry_after = max(1, ceil(frees_the_window + tier.window_seconds - current))
-                    return Verdict(Refusal(tier.name, retry_after), True)
+                    # Exact here; `Refusal.retry_after` rounds it up for the
+                    # header. Strictly positive, because a row counted above is
+                    # by definition still inside the window.
+                    expires_in = frees_the_window + tier.window_seconds - current
+                    return Verdict(Refusal(tier.name, expires_in), True)
 
             connection.execute("INSERT INTO hits (key, ts) VALUES (?, ?)", (key, current))
             return ALLOWED
@@ -222,6 +274,7 @@ def consume(
         # ALLOWED is what lets app.py fall back to a per-worker count instead of
         # serving an unlimited endpoint for the length of a disk incident.
         logger.exception("Rate-limit store failed for key %r; allowing request", key)
+        _note_unreachable(current)
         return UNAVAILABLE
     finally:
         connection.close()
@@ -253,10 +306,16 @@ def acquire(
     current = time() if now is None else now
     token = secrets.token_hex(16)
 
+    if _in_backoff(current):
+        # Fail open immediately, which is what an unreachable store does anyway
+        # -- the difference is not spending the busy timeout to find out.
+        return token
+
     try:
         connection = _connect(path)
     except (sqlite3.Error, OSError):
         logger.exception("Concurrency store unavailable at %s; allowing request", path)
+        _note_unreachable(current)
         return token
 
     try:
@@ -281,19 +340,28 @@ def acquire(
             return token
     except (sqlite3.Error, OSError):
         logger.exception("Concurrency store failed at %s; allowing request", path)
+        _note_unreachable(current)
         return token
     finally:
         connection.close()
 
 
-def release(token: str, db_path: Path | None = None) -> None:
+def release(token: str, db_path: Path | None = None, now: float | None = None) -> None:
     """Give back a slot taken by `acquire`. Safe to call with an expired token."""
     path = db_path or DEFAULT_DB_PATH
+    current = time() if now is None else now
+
+    if _in_backoff(current):
+        # The TTL reclaims the slot, which is this function's own answer to
+        # failing. Waiting out the timeout to reach that answer is the part
+        # worth skipping, and this runs in a `finally` on the request path.
+        return
 
     try:
         connection = _connect(path)
     except (sqlite3.Error, OSError):
         logger.exception("Concurrency store unavailable at %s; slot will expire instead", path)
+        _note_unreachable(current)
         return
 
     try:
@@ -302,6 +370,7 @@ def release(token: str, db_path: Path | None = None) -> None:
     except (sqlite3.Error, OSError):
         # Not fatal, and not worth retrying: the TTL reclaims the slot.
         logger.exception("Could not release slot %r; it will expire instead", token)
+        _note_unreachable(current)
     finally:
         connection.close()
 

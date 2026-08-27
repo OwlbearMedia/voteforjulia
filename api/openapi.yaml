@@ -758,7 +758,9 @@ components:
         allowance. If that store cannot be reached both tiers fail open: the
         burst window falls back to a per-worker count, which is weaker than the
         shared one, and the sustained tier stops applying until the store is
-        readable again. See ADR-0024.
+        readable again. A store that has just failed is not consulted again for
+        ten seconds, so recovery can lag a working database by that much. See
+        ADR-0024.
 
         `Retry-After` is rounded up, so honouring it exactly is enough to clear
         the window.

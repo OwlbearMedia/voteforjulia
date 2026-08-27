@@ -466,6 +466,35 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertEqual(len(asked), 2)
         self.assertGreaterEqual(int(repeat.headers["Retry-After"]), 1)
 
+    def test_the_cached_deadline_is_the_exact_expiry_not_the_rounded_header(self) -> None:
+        """The header rounds up; the cache must not.
+
+        `Retry-After` is rounded up so honouring it exactly is enough
+        (ADR-0014). A cache keyed on that same value would hold the refusal for
+        up to a second past the moment the window clears -- refusing a caller
+        the store is ready to serve, which is the one thing this cache is not
+        allowed to do, and the thing its whole justification rests on.
+        """
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        refusal = rate_limit_store.Refusal(app_module._BURST_TIER, 0.25)
+
+        with mock.patch.object(
+            app_module,
+            "consume_rate_limit",
+            lambda key, **kwargs: rate_limit_store.Verdict(refusal, True),
+        ):
+            before = monotonic()
+            response = self.client.post("/send-email", json=payload)
+            after = monotonic()
+
+        self.assertEqual(response.status_code, 429)
+        # Rounded up for the client, who cannot act on a fraction of a second.
+        self.assertEqual(response.headers["Retry-After"], "1")
+
+        refused_until, _ = app_module._RATE_LIMIT_REFUSALS["send-email:127.0.0.1"]
+        self.assertGreaterEqual(refused_until, before + 0.25)
+        self.assertLessEqual(refused_until, after + 0.25)
+
     def test_a_cached_refusal_reports_the_tier_that_issued_it(self) -> None:
         # A 429 served from memory has to name the same tier the store named,
         # or the attribute the alert conditions run on turns into "burst"
@@ -579,8 +608,20 @@ class AppRateLimitTests(unittest.TestCase):
             self.client.post("/send-email", json=payload)
             self.assertEqual(self.client.post("/send-email", json=payload).status_code, 429)
 
+            # Still refused with the database back, because the store is not
+            # being asked yet: a failure holds the path shut for
+            # STORE_BACKOFF_SECONDS so a flood does not pay the busy timeout
+            # per request. Recovery is delayed by that window, deliberately.
+            self.assertEqual(self.client.post("/send-email", json=payload).status_code, 429)
+
+        still_backed_off = self.client.post("/send-email", json=payload)
+
+        # The window passing. Everything above happens inside one second, so
+        # this stands in for ten of them.
+        rate_limit_store.clear_backoff()
         recovered = self.client.post("/send-email", json=payload)
 
+        self.assertEqual(still_backed_off.status_code, 429)
         self.assertEqual(recovered.status_code, 200)
 
     def test_expired_fallback_counts_are_swept(self) -> None:
