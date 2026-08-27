@@ -461,14 +461,20 @@ def _sweep_expired_refusals(now: float) -> None:
 def _evict_to_cap() -> None:
     """Force the cache under its cap, soonest-to-expire first.
 
-    Only reachable when more distinct clients are refused within one window than
-    the cap allows -- a sweep has already removed everything expired. Evicting
-    an entry costs a store round trip on that caller's next request and nothing
-    else: the tiers themselves live in SQLite, so a forgotten refusal is
+    Only reachable when at least as many distinct clients are refused within one
+    window as the cap allows -- a sweep has already removed everything expired.
+    Evicting an entry costs a store round trip on that caller's next request and
+    nothing else: the tiers themselves live in SQLite, so a forgotten refusal is
     re-derived rather than lost. The entries nearest their deadline go first,
     because they are the ones with the least shielding left in them.
+
+    **`<` and not `<=`, matching the `>=` in the arm that calls this.** At
+    exactly the cap the arm fires and a `<=` guard returned without trimming, so
+    the dict stayed full and every subsequent request swept and re-armed -- the
+    per-request O(n) cost the low-water mark below exists to remove, reached by
+    the one size the two comparisons disagreed about.
     """
-    if len(_RATE_LIMIT_REFUSALS) <= _RATE_LIMIT_MAX_TRACKED_KEYS:
+    if len(_RATE_LIMIT_REFUSALS) < _RATE_LIMIT_MAX_TRACKED_KEYS:
         return
 
     # Trim to a low-water mark, not to the cap itself. Landing exactly on the

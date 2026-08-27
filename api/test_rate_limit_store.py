@@ -15,6 +15,7 @@ import multiprocessing
 import sqlite3
 import subprocess
 import sys
+import types
 from pathlib import Path
 from time import time
 
@@ -550,6 +551,42 @@ def test_the_backoff_covers_every_entry_point_rather_than_only_consume(db_path, 
     release("some-token", db_path=db_path, now=1000.3)
 
     assert len(attempts) == 1, "an entry point kept asking a database known to be down"
+
+
+def test_the_backoff_runs_from_when_the_failure_was_seen_not_when_the_call_began(
+    db_path, monkeypatch
+):
+    """A slow failure must not spend its own duration out of the backoff.
+
+    The busy timeout is the failure this window exists for, and it takes five
+    seconds to arrive. Timestamping the backoff from before the attempt charged
+    those five seconds to it, so the documented ten-second window was really
+    five in exactly the case that motivated it -- a control weaker than every
+    description of it, which is the defect this whole record is about.
+    """
+    clock = types.SimpleNamespace(now=1000.0)
+    monkeypatch.setattr(rate_limit_store, "time", lambda: clock.now)
+
+    attempts = []
+
+    def slow_failing_connect(path):
+        attempts.append(path)
+        clock.now += 5.0  # the busy timeout expiring
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(rate_limit_store, "_connect", slow_failing_connect)
+
+    # Enters at t=1000, fails at t=1005, so the window has to run to t=1015.
+    assert consume("k", tiers=tiers(1, 60), db_path=db_path) == UNAVAILABLE
+    assert len(attempts) == 1
+
+    clock.now = 1014.9
+    assert consume("k", tiers=tiers(1, 60), db_path=db_path) == UNAVAILABLE
+    assert len(attempts) == 1, "the backoff was measured from before the failure, not after it"
+
+    clock.now = 1015.1
+    assert consume("k", tiers=tiers(1, 60), db_path=db_path) == UNAVAILABLE
+    assert len(attempts) == 2
 
 
 def test_a_working_database_never_arms_the_backoff(db_path):

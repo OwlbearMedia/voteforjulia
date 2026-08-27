@@ -100,6 +100,11 @@ STORE_BACKOFF_SECONDS = 10.0
 _backoff_until = 0.0
 
 
+def _clock(now: float | None) -> float:
+    """The current time, unless the caller pinned one. Keeps the test seam."""
+    return time() if now is None else now
+
+
 def _in_backoff(now: float) -> bool:
     return now < _backoff_until
 
@@ -212,7 +217,7 @@ def consume(
         return ALLOWED
 
     path = db_path or DEFAULT_DB_PATH
-    current = time() if now is None else now
+    current = _clock(now)
 
     if _in_backoff(current):
         # Answer from the last failure rather than waiting for this one. The
@@ -230,7 +235,11 @@ def consume(
         # file sitting where the directory should be, raises NotADirectoryError
         # rather than anything sqlite3 defines.
         logger.exception("Rate-limit store unavailable at %s; allowing request", path)
-        _note_unreachable(current)
+        # Re-read the clock rather than reusing `current`. The failure that
+        # matters most here is the busy timeout, which takes five seconds to
+        # arrive -- charging those to the backoff would halve a window that
+        # exists precisely because that failure is slow.
+        _note_unreachable(_clock(now))
         return UNAVAILABLE
 
     try:
@@ -274,7 +283,7 @@ def consume(
         # ALLOWED is what lets app.py fall back to a per-worker count instead of
         # serving an unlimited endpoint for the length of a disk incident.
         logger.exception("Rate-limit store failed for key %r; allowing request", key)
-        _note_unreachable(current)
+        _note_unreachable(_clock(now))
         return UNAVAILABLE
     finally:
         connection.close()
@@ -303,7 +312,7 @@ def acquire(
     own slot handed to someone else while it is still using it.
     """
     path = db_path or DEFAULT_DB_PATH
-    current = time() if now is None else now
+    current = _clock(now)
     token = secrets.token_hex(16)
 
     if _in_backoff(current):
@@ -315,7 +324,7 @@ def acquire(
         connection = _connect(path)
     except (sqlite3.Error, OSError):
         logger.exception("Concurrency store unavailable at %s; allowing request", path)
-        _note_unreachable(current)
+        _note_unreachable(_clock(now))
         return token
 
     try:
@@ -340,7 +349,7 @@ def acquire(
             return token
     except (sqlite3.Error, OSError):
         logger.exception("Concurrency store failed at %s; allowing request", path)
-        _note_unreachable(current)
+        _note_unreachable(_clock(now))
         return token
     finally:
         connection.close()
@@ -349,7 +358,7 @@ def acquire(
 def release(token: str, db_path: Path | None = None, now: float | None = None) -> None:
     """Give back a slot taken by `acquire`. Safe to call with an expired token."""
     path = db_path or DEFAULT_DB_PATH
-    current = time() if now is None else now
+    current = _clock(now)
 
     if _in_backoff(current):
         # The TTL reclaims the slot, which is this function's own answer to
@@ -361,7 +370,7 @@ def release(token: str, db_path: Path | None = None, now: float | None = None) -
         connection = _connect(path)
     except (sqlite3.Error, OSError):
         logger.exception("Concurrency store unavailable at %s; slot will expire instead", path)
-        _note_unreachable(current)
+        _note_unreachable(_clock(now))
         return
 
     try:
@@ -370,7 +379,7 @@ def release(token: str, db_path: Path | None = None, now: float | None = None) -
     except (sqlite3.Error, OSError):
         # Not fatal, and not worth retrying: the TTL reclaims the slot.
         logger.exception("Could not release slot %r; it will expire instead", token)
-        _note_unreachable(current)
+        _note_unreachable(_clock(now))
     finally:
         connection.close()
 

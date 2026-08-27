@@ -923,6 +923,45 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertNotIn("send-email:198.51.100.0", app_module._RATE_LIMIT_REFUSALS)
         self.assertIn("send-email:198.51.100.49", app_module._RATE_LIMIT_REFUSALS)
 
+    def test_sitting_exactly_on_the_cap_does_not_sweep_on_every_request(self) -> None:
+        """The one size where the arm and the guard used to disagree.
+
+        The arm fires at `>= cap` and the guard returned at `<= cap`, so a cache
+        holding exactly the cap swept, trimmed nothing, and swept again on the
+        next request -- forever, since nothing was removed to get it back under.
+        That is the per-request O(n) cost the low-water mark exists to remove,
+        and the docstring on `_evict_to_cap` described it as the thing that
+        could not happen. The sibling test below seeds `cap + 5` and never
+        reaches this size.
+        """
+        app_module._RATE_LIMIT_MAX_TRACKED_KEYS = 20
+        app_module._next_refusal_sweep_at = monotonic() + 3600
+        now = monotonic()
+        for index in range(20):
+            app_module._RATE_LIMIT_REFUSALS[f"other:198.51.100.{index}"] = (
+                now + 60 + index,
+                "burst",
+            )
+
+        sweeps = []
+        real_sweep = app_module._sweep_expired_refusals
+        app_module._sweep_expired_refusals = lambda swept_at: (
+            sweeps.append(swept_at),
+            real_sweep(swept_at),
+        )[-1]
+        try:
+            for _ in range(5):
+                self.client.post(
+                    "/send-email", json={"firstName": "Julia", "email": "j@example.com"}
+                )
+        finally:
+            app_module._sweep_expired_refusals = real_sweep
+
+        self.assertEqual(len(sweeps), 1)
+        self.assertLess(
+            len(app_module._RATE_LIMIT_REFUSALS), app_module._RATE_LIMIT_MAX_TRACKED_KEYS
+        )
+
     def test_hitting_the_cap_does_not_force_a_sweep_on_every_request(self) -> None:
         # The property the low-water mark buys. Without headroom the dict sits
         # pinned at the cap and every subsequent request re-sweeps and re-sorts.
