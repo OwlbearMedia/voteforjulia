@@ -72,8 +72,24 @@ memory keeps only the refusals that store has already issued.**
 
 **1. `consume` takes a list of tiers rather than one window.** One
 `BEGIN IMMEDIATE`, one prune, one `COUNT` per tier, and — if every tier passes —
-one insert. The first tier to refuse is the one reported, so the caller is told
-about the window that clears soonest.
+one insert.
+
+**Every tier is evaluated, and the refusal carries the latest expiry among the
+full ones.** A caller is allowed again only when the last window clears, so
+answering with the first tier that happens to be full advertises a wait another
+tier is still holding — and a client obeying `Retry-After` exactly earns a
+second 429, which is the one promise this header makes
+([0014](0014-do-not-trust-forwarding-headers.md)). With the shipped numbers that
+is reachable in about ten requests: five spread across an hour and five inside a
+minute leaves both windows full, and the burst tier's 55-second answer left 540
+seconds of the hourly one still to run.
+
+The tier reported is the binding one rather than the first asked, because it is
+the window the caller is actually waiting out and so the only name that agrees
+with the wait they were given. It is also the more useful of the two for triage,
+since `hourly` means a patient caller and `burst` a hasty one
+([../monitoring.md](../monitoring.md#a-rate-limiter-tripping)). Order breaks
+ties, and nothing else.
 
 Both windows counting the same rows is what makes this cheaper than it sounds:
 the burst tier adds a second `COUNT` over an already-open transaction and no
@@ -138,10 +154,19 @@ none.
 
 Three properties keep it from quietly becoming a second limit:
 
-- **It counts only while degraded**, so it starts from zero when an incident
-  begins and holds nothing in normal operation. A counter kept warm through
-  healthy traffic would be a per-worker limit running invisibly in parallel with
-  the real one, which is the defect this record exists to remove.
+- **It counts only while degraded**, so nothing is written to it while the
+  store is answering. A counter kept warm through healthy traffic would be a
+  per-worker limit running invisibly in parallel with the real one, which is the
+  defect this record exists to remove.
+
+  It is not, however, wiped when the store recovers, and an incident inside a
+  minute of the last one therefore inherits what that one counted. That is
+  deliberate: those requests really were served by this worker inside the burst
+  window, so counting them is the accurate reading of "five per sixty seconds",
+  and clearing on recovery would hand a flapping store ten. The entries age out
+  on the window like any other count, so the dictionary empties itself within a
+  window of the incident ending.
+
 - **It stops being consulted the moment the store answers again**, including
   about the requests it allowed and never recorded. A caller it had just refused
   is served, because the shared tiers have never seen them. The store is

@@ -499,8 +499,9 @@ def _evict_to_cap() -> None:
 def _rate_limit_tiers(scope: str) -> tuple[Tier, ...]:
     """The windows one scope is held to, narrowest first.
 
-    Order is what a 429 reports: a caller over both tiers is told about the
-    burst, which is the one that clears first.
+    Order is a tie-break, not the answer: a caller over both tiers is told about
+    whichever window holds them longest, because that is the wait they were
+    given. See ADR-0024.
 
     Read at call time rather than baked in at import, so a test can monkeypatch
     any of the settings.

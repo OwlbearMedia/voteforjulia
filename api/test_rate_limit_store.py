@@ -143,6 +143,33 @@ def test_a_wider_window_still_counts_what_a_narrower_one_has_forgotten(db_path):
     assert verdict.refusal.retry_after == 1600
 
 
+def test_the_advertised_wait_clears_every_full_tier_not_just_the_first(db_path):
+    """Two full windows at once, and one wait that has to satisfy both.
+
+    Reproduced before the fix with the shipped numbers: five requests spread
+    early and five inside the last minute leaves both windows full, the burst
+    tier answered first with a 55-second wait, and a client honouring it exactly
+    was refused again with another 540 seconds to go. Same promise broken as in
+    ADR-0014 and as in the overfilled-window case above -- a third route to it.
+    """
+    shipped = [Tier(BURST, 5, 60), Tier(HOURLY, 10, 3600)]
+
+    for offset in (0, 10, 20, 30, 40):
+        assert consume("k", tiers=shipped, db_path=db_path, now=1000.0 + offset) == ALLOWED
+    for offset in (0, 1, 2, 3, 4):
+        assert consume("k", tiers=shipped, db_path=db_path, now=4000.0 + offset) == ALLOWED
+
+    verdict = consume("k", tiers=shipped, db_path=db_path, now=4005.0)
+
+    # The hour-long window is the binding one: its oldest counted row is at
+    # t=1000 and it holds until t=4600.
+    assert verdict.refusal.tier == HOURLY
+    assert verdict.refusal.expires_in == pytest.approx(595.0)
+
+    retry_after = verdict.refusal.retry_after
+    assert consume("k", tiers=shipped, db_path=db_path, now=4005.0 + retry_after) == ALLOWED
+
+
 def test_a_refused_request_does_not_spend_another_tiers_allowance(db_path):
     """A burst refusal costs the caller nothing at the hour scale.
 
@@ -167,29 +194,32 @@ def test_a_refused_request_does_not_spend_another_tiers_allowance(db_path):
     assert consume("k", tiers=both, db_path=db_path, now=1301.0).refusal.tier == HOURLY
 
 
-def test_the_first_tier_to_refuse_is_the_one_reported(db_path):
+def test_the_tier_reported_is_the_one_still_holding_the_caller(db_path):
     """Which name a 429 carries, in every arrangement of full and not full.
 
-    app.py hands them narrowest first so a caller over both is told about the
-    window that clears sooner. Nothing in here knows that, so the list order has
-    to be what decides -- and a tier that is not first still has to report
-    itself, which is the case that catches a refusal labelled `tiers[0]`
-    whatever actually refused.
+    The binding tier, not the first one asked: it is the window the caller is
+    actually waiting out, so it is the only name that agrees with the wait they
+    were given. Order decides only a tie. This is also the case that catches a
+    refusal labelled `tiers[0]` whatever actually refused.
     """
-    full = Tier(BURST, 1, 60)
-    also_full = Tier(HOURLY, 1, 3600)
+    quick = Tier(BURST, 1, 60)
+    long = Tier(HOURLY, 1, 3600)
     roomy = Tier(BURST, 50, 60)
 
-    assert consume("k", tiers=[full, also_full], db_path=db_path, now=1000.0) == ALLOWED
+    assert consume("k", tiers=[quick, long], db_path=db_path, now=1000.0) == ALLOWED
 
-    # Over both: the earlier tier wins.
-    assert consume("k", tiers=[full, also_full], db_path=db_path, now=1001.0).refusal.tier == BURST
-    assert consume("k", tiers=[also_full, full], db_path=db_path, now=1001.0).refusal.tier == HOURLY
+    # Over both: the hour-long window is the one still holding them, whichever
+    # end of the list it sits at.
+    assert consume("k", tiers=[quick, long], db_path=db_path, now=1001.0).refusal.tier == HOURLY
+    assert consume("k", tiers=[long, quick], db_path=db_path, now=1001.0).refusal.tier == HOURLY
 
     # Over only the second: it is reported as itself, not as whatever is first.
-    assert (
-        consume("k", tiers=[roomy, also_full], db_path=db_path, now=1001.0).refusal.tier == HOURLY
-    )
+    assert consume("k", tiers=[roomy, long], db_path=db_path, now=1001.0).refusal.tier == HOURLY
+
+    # Equal windows are the tie the order breaks.
+    twin = Tier(HOURLY, 1, 60)
+    assert consume("k", tiers=[quick, twin], db_path=db_path, now=1002.0).refusal.tier == BURST
+    assert consume("k", tiers=[twin, quick], db_path=db_path, now=1002.0).refusal.tier == HOURLY
 
 
 def test_an_allowed_request_is_recorded_once_and_a_refused_one_not_at_all(db_path):

@@ -199,9 +199,10 @@ def consume(
     """Record a request against `key`, or report the first tier that refuses it.
 
     Returns `ALLOWED` when the request is within every tier, `UNAVAILABLE` when
-    the database could not be reached, or a `Verdict` carrying the `Refusal` of
-    the first tier that is full -- so the caller reports the tier a client
-    actually hit, in the order given.
+    the database could not be reached, or a `Verdict` carrying a `Refusal` whose
+    wait clears every full tier -- the latest of them, since a caller is allowed
+    again only when the last window does. The tier named is the one holding that
+    deadline.
 
     One transaction for all of them, and one row per allowed request, which is
     what makes the tiers agree with each other: a request refused by any tier is
@@ -252,6 +253,13 @@ def consume(
             # table, and there is no separate sweep.
             connection.execute("DELETE FROM hits WHERE ts <= ?", (prune_cutoff,))
 
+            # Every tier, not the first one that is full. A caller is allowed
+            # again only once the *last* full window clears, so stopping early
+            # advertises a wait that another tier is still holding -- and a
+            # client obeying `Retry-After` exactly earns a second 429, which is
+            # the one thing this header must never do (ADR-0014).
+            refusal = None
+
             for tier in tiers:
                 # The newest `limit` rows, never all of them. A window can hold
                 # more than its limit -- an old worker inserting under a wider
@@ -273,7 +281,19 @@ def consume(
                     # header. Strictly positive, because a row counted above is
                     # by definition still inside the window.
                     expires_in = frees_the_window + tier.window_seconds - current
-                    return Verdict(Refusal(tier.name, expires_in), True)
+
+                    # The binding tier is the one reported, not the first one
+                    # asked. It is the window the caller is actually waiting
+                    # out, so it is the name that agrees with the wait they were
+                    # given -- and for triage it is the one that matters, since
+                    # `hourly` means a patient caller and `burst` a hasty one.
+                    # Ties keep the earlier tier, so the order still decides
+                    # when the windows do not.
+                    if refusal is None or expires_in > refusal.expires_in:
+                        refusal = Refusal(tier.name, expires_in)
+
+            if refusal is not None:
+                return Verdict(refusal, True)
 
             connection.execute("INSERT INTO hits (key, ts) VALUES (?, ?)", (key, current))
             return ALLOWED
