@@ -50,11 +50,20 @@ request the burst tier _allows_, and it writes a row for each one. Every allowed
 request already paid for a connection, a transaction and an insert. The
 in-memory tier was only ever saving disk on the refusal path.
 
-**And it could not save much even there.** The old tier counted the requests it
-allowed. During a flood from one address, only five requests are ever allowed —
-spread across N workers, no single worker's count reaches its own limit, so the
-tier that exists to absorb a flood is silent through one. It shielded the disk
-in exactly the case where the disk was not under pressure.
+**And what it saved was paid for in the defect.** The old tier did shield the
+disk: each worker allowed five, and every request that worker took after that
+was refused before the hourly tier's insert. But it could only do that by being
+a counter, and a counter in process memory is the whole reason the limit was
+`5 x N` rather than 5. The shielding and the defect were the same mechanism, so
+the question is not whether to keep the shield — it is whether the shield has to
+be a counter. It does not: a cache of the refusals the shared tiers issue shields
+the same path without holding a limit of its own.
+
+An earlier draft of this record argued the shield never worked at all, on the
+reasoning that only five requests are ever allowed so no worker reaches its own
+count. That describes the system this record _builds_, not the one it replaces,
+and it is left corrected rather than deleted because getting the superseded
+design wrong is the easiest way to justify a change for the wrong reason.
 
 ## Decision
 
@@ -101,12 +110,19 @@ window clears, which is the cache inventing a refusal rather than repeating one.
 So `Refusal` carries the exact `expires_in` and exposes `retry_after` as the
 rounded view of it, and the two consumers take the one they need.
 
-It is also the shape the old tier wanted to be. A flood costs one store round
-trip per key, per worker, per window instead of one per request, and unlike a
-counter it engages during the flood rather than before it. Per worker because
-this dictionary is a module global like everything else in a Passenger process
-— the difference from the counter it replaces is that being process-local costs
-disk here rather than correctness.
+It is also the shape the old tier wanted to be. A flood costs a store round trip
+each time the shared window admits another request rather than one per request,
+and unlike a counter it engages during the flood rather than before it.
+
+**Not one per window** — the entry expires with the row that frees the window,
+and a sustained flood then spends two round trips per freed slot: one that is
+admitted and recorded, and one that is refused and re-arms the cache. So the
+cost is on the order of twice the tier's limit per window per worker, against
+one per request without it. At the shipped 5/60s that is roughly ten round trips
+a minute per worker under a flood of any size, which is the saving worth
+quoting. Per worker because this dictionary is a module global like everything
+else in a Passenger process — the difference from the counter it replaces is
+that being process-local costs disk here rather than correctness.
 
 **3. A fallback burst counter runs while, and only while, the store is
 unreachable.** Both tiers are one call now, so without this a database the app
@@ -202,12 +218,15 @@ have caused one key at a time.
   is now stopped a tier earlier. That is the campaign-visible condition, so the
   change is worth knowing — the patient caller it was sized against is
   unaffected either way.
-- **A burst refusal costs one store round trip per worker per window instead of
-  zero.** Only the burst tier changes here: an hourly refusal already queried
+- **A burst refusal now costs a store round trip where it used to cost
+  nothing.** Only the burst tier changes here: an hourly refusal already queried
   SQLite on every attempt, because reaching that tier at all meant the burst
-  tier had allowed the request. Bounded by the refusal cache, which is
-  per-worker, so the cost is one round trip for each live worker the caller
-  lands on rather than one globally — and paid only by callers being refused.
+  tier had allowed the request. The refusal cache bounds the new cost at roughly
+  twice the tier's limit per window per worker — the entry expires with the row
+  that frees the window, so a sustained flood re-arms it once per freed slot
+  rather than once per window — against one round trip per request with no cache
+  at all. Paid only by callers being refused, and per worker, since the cache is
+  process-local.
 - **Nothing to migrate, and the deploy order does not matter.** The schema is
   unchanged — same `hits` table, same columns, same rows — so an old worker and
   a new one can serve out of the same file during a restart. The old one simply

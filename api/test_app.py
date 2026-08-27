@@ -441,10 +441,11 @@ class AppRateLimitTests(unittest.TestCase):
     def test_a_repeated_refusal_is_served_without_asking_the_store(self) -> None:
         """What the in-memory tier is for now: keeping a flood off the disk.
 
-        The first refusal costs a store round trip and every repeat inside the
-        window costs nothing, which is the shape the old counter could not
-        manage -- it only ever counted requests it had allowed, so during a
-        flood it never reached its own limit and never fired.
+        The first refusal costs a store round trip and every repeat until the
+        window frees a slot costs nothing. The old counter did the same job --
+        five allowed per worker, then refusals that never reached the disk --
+        but only by being a counter, which is exactly what made the limit
+        `5 x N`. This shields the same path while holding no limit of its own.
         """
         payload = {"firstName": "Julia", "email": "julia@example.com"}
         asked = []
