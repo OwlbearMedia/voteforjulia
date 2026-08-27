@@ -57,6 +57,10 @@ The Flask API also has an OpenAPI 3.1 spec at
 [api/openapi.yaml](api/openapi.yaml), kept in sync with the code by
 [api/test_openapi_spec.py](api/test_openapi_spec.py).
 
+If you are adding to the docs rather than reading them,
+[docs/README.md](docs/README.md) covers which file owns a new fact, and what to
+grep before correcting an old one.
+
 ## Prerequisites
 
 - Node.js 22+
