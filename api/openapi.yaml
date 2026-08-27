@@ -750,11 +750,15 @@ components:
         makes that header authoritative (its **last** hop); no other header is
         consulted. See ADR-0014.
 
-        The burst tier counts in process memory, so it is per-worker and resets
-        on restart. The sustained tier counts in SQLite under the app's `tmp/`
-        directory, because Passenger reaps idle workers and an hour-long window
-        held in memory would restart with them. If that store cannot be reached
-        the sustained tier fails open and only the burst tier applies.
+        Both tiers count in SQLite under the app's `tmp/` directory, in one
+        transaction over one set of rows, so a limit holds across every
+        Passenger worker and across deploys rather than being multiplied by
+        however many workers are alive. A request refused by either tier is
+        recorded by neither, so a refusal cannot spend the other tier's
+        allowance. If that store cannot be reached both tiers fail open: the
+        burst window falls back to a per-worker count, which is weaker than the
+        shared one, and the sustained tier stops applying until the store is
+        readable again. See ADR-0024.
 
         `Retry-After` is rounded up, so honouring it exactly is enough to clear
         the window.

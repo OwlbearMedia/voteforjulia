@@ -39,8 +39,9 @@ from api.models import (
     validate_submission,
     validate_yard_sign_request,
 )
+from api.rate_limit_store import Tier
 from api.rate_limit_store import acquire as acquire_submission_slot
-from api.rate_limit_store import consume as consume_persistent_rate_limit
+from api.rate_limit_store import consume as consume_rate_limit
 from api.rate_limit_store import release as release_submission_slot
 from api.services.email_service import (
     send_confirmation_email,
@@ -240,17 +241,27 @@ _INFLIGHT_TTL_OVERRIDE = _int_setting("INFLIGHT_TTL_SECONDS", 0)
 # See ADR-0017.
 _HEALTH_DEEP_CACHE_SECONDS = _int_setting("HEALTH_DEEP_CACHE_SECONDS", 60)
 
-# A ceiling on how many client keys are tracked at once, so the dict cannot grow
-# without bound. Far above any plausible number of distinct clients in a
+# A ceiling on how many refusals are remembered at once, so the dict cannot
+# grow without bound. Far above any plausible number of distinct clients in a
 # 60-second window for a municipal campaign; it exists as a backstop, not as a
-# limit anyone should reach. See `_evict_to_cap` for what crossing it costs.
-_RATE_LIMIT_MAX_BUCKETS = _int_setting("RATE_LIMIT_MAX_BUCKETS", 10_000)
+# limit anyone should reach. Both dictionaries below are bounded by it, and
+# crossing it costs disk hits or an allowance reset, never correctness.
+_RATE_LIMIT_MAX_TRACKED_KEYS = _int_setting("RATE_LIMIT_MAX_TRACKED_KEYS", 10_000)
 
-_RATE_LIMIT_BUCKETS: dict[str, deque[float]] = {}
+# Refusals the store has already issued: key -> (monotonic deadline, tier).
+# Not a counter, and deliberately not the limit -- see ADR-0024. A worker holds
+# only what the shared tiers told it, so this can refuse a caller the store
+# would refuse anyway and nobody else.
+_RATE_LIMIT_REFUSALS: dict[str, tuple[float, str]] = {}
+
+# The fallback burst counter, and the one piece of per-worker counting left:
+# key -> the monotonic timestamps of requests this worker allowed *while the
+# store was unreachable*. Empty in normal operation. See `_degraded_burst_limit`.
+_DEGRADED_BURST_COUNTS: dict[str, deque[float]] = {}
 
 # Timestamp of the next full sweep. Starts in the past so the first request
 # after boot sweeps, which keeps the scheduling logic identical on every path.
-_next_bucket_sweep_at = 0.0
+_next_refusal_sweep_at = 0.0
 
 # The header naming the real client, for when something that overwrites it sits
 # in front of the app. Unset by default, and that default is load-bearing:
@@ -440,27 +451,24 @@ def _rate_limit_key() -> str:
     return request.remote_addr or "unknown"
 
 
-def _sweep_expired_buckets(cutoff: float) -> None:
-    """Drop timestamps older than the window, and any bucket left empty."""
-    for stale_key, stale_bucket in list(_RATE_LIMIT_BUCKETS.items()):
-        while stale_bucket and stale_bucket[0] <= cutoff:
-            stale_bucket.popleft()
-        if not stale_bucket:
-            del _RATE_LIMIT_BUCKETS[stale_key]
+def _sweep_expired_refusals(now: float) -> None:
+    """Drop refusals whose deadline has passed."""
+    for key, (refused_until, _) in list(_RATE_LIMIT_REFUSALS.items()):
+        if now >= refused_until:
+            del _RATE_LIMIT_REFUSALS[key]
 
 
 def _evict_to_cap() -> None:
-    """Force the bucket count under the cap, oldest activity first.
+    """Force the cache under its cap, soonest-to-expire first.
 
-    Only reachable when more distinct clients are active within one window than
-    the cap allows -- a sweep has already removed everything expired. Evicting a
-    bucket resets that client's allowance, so this fails open: under genuine
-    pressure the limiter gets more permissive rather than refusing real
-    submissions or growing until the worker is killed. For a campaign form
-    that is the right way round, and with the key space no longer caller-
-    controlled it takes real traffic to get here.
+    Only reachable when more distinct clients are refused within one window than
+    the cap allows -- a sweep has already removed everything expired. Evicting
+    an entry costs a store round trip on that caller's next request and nothing
+    else: the tiers themselves live in SQLite, so a forgotten refusal is
+    re-derived rather than lost. The entries nearest their deadline go first,
+    because they are the ones with the least shielding left in them.
     """
-    if len(_RATE_LIMIT_BUCKETS) <= _RATE_LIMIT_MAX_BUCKETS:
+    if len(_RATE_LIMIT_REFUSALS) <= _RATE_LIMIT_MAX_TRACKED_KEYS:
         return
 
     # Trim to a low-water mark, not to the cap itself. Landing exactly on the
@@ -468,20 +476,120 @@ def _evict_to_cap() -> None:
     # forces another sweep-and-sort -- which would turn this safety valve back
     # into the per-request O(n) cost it exists to remove. Headroom means it runs
     # once per (cap / 10) new keys instead.
-    keep = max(_RATE_LIMIT_MAX_BUCKETS * 9 // 10, 1)
-    excess = len(_RATE_LIMIT_BUCKETS) - keep
+    keep = max(_RATE_LIMIT_MAX_TRACKED_KEYS * 9 // 10, 1)
+    excess = len(_RATE_LIMIT_REFUSALS) - keep
 
-    # bucket[-1] is that key's most recent request; every bucket is non-empty
-    # because the sweep runs first.
-    by_least_recent = sorted(_RATE_LIMIT_BUCKETS.items(), key=lambda item: item[1][-1])
-    for stale_key, _ in by_least_recent[:excess]:
-        del _RATE_LIMIT_BUCKETS[stale_key]
+    by_soonest_deadline = sorted(_RATE_LIMIT_REFUSALS.items(), key=lambda item: item[1][0])
+    for stale_key, _ in by_soonest_deadline[:excess]:
+        del _RATE_LIMIT_REFUSALS[stale_key]
 
     logger.warning(
-        "Rate-limit bucket cap (%d) exceeded; evicted %d least-recently-active keys",
-        _RATE_LIMIT_MAX_BUCKETS,
+        "Rate-limit refusal cache cap (%d) exceeded; evicted %d entries",
+        _RATE_LIMIT_MAX_TRACKED_KEYS,
         excess,
     )
+
+
+def _rate_limit_tiers(scope: str) -> tuple[Tier, ...]:
+    """The windows one scope is held to, narrowest first.
+
+    Order is what a 429 reports: a caller over both tiers is told about the
+    burst, which is the one that clears first.
+
+    Read at call time rather than baked in at import, so a test can monkeypatch
+    any of the settings.
+    """
+    return (
+        Tier(_BURST_TIER, _RATE_LIMIT_MAX_REQUESTS, _RATE_LIMIT_WINDOW_SECONDS),
+        Tier(_HOURLY_TIER, _long_rate_limit_for(scope), _LONG_RATE_LIMIT_WINDOW_SECONDS),
+    )
+
+
+def _long_rate_limit_for(scope: str) -> int:
+    """The hourly allowance for one scope."""
+    if scope == _HEALTH_DEEP_SCOPE:
+        return _HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS
+
+    return _LONG_RATE_LIMIT_MAX_REQUESTS
+
+
+def _sweep_degraded_counts(now: float) -> None:
+    """Prune the fallback counters, and drop them wholesale if they run away.
+
+    A bucket disappears one window after its last request, which is what bounds
+    this in normal use -- and in normal use it is empty, because nothing writes
+    to it unless the store is unreachable.
+
+    The cap clears rather than evicting selectively, unlike `_evict_to_cap`.
+    Both fail open; this one is allowed to be blunt about it, because it only
+    has anything to lose during a disk incident and a reset allowance is the
+    same failure the eviction would have caused one key at a time.
+    """
+    cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
+    for key, bucket in list(_DEGRADED_BURST_COUNTS.items()):
+        while bucket and bucket[0] <= cutoff:
+            bucket.popleft()
+        if not bucket:
+            del _DEGRADED_BURST_COUNTS[key]
+
+    if len(_DEGRADED_BURST_COUNTS) > _RATE_LIMIT_MAX_TRACKED_KEYS:
+        logger.warning(
+            "Degraded rate-limit counters exceeded %d keys; clearing them",
+            _RATE_LIMIT_MAX_TRACKED_KEYS,
+        )
+        _DEGRADED_BURST_COUNTS.clear()
+
+
+def _degraded_burst_limit(key: str, now: float) -> tuple[int, str] | None:
+    """Hold the burst window in this worker's memory, for as long as the store is down.
+
+    ADR-0009's original limiter, kept for the one case it is still the best
+    available answer. It is per-worker, so the real ceiling is the shipped limit
+    times however many workers are alive -- the defect ADR-0024 exists to
+    remove. It runs only when the shared tiers cannot answer at all, where the
+    alternative is not a correct limit but no limit, and `5 x N` beats
+    unlimited on an endpoint that sends mail from the campaign's own account.
+
+    Counts only what it allows, and only while degraded, so it starts from zero
+    when an incident begins and stops being consulted the moment the store
+    answers again. Both are deliberate: a shadow counter kept warm through
+    normal operation would be a second limit nobody could see.
+    """
+    cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
+    bucket = _DEGRADED_BURST_COUNTS.setdefault(key, deque())
+
+    # Inline, like the sweep it does not wait for: this key's count has to be
+    # exact on every request however long ago the last sweep ran.
+    while bucket and bucket[0] <= cutoff:
+        bucket.popleft()
+
+    if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
+        retry_after = max(1, ceil(bucket[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
+        return retry_after, _BURST_TIER
+
+    bucket.append(now)
+    return None
+
+
+def _cached_refusal(key: str, now: float) -> tuple[int, str] | None:
+    """Re-serve a refusal the store already issued, without touching the disk.
+
+    Sound because the deadline is the store's own answer: until the request that
+    filled the window leaves it, the count cannot fall, so every tier that
+    refused still refuses. The one way this over-refuses is `reset()`, which
+    clears the table under a worker that has not forgotten -- by hand, or in a
+    test, never in the request path.
+    """
+    entry = _RATE_LIMIT_REFUSALS.get(key)
+    if entry is None:
+        return None
+
+    refused_until, tier = entry
+    if now >= refused_until:
+        del _RATE_LIMIT_REFUSALS[key]
+        return None
+
+    return max(1, ceil(refused_until - now)), tier
 
 
 def _consume_rate_limit(scope: str) -> tuple[int, str] | None:
@@ -489,74 +597,51 @@ def _consume_rate_limit(scope: str) -> tuple[int, str] | None:
 
     Returns `(retry_after, tier)` when a tier refuses, so the caller can report
     which one did. `None` means allowed.
+
+    Every tier counts in SQLite, because a limit held in process memory is
+    multiplied by however many workers Passenger has alive -- the burst tier
+    shipped at an effective 5 x N for a year. See ADR-0024. What stays in memory
+    is the refusals that store has already issued, which is what keeps a flood
+    from spending a disk round trip per request, and a fallback burst counter
+    that runs only while the store is unreachable.
     """
-    global _next_bucket_sweep_at
+    global _next_refusal_sweep_at
 
     now = monotonic()
-    cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
 
-    # The sweep touches every bucket, so running it per request made the cost of
-    # each request scale with the number of live keys. Once per window is enough
-    # to bound memory -- nothing survives more than a window past its expiry --
-    # and turns that into O(1) amortised. The cap is the safety valve for a
-    # burst of new keys arriving between sweeps.
-    if now >= _next_bucket_sweep_at or len(_RATE_LIMIT_BUCKETS) >= _RATE_LIMIT_MAX_BUCKETS:
-        _sweep_expired_buckets(cutoff)
+    # The sweep touches every entry, so running it per request made the cost of
+    # each request scale with the number of cached refusals. Once per window is
+    # enough to bound memory -- nothing survives its deadline by more than a
+    # window -- and turns that into O(1) amortised. The cap is the safety valve
+    # for a burst of new keys arriving between sweeps.
+    if now >= _next_refusal_sweep_at or len(_RATE_LIMIT_REFUSALS) >= _RATE_LIMIT_MAX_TRACKED_KEYS:
+        _sweep_expired_refusals(now)
         _evict_to_cap()
-        _next_bucket_sweep_at = now + _RATE_LIMIT_WINDOW_SECONDS
+        _sweep_degraded_counts(now)
+        _next_refusal_sweep_at = now + _RATE_LIMIT_WINDOW_SECONDS
 
     key = f"{scope}:{_rate_limit_key()}"
-    bucket = _RATE_LIMIT_BUCKETS.setdefault(key, deque())
 
-    # Prune this key inline as well. Its count has to be exact on every request
-    # regardless of how long ago the last sweep ran, or a client would be held
-    # to a stale window.
-    while bucket and bucket[0] <= cutoff:
-        bucket.popleft()
+    cached = _cached_refusal(key, now)
+    if cached is not None:
+        return cached
 
-    if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
-        # Round up, not down: the oldest request leaves the window at
-        # `bucket[0] + window`, and truncating that toward zero advertises a
-        # wait that is still inside it -- so a client that honours Retry-After
-        # exactly gets a second 429 for doing the right thing.
-        retry_after = max(1, ceil(bucket[0] + _RATE_LIMIT_WINDOW_SECONDS - now))
-        return retry_after, _BURST_TIER
+    verdict = consume_rate_limit(key, tiers=_rate_limit_tiers(scope))
 
-    bucket.append(now)
+    if not verdict.answered:
+        # The store is unreachable and has counted nothing, so this worker holds
+        # the burst window itself until it comes back.
+        return _degraded_burst_limit(key, now)
 
-    # Second tier last: the cheap in-memory check short-circuits a burst before
-    # anything touches the disk, and counting only requests the burst tier
-    # allowed stops a refused request from spending the hourly allowance.
-    retry_after = _consume_long_rate_limit(scope, key)
-    if retry_after is None:
+    if verdict.refusal is None:
         return None
 
-    return retry_after, _HOURLY_TIER
-
-
-def _long_rate_limit_for(scope: str) -> int:
-    """The hourly allowance for one scope.
-
-    Read at call time rather than baked into a dict at import, so a test can
-    monkeypatch either setting.
-    """
-    if scope == _HEALTH_DEEP_SCOPE:
-        return _HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS
-
-    return _LONG_RATE_LIMIT_MAX_REQUESTS
-
-
-def _consume_long_rate_limit(scope: str, key: str) -> int | None:
-    """The hour-scale tier, counted in SQLite so it outlives the worker.
-
-    Separate from the burst tier because this one talks to a file and fails
-    open, degrading to pre-ADR-0016 behaviour rather than taking the forms down.
-    """
-    return consume_persistent_rate_limit(
-        key,
-        limit=_long_rate_limit_for(scope),
-        window_seconds=_LONG_RATE_LIMIT_WINDOW_SECONDS,
-    )
+    # Only what the store refused, never what it allowed, and never what the
+    # fallback above decided. Remembering either would make this a counter
+    # again, and a per-worker counter is the defect ADR-0024 removes.
+    refusal = verdict.refusal
+    _RATE_LIMIT_REFUSALS[key] = (now + refusal.retry_after, refusal.tier)
+    return refusal.retry_after, refusal.tier
 
 
 # The honeypot (ADR-0016). Both forms render this as a `display: none` input no

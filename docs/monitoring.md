@@ -282,12 +282,19 @@ WHERE `rate_limit.tier` IS NOT NULL FACET `rate_limit.tier`, `rate_limit.scope`
 SINCE 30 minutes ago
 ```
 
-**The burst tier is weaker than 5-per-60s suggests.** `_RATE_LIMIT_BUCKETS` is a
-module-level dict, so each Passenger worker keeps its own count and the
-effective ceiling is 5 x however many workers are alive. Seven rapid requests
-did not trip it; the first refusal came at about fifteen. The hourly tier is
-SQLite-backed and genuinely cross-worker, which is why it is the deterministic
-one to test against.
+**Both tiers are cross-worker as of 2026-08-26**
+([ADR-0024](adr/0024-count-every-rate-limit-tier-in-sqlite.md)), so either is
+deterministic to test against: five rapid requests are allowed and the sixth is
+refused, whichever worker each one lands on.
+
+This section used to say the opposite, and the correction is why the thresholds
+below need re-measuring. `_RATE_LIMIT_BUCKETS` was a module-level dict, so each
+Passenger worker kept its own count and the effective ceiling was 5 x however
+many workers were alive — measured on 2026-08-20, seven rapid requests did not
+trip it and the first refusal came at about fifteen. **The burst tier therefore
+refuses more traffic now than it did when its threshold was calibrated.** Expect
+that condition to be noisier until it is re-measured; the hourly tier's
+behaviour, and its threshold, are unchanged.
 
 **Conditions existing is not the same as being alerted.** A policy with no
 notification workflow and destination raises issues that sit in the UI and reach
@@ -492,8 +499,10 @@ WHERE appName = 'voteforjulia-api' AND `rate_limit.tier` IS NOT NULL
 FACET `rate_limit.tier`, `rate_limit.scope` SINCE 6 hours ago
 ```
 
-- **`burst`** (5 per 60s) — someone in a hurry. A double-click, a retry loop, a
-  scanner. Almost never worth acting on alone.
+- **`burst`** (5 per 60s, counted across every worker since
+  [ADR-0024](adr/0024-count-every-rate-limit-tier-in-sqlite.md)) — someone in a
+  hurry. A double-click, a retry loop, a scanner. Almost never worth acting on
+  alone.
 - **`hourly`** (10 per hour, [ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md))
   — a caller that paced itself under the burst limit for an hour. That is either
   deliberate abuse or a supporter genuinely stuck in a retry loop, and it is the

@@ -140,7 +140,7 @@ def pipeline(monkeypatch):
     monkeypatch.setattr(app_module, "append_row", append_row)
 
     # Rate limiting has its own tests; keep it from interfering here.
-    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_REFUSALS", {})
     monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 1000)
 
     return state
@@ -491,7 +491,7 @@ def test_non_string_field_values_are_counted_as_submitted(client, pipeline, capl
 
 def test_yard_sign_is_rate_limited_separately(client, pipeline, monkeypatch):
     monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 1)
-    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_REFUSALS", {})
     headers = {"X-Forwarded-For": "203.0.113.99"}
 
     first = client.post(YARD_SIGN_PATH, json=YARD_SIGN_PAYLOAD, headers=headers)
@@ -520,9 +520,9 @@ def test_distinct_last_forwarded_hops_get_separate_buckets(client, pipeline, mon
     app the header is only ever the caller's own claim.
     """
     monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 1)
-    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_REFUSALS", {})
     monkeypatch.setattr(app_module, "_TRUSTED_CLIENT_IP_HEADER", "X-Forwarded-For")
-    monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+    monkeypatch.setattr(app_module, "_next_refusal_sweep_at", 0.0)
 
     first = client.post(
         CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"X-Forwarded-For": "198.51.100.1"}
@@ -531,27 +531,45 @@ def test_distinct_last_forwarded_hops_get_separate_buckets(client, pipeline, mon
         CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"X-Forwarded-For": "10.0.0.9, 198.51.100.2"}
     )
 
+    repeat_of_first = client.post(
+        CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"X-Forwarded-For": "198.51.100.1"}
+    )
+
     assert first.status_code == 200
     assert second.status_code == 200
-    assert sorted(app_module._RATE_LIMIT_BUCKETS) == [
-        "send-email:198.51.100.1",
-        "send-email:198.51.100.2",
-    ]
+    # Read through the responses, not off a counter: every tier counts in SQLite
+    # now (ADR-0024). Against a limit of one, two allowed requests only prove
+    # separate buckets once a repeat of either is refused -- otherwise a limiter
+    # that had stopped counting altogether would pass this too.
+    assert repeat_of_first.status_code == 429
 
 
 def test_empty_last_forwarded_hop_falls_back_to_remote_addr(client, pipeline, monkeypatch):
-    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_REFUSALS", {})
     monkeypatch.setattr(app_module, "_TRUSTED_CLIENT_IP_HEADER", "X-Forwarded-For")
-    monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
-    # A trailing comma leaves no usable last hop; the socket address is used
-    # rather than trusting the attacker-controlled earlier entries.
-    client.post(
-        CONTACT_PATH,
-        json=CONTACT_PAYLOAD,
-        headers={"X-Forwarded-For": "203.0.113.5,"},
+    monkeypatch.setattr(app_module, "_next_refusal_sweep_at", 0.0)
+
+    # A trailing comma leaves no usable last hop, so the socket address keys the
+    # bucket rather than the attacker-controlled earlier entries. Two different
+    # spoofed values collapsing onto one bucket is what says so: had either the
+    # raw header or its first entry been used, these would be two buckets and
+    # the second request would have been served.
+    first = client.post(
+        CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"X-Forwarded-For": "203.0.113.5,"}
+    )
+    second = client.post(
+        CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"X-Forwarded-For": "198.51.100.8,"}
+    )
+    # And the fallback is the socket address specifically, not one bucket for
+    # everybody: a usable last hop still gets its own.
+    usable_last_hop = client.post(
+        CONTACT_PATH, json=CONTACT_PAYLOAD, headers={"X-Forwarded-For": "203.0.113.9"}
     )
 
-    assert list(app_module._RATE_LIMIT_BUCKETS) == ["send-email:127.0.0.1"]
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert usable_last_hop.status_code == 200
 
 
 # --- Second-tier (long-window) rate limiting, ADR-0016 ----------------------
@@ -577,8 +595,8 @@ def test_a_caller_under_the_burst_limit_is_still_stopped_by_the_long_window(
     for _minute in range(4):
         # A fresh burst bucket each time, which is what a caller pacing itself
         # minutes apart gets for free — the 60-second window has emptied.
-        monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
-        monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+        monkeypatch.setattr(app_module, "_RATE_LIMIT_REFUSALS", {})
+        monkeypatch.setattr(app_module, "_next_refusal_sweep_at", 0.0)
         statuses.append(client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code)
 
     assert statuses == [200, 200, 200, 429]
@@ -663,21 +681,41 @@ def test_burst_refusals_do_not_spend_the_hourly_allowance(client, pipeline, monk
     were never served.
     """
     monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 1)
-    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
-    monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_REFUSALS", {})
+    monkeypatch.setattr(app_module, "_next_refusal_sweep_at", 0.0)
     monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 3)
     monkeypatch.setattr(app_module, "_LONG_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+    # Both windows count in one store now (ADR-0024), so moving between them
+    # takes a clock rather than a cleared dict. The store reads wall time; this
+    # is the seam that lets an hour-scale test run in no time at all.
+    clock = types.SimpleNamespace(now=1_000.0)
+    monkeypatch.setattr(rate_limit_store, "time", lambda: clock.now)
+
+    def next_worker() -> None:
+        """Stand in for the request landing on a worker that has refused nobody."""
+        app_module._RATE_LIMIT_REFUSALS.clear()
 
     # One served, then four refused by the burst tier in the same window.
     assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
     for _ in range(4):
         assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 429
 
-    # The hourly tier has seen exactly one request, so two more are available
-    # once the burst window clears.
-    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
-    monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
-    assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+    # Past the burst window, the hourly tier has seen exactly one request, so
+    # two more are served -- and only two.
+    for _ in range(2):
+        clock.now += 120
+        next_worker()
+        assert client.post(CONTACT_PATH, json=CONTACT_PAYLOAD).status_code == 200
+
+    clock.now += 120
+    next_worker()
+    spent = client.post(CONTACT_PATH, json=CONTACT_PAYLOAD)
+
+    assert spent.status_code == 429
+    # An hour's wait, not a minute's: this is the hourly tier refusing, which is
+    # what says the four burst refusals were never counted by it.
+    assert int(spent.headers["Retry-After"]) > 60
 
 
 def test_an_unusable_store_leaves_the_endpoint_working(client, pipeline, monkeypatch, tmp_path):
@@ -899,7 +937,7 @@ def test_a_cross_site_flood_does_not_spend_a_victims_rate_limit(
     themselves would be turned away by a limit they never approached.
     """
     monkeypatch.setattr(app_module, "_RATE_LIMIT_MAX_REQUESTS", 3)
-    monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
+    monkeypatch.setattr(app_module, "_RATE_LIMIT_REFUSALS", {})
 
     for _ in range(10):
         rejected = client.post(
@@ -998,8 +1036,8 @@ def test_health_deep_has_a_larger_hourly_allowance_than_the_forms(client, pipeli
     monkeypatch.setattr(app_module, "verify_sheets_access", lambda config: None)
 
     def probe():
-        monkeypatch.setattr(app_module, "_RATE_LIMIT_BUCKETS", {})
-        monkeypatch.setattr(app_module, "_next_bucket_sweep_at", 0.0)
+        monkeypatch.setattr(app_module, "_RATE_LIMIT_REFUSALS", {})
+        monkeypatch.setattr(app_module, "_next_refusal_sweep_at", 0.0)
         return client.get("/health/deep").status_code
 
     # The form allowance is exhausted after one request; the health scope keeps

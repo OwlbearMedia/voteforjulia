@@ -323,7 +323,11 @@ conventions and the traps.
   back to the same `remote_addr` — deleting the entire branch kept the suite
   green. Any test of the form "these requests should share a bucket" needs the
   matching "these requests should not" to actually pin the key. The same trap
-  applies to anything keyed, cached, or deduplicated.
+  applies to anything keyed, cached, or deduplicated. **Assert it through the
+  responses, not off the counters** — since
+  [ADR-0024](adr/0024-count-every-rate-limit-tier-in-sqlite.md) the counts live
+  in SQLite and an allowed request leaves nothing in the process to inspect, so
+  "two requests were keyed apart" is shown by a third request being refused.
 - **A test that restates the diff is not a test**, and the trap is worst right
   after fixing something, because listing what you just added _feels_ like
   checking it. `JuliaButton`'s disabled-link test asserted the three things the

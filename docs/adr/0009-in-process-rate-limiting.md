@@ -1,11 +1,12 @@
 # 0009. Rate-limit in process memory, keyed per IP and endpoint
 
-**Status:** Superseded by [0014](0014-do-not-trust-forwarding-headers.md) and
-[0016](0016-second-tier-rate-limiting-and-honeypot.md)
+**Status:** Superseded by [0014](0014-do-not-trust-forwarding-headers.md),
+[0016](0016-second-tier-rate-limiting-and-honeypot.md) and
+[0024](0024-count-every-rate-limit-tier-in-sqlite.md)
 **Date:** 2026-07-31 (recorded; decided at project start)
 
-> A burst limiter in process memory, per endpoint and per client, still stands —
-> but two later records each replace part of this one, and neither is optional
+> A burst limiter per endpoint and per client still stands. Nothing else here
+> does: three later records each replace part of this one, and none is optional
 > reading.
 >
 > [0014](0014-do-not-trust-forwarding-headers.md) replaces the
@@ -19,6 +20,14 @@
 > window and not an hour-long one, because Passenger reaps workers at idle — so
 > the sustained tier added there counts in SQLite instead, and a honeypot covers
 > the caller who simply changes IP.
+>
+> [0024](0024-count-every-rate-limit-tier-in-sqlite.md) replaces the storage
+> decision outright. Passenger keeps several workers alive at once, so the
+> module-level `_RATE_LIMIT_BUCKETS` below was one counter per worker and the
+> shipped limit was really `5 x N` — measured in production on 2026-08-20. Both
+> tiers count in SQLite now. **Do not implement the "Decision" section below as
+> written either**; what survives of this record is its context, and why a
+> limiter has to exist at all.
 
 ## Context
 

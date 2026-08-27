@@ -4,9 +4,10 @@ Two of them, both needing state no single Passenger worker can hold, because
 Passenger reaps idle workers here
 ([../docs/hosting.md](../docs/hosting.md#watch-worker-memory)):
 
-- `consume` — the long-window rate-limit tier. *How often* one client may ask.
-  The burst tier in [app.py](app.py) counts in process memory, which cannot hold
-  an hour. See [ADR-0016](../docs/adr/0016-second-tier-rate-limiting-and-honeypot.md).
+- `consume` — every rate-limit tier. *How often* one client may ask. Both the
+  burst and the sustained window count the same rows in one transaction, so a
+  request is recorded once and neither window can be spent by a request the
+  other refused. See [ADR-0024](../docs/adr/0024-count-every-rate-limit-tier-in-sqlite.md).
 - `acquire`/`release` — how many submissions may be in flight at once, across
   every worker. *How much* work may run at all. See
   [ADR-0018](../docs/adr/0018-cap-concurrent-submissions.md).
@@ -15,6 +16,10 @@ Every failure fails open: a limiter that cannot reach its database logs and
 allows the request. That means `sqlite3.Error` *and* `OSError` — creating the
 directory is a filesystem operation, and letting its failure escape would turn
 the fail-open promise into a 500.
+
+`consume` says so out loud rather than by returning nothing. Its caller has a
+fallback to run when this store is unreachable, and "allowed" and "nobody
+counted" have to be told apart for that to be possible at all.
 """
 
 from __future__ import annotations
@@ -22,11 +27,48 @@ from __future__ import annotations
 import logging
 import secrets
 import sqlite3
+from collections.abc import Sequence
 from math import ceil
 from pathlib import Path
 from time import time
+from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
+
+
+class Tier(NamedTuple):
+    """One window a caller is held to, and the name a 429 reports it under."""
+
+    name: str
+    limit: int
+    window_seconds: int
+
+
+class Refusal(NamedTuple):
+    """The tier that refused a request, and how long until one is allowed."""
+
+    tier: str
+    retry_after: int
+
+
+class Verdict(NamedTuple):
+    """What the store decided, and whether it was able to decide anything.
+
+    `answered` is false only when the database could not be reached, and it is
+    the whole reason this type exists: an unreachable store allows the request
+    like an unfilled window does, and the caller has to tell those apart to know
+    whether its own fallback should be counting. See ADR-0024.
+    """
+
+    refusal: Refusal | None
+    answered: bool
+
+
+# The two verdicts with nothing to say beyond themselves. Named so a caller
+# reads `== ALLOWED` rather than unpacking a tuple of two falsy-looking values.
+ALLOWED = Verdict(None, True)
+UNAVAILABLE = Verdict(None, False)
+
 
 # Under `tmp/`, the one directory the deploy's prune step leaves alone. Resolved
 # relative to this module so it follows the package into `api/` or `api_test/`.
@@ -100,22 +142,30 @@ def _add_scope_column_if_missing(connection: sqlite3.Connection) -> None:
 def consume(
     key: str,
     *,
-    limit: int,
-    window_seconds: int,
+    tiers: Sequence[Tier],
     db_path: Path | None = None,
     now: float | None = None,
-) -> int | None:
-    """Record a request against `key`, or report how long until one is allowed.
+) -> Verdict:
+    """Record a request against `key`, or report the first tier that refuses it.
 
-    Returns `None` when the request is within the limit, or a positive
-    `Retry-After` in seconds when it is not.
+    Returns `ALLOWED` when the request is within every tier, `UNAVAILABLE` when
+    the database could not be reached, or a `Verdict` carrying the `Refusal` of
+    the first tier that is full -- so the caller reports the tier a client
+    actually hit, in the order given.
+
+    One transaction for all of them, and one row per allowed request, which is
+    what makes the tiers agree with each other: a request refused by any tier is
+    never recorded, so it cannot spend another tier's allowance. See ADR-0024.
 
     Wall clock, not `monotonic()`: every value is written by one worker and read
     by another, and a monotonic reading means nothing outside its own process.
     """
     path = db_path or DEFAULT_DB_PATH
     current = time() if now is None else now
-    cutoff = current - window_seconds
+
+    # The widest window, because the narrower tiers count the same rows. Pruning
+    # at anything shorter would delete the history the hour-long tier is for.
+    prune_cutoff = current - max(tier.window_seconds for tier in tiers)
 
     try:
         connection = _connect(path)
@@ -124,34 +174,40 @@ def consume(
         # file sitting where the directory should be, raises NotADirectoryError
         # rather than anything sqlite3 defines.
         logger.exception("Rate-limit store unavailable at %s; allowing request", path)
-        return None
+        return UNAVAILABLE
 
     try:
         with connection:
-            # IMMEDIATE, so the count and the insert below cannot interleave with
-            # another worker and quietly raise the effective limit.
+            # IMMEDIATE, so the counts and the insert below cannot interleave
+            # with another worker and quietly raise the effective limit.
             connection.execute("BEGIN IMMEDIATE")
 
             # Every key, not just this one -- this is the only thing bounding the
             # table, and there is no separate sweep.
-            connection.execute("DELETE FROM hits WHERE ts <= ?", (cutoff,))
+            connection.execute("DELETE FROM hits WHERE ts <= ?", (prune_cutoff,))
 
-            row = connection.execute(
-                "SELECT COUNT(*), MIN(ts) FROM hits WHERE key = ?", (key,)
-            ).fetchone()
-            count, oldest = (row[0], row[1]) if row else (0, None)
+            for tier in tiers:
+                row = connection.execute(
+                    "SELECT COUNT(*), MIN(ts) FROM hits WHERE key = ? AND ts > ?",
+                    (key, current - tier.window_seconds),
+                ).fetchone()
+                count, oldest = (row[0], row[1]) if row else (0, None)
 
-            if count >= limit and oldest is not None:
-                # Round up: truncating advertises a retry still inside the window.
-                return max(1, ceil(oldest + window_seconds - current))
+                if count >= tier.limit and oldest is not None:
+                    # Round up: truncating advertises a retry still inside the
+                    # window.
+                    retry_after = max(1, ceil(oldest + tier.window_seconds - current))
+                    return Verdict(Refusal(tier.name, retry_after), True)
 
             connection.execute("INSERT INTO hits (key, ts) VALUES (?, ?)", (key, current))
-            return None
+            return ALLOWED
     except (sqlite3.Error, OSError):
-        # Includes the busy timeout expiring. Fail open -- the burst tier is still
-        # in front of this, and refusing a real volunteer is the worse failure.
+        # Includes the busy timeout expiring. Fail open -- refusing a real
+        # volunteer is the worse failure. Saying so rather than returning
+        # ALLOWED is what lets app.py fall back to a per-worker count instead of
+        # serving an unlimited endpoint for the length of a disk incident.
         logger.exception("Rate-limit store failed for key %r; allowing request", key)
-        return None
+        return UNAVAILABLE
     finally:
         connection.close()
 

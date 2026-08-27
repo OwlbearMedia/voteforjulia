@@ -3,6 +3,8 @@ import smtplib
 import types
 import unittest
 from collections import deque
+from contextlib import contextmanager
+from pathlib import Path
 from time import monotonic
 from unittest import mock
 
@@ -301,10 +303,10 @@ class AppRateLimitTests(unittest.TestCase):
     def setUp(self) -> None:
         self._orig_rate_limit_window_seconds = app_module._RATE_LIMIT_WINDOW_SECONDS
         self._orig_rate_limit_max_requests = app_module._RATE_LIMIT_MAX_REQUESTS
-        self._orig_rate_limit_buckets = app_module._RATE_LIMIT_BUCKETS
+        self._orig_rate_limit_refusals = app_module._RATE_LIMIT_REFUSALS
         self._orig_trusted_client_ip_header = app_module._TRUSTED_CLIENT_IP_HEADER
-        self._orig_next_bucket_sweep_at = app_module._next_bucket_sweep_at
-        self._orig_rate_limit_max_buckets = app_module._RATE_LIMIT_MAX_BUCKETS
+        self._orig_next_refusal_sweep_at = app_module._next_refusal_sweep_at
+        self._orig_rate_limit_max_tracked_keys = app_module._RATE_LIMIT_MAX_TRACKED_KEYS
         self._orig_load_email_config = app_module.load_email_config
         self._orig_load_sheets_config = app_module.load_sheets_config
         self._orig_send_submission_email = app_module.send_submission_email
@@ -313,14 +315,14 @@ class AppRateLimitTests(unittest.TestCase):
 
         app_module._RATE_LIMIT_WINDOW_SECONDS = 60
         app_module._RATE_LIMIT_MAX_REQUESTS = 1
-        app_module._RATE_LIMIT_BUCKETS = {}
+        app_module._RATE_LIMIT_REFUSALS = {}
         # No proxy trusted, matching the shipped default. Tests that need a
         # forwarding header honoured opt in explicitly.
         app_module._TRUSTED_CLIENT_IP_HEADER = ""
         # In the past, so the first request of each test sweeps. The sweep is
         # now scheduled rather than per-request, and the schedule is module
         # state that would otherwise leak between tests.
-        app_module._next_bucket_sweep_at = 0.0
+        app_module._next_refusal_sweep_at = 0.0
 
         self.sent_submissions = []
         self.confirmation_submissions = []
@@ -367,10 +369,10 @@ class AppRateLimitTests(unittest.TestCase):
     def tearDown(self) -> None:
         app_module._RATE_LIMIT_WINDOW_SECONDS = self._orig_rate_limit_window_seconds
         app_module._RATE_LIMIT_MAX_REQUESTS = self._orig_rate_limit_max_requests
-        app_module._RATE_LIMIT_BUCKETS = self._orig_rate_limit_buckets
+        app_module._RATE_LIMIT_REFUSALS = self._orig_rate_limit_refusals
         app_module._TRUSTED_CLIENT_IP_HEADER = self._orig_trusted_client_ip_header
-        app_module._next_bucket_sweep_at = self._orig_next_bucket_sweep_at
-        app_module._RATE_LIMIT_MAX_BUCKETS = self._orig_rate_limit_max_buckets
+        app_module._next_refusal_sweep_at = self._orig_next_refusal_sweep_at
+        app_module._RATE_LIMIT_MAX_TRACKED_KEYS = self._orig_rate_limit_max_tracked_keys
         app_module.load_email_config = self._orig_load_email_config
         app_module.load_sheets_config = self._orig_load_sheets_config
         app_module.send_submission_email = self._orig_send_submission_email
@@ -400,6 +402,209 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertEqual(len(self.sent_submissions), 1)
         self.assertEqual(len(self.confirmation_submissions), 1)
         self.assertEqual(len(self.sheet_rows), 1)
+
+    def test_the_burst_limit_holds_when_every_request_meets_a_fresh_worker(self) -> None:
+        """The defect in #158, as measured against production on 2026-08-20.
+
+        Seven rapid requests to `/health/deep` returned seven 200s against a
+        documented limit of five, because `_RATE_LIMIT_BUCKETS` was a module
+        global and Passenger had roughly three workers alive, each counting to
+        five on its own. Clearing this process's memory before every request is
+        the worst case of that: a limit held in memory would never refuse
+        anybody at all.
+
+        The window is deliberately left at 60 seconds. Nothing here waits, so
+        every request below is inside it.
+        """
+        app_module._RATE_LIMIT_MAX_REQUESTS = 5
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        statuses = []
+        for _ in range(7):
+            # Each request lands on a worker that has never seen this caller.
+            app_module._RATE_LIMIT_REFUSALS.clear()
+            statuses.append(self.client.post("/send-email", json=payload).status_code)
+
+        self.assertEqual(statuses, [200, 200, 200, 200, 200, 429, 429])
+
+    def test_an_allowed_request_leaves_nothing_behind_in_memory(self) -> None:
+        # The invariant that keeps this from drifting back into a per-worker
+        # counter: memory holds refusals the store issued, and nothing else.
+        app_module._RATE_LIMIT_MAX_REQUESTS = 5
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        for _ in range(3):
+            self.assertEqual(self.client.post("/send-email", json=payload).status_code, 200)
+
+        self.assertEqual(app_module._RATE_LIMIT_REFUSALS, {})
+
+    def test_a_repeated_refusal_is_served_without_asking_the_store(self) -> None:
+        """What the in-memory tier is for now: keeping a flood off the disk.
+
+        The first refusal costs a store round trip and every repeat inside the
+        window costs nothing, which is the shape the old counter could not
+        manage -- it only ever counted requests it had allowed, so during a
+        flood it never reached its own limit and never fired.
+        """
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        asked = []
+        real_consume = app_module.consume_rate_limit
+
+        def counting_consume(key, **kwargs):
+            asked.append(key)
+            return real_consume(key, **kwargs)
+
+        with mock.patch.object(app_module, "consume_rate_limit", counting_consume):
+            allowed = self.client.post("/send-email", json=payload)
+            refused = self.client.post("/send-email", json=payload)
+            repeat = self.client.post("/send-email", json=payload)
+
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(refused.status_code, 429)
+        self.assertEqual(repeat.status_code, 429)
+        # The allowed request and the first refusal; the repeat never got there.
+        self.assertEqual(len(asked), 2)
+        self.assertGreaterEqual(int(repeat.headers["Retry-After"]), 1)
+
+    def test_a_cached_refusal_reports_the_tier_that_issued_it(self) -> None:
+        # A 429 served from memory has to name the same tier the store named,
+        # or the attribute the alert conditions run on turns into "burst"
+        # whenever a patient caller is refused twice. See ADR-0021.
+        app_module._RATE_LIMIT_MAX_REQUESTS = 50
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        agent = types.SimpleNamespace(
+            attributes=[],
+            add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
+        )
+
+        with mock.patch.object(app_module, "_LONG_RATE_LIMIT_MAX_REQUESTS", 1):
+            self.client.post("/send-email", json=payload)
+            from_store = self.client.post("/send-email", json=payload)
+            with mock.patch.object(app_module, "_newrelic_agent", agent):
+                from_cache = self.client.post("/send-email", json=payload)
+
+        self.assertEqual(from_store.status_code, 429)
+        self.assertEqual(from_cache.status_code, 429)
+        self.assertEqual(
+            app_module._RATE_LIMIT_REFUSALS["send-email:127.0.0.1"][1],
+            app_module._HOURLY_TIER,
+        )
+        self.assertIn(("rate_limit.tier", app_module._HOURLY_TIER), agent.attributes)
+
+    @contextmanager
+    def _unreachable_store(self):
+        """Every call into the store raises, as it would on a full or read-only disk.
+
+        A directory where the database file should be, which is what
+        `test_rate_limit_store.py::test_an_unusable_database_fails_open` uses.
+        The package directory is one that certainly exists and that sqlite can
+        certainly not open; nothing is written to it.
+        """
+        with mock.patch.object(
+            rate_limit_store, "DEFAULT_DB_PATH", Path(app_module.__file__).parent
+        ):
+            yield
+
+    def test_the_burst_window_still_holds_while_the_store_is_unreachable(self) -> None:
+        """Fail-open must not mean fail-off.
+
+        Both tiers are one call now, so a database this process cannot read
+        would otherwise leave the endpoint unlimited for the length of the
+        incident -- on a form that sends mail from the campaign's own SMTP
+        account, which is what ADR-0009 wanted a limiter for in the first place.
+        The fallback is per-worker and weaker than the real thing; it is here
+        because `5 x N` beats no limit at all.
+        """
+        app_module._RATE_LIMIT_MAX_REQUESTS = 5
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        with self._unreachable_store():
+            statuses = [self.client.post("/send-email", json=payload).status_code for _ in range(7)]
+
+        self.assertEqual(statuses, [200, 200, 200, 200, 200, 429, 429])
+
+    def test_a_degraded_refusal_reports_the_burst_tier_and_a_usable_retry_after(self) -> None:
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        agent = types.SimpleNamespace(
+            attributes=[],
+            add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
+        )
+
+        with self._unreachable_store():
+            self.client.post("/send-email", json=payload)
+            with mock.patch.object(app_module, "_newrelic_agent", agent):
+                refused = self.client.post("/send-email", json=payload)
+
+        self.assertEqual(refused.status_code, 429)
+        self.assertIn(("rate_limit.tier", app_module._BURST_TIER), agent.attributes)
+        self.assertIn(int(refused.headers["Retry-After"]), range(1, 61))
+
+    def test_a_degraded_refusal_is_not_written_into_the_refusal_cache(self) -> None:
+        # The cache may only hold what the shared store decided -- that is the
+        # whole argument for it being allowed to refuse anyone. A guess made by
+        # one worker while the store was down does not qualify.
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        with self._unreachable_store():
+            self.client.post("/send-email", json=payload)
+            refused = self.client.post("/send-email", json=payload)
+
+        self.assertEqual(refused.status_code, 429)
+        self.assertEqual(app_module._RATE_LIMIT_REFUSALS, {})
+
+    def test_the_fallback_counter_is_untouched_while_the_store_answers(self) -> None:
+        # It must not become a second limit running in parallel. Nothing writes
+        # to it unless the store has failed, so an allowed request and a refused
+        # one both leave it empty.
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        allowed = self.client.post("/send-email", json=payload)
+        refused = self.client.post("/send-email", json=payload)
+
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(refused.status_code, 429)
+        self.assertEqual(app_module._DEGRADED_BURST_COUNTS, {})
+
+    def test_a_recovered_store_overrules_what_the_fallback_counted(self) -> None:
+        """The fallback is consulted only while the store cannot answer.
+
+        Its counts are a worker's private guess. Once the shared tiers are
+        readable again they are authoritative, including about the requests the
+        fallback let through and never recorded -- so a caller the fallback had
+        just refused is served, because the store has never seen them.
+        """
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        with self._unreachable_store():
+            self.client.post("/send-email", json=payload)
+            self.assertEqual(self.client.post("/send-email", json=payload).status_code, 429)
+
+        recovered = self.client.post("/send-email", json=payload)
+
+        self.assertEqual(recovered.status_code, 200)
+
+    def test_expired_fallback_counts_are_swept(self) -> None:
+        stale_key = "send-email:198.51.100.99"
+        app_module._DEGRADED_BURST_COUNTS[stale_key] = deque(
+            [monotonic() - app_module._RATE_LIMIT_WINDOW_SECONDS - 1]
+        )
+
+        self.client.post("/send-email", json={"firstName": "Julia", "email": "julia@example.com"})
+
+        self.assertNotIn(stale_key, app_module._DEGRADED_BURST_COUNTS)
+
+    def test_runaway_fallback_counts_are_dropped_wholesale(self) -> None:
+        # The blunt cap. Only reachable during an incident, and clearing resets
+        # allowances rather than refusing anyone -- the same direction the
+        # refusal cache's eviction fails in.
+        app_module._RATE_LIMIT_MAX_TRACKED_KEYS = 20
+        now = monotonic()
+        for index in range(50):
+            app_module._DEGRADED_BURST_COUNTS[f"send-email:198.51.100.{index}"] = deque([now])
+
+        self.client.post("/send-email", json={"firstName": "Julia", "email": "julia@example.com"})
+
+        self.assertEqual(app_module._DEGRADED_BURST_COUNTS, {})
 
     def test_burst_tier_429_is_reported_to_the_new_relic_agent(self) -> None:
         # A 429 is a returned response, not a raised exception, so the agent
@@ -507,11 +712,17 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertEqual(third.status_code, 429)
         # All three collapsed onto the socket address, the only value here the
         # caller cannot choose.
-        self.assertEqual(list(app_module._RATE_LIMIT_BUCKETS), ["send-email:127.0.0.1"])
+        self.assertEqual(list(app_module._RATE_LIMIT_REFUSALS), ["send-email:127.0.0.1"])
 
     def test_configured_header_keys_the_bucket_when_trusted(self) -> None:
         # The other half: opting in has to actually work, or putting Cloudflare
         # in front would silently lump every visitor into a single bucket.
+        #
+        # Read through the responses rather than off the counters, because the
+        # counters are in SQLite now (ADR-0024) and an allowed request leaves
+        # nothing in this process to inspect. The limit here is 1, so the third
+        # request is what proves the first two were counted apart rather than
+        # both being let through by something that never counted at all.
         app_module._TRUSTED_CLIENT_IP_HEADER = "CF-Connecting-IP"
         payload = {"firstName": "Julia", "email": "julia@example.com"}
 
@@ -521,13 +732,13 @@ class AppRateLimitTests(unittest.TestCase):
         second = self.client.post(
             "/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.2"}
         )
+        repeat_of_first = self.client.post(
+            "/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.1"}
+        )
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
-        self.assertEqual(
-            sorted(app_module._RATE_LIMIT_BUCKETS),
-            ["send-email:203.0.113.1", "send-email:203.0.113.2"],
-        )
+        self.assertEqual(repeat_of_first.status_code, 429)
 
     def test_only_the_configured_header_is_trusted(self) -> None:
         # Trusting one header must not re-trust the rest. With CF-Connecting-IP
@@ -580,15 +791,14 @@ class AppRateLimitTests(unittest.TestCase):
         blocked = self.client.post("/send-email", json=payload)
         retry_after = int(blocked.headers["Retry-After"])
 
-        bucket = app_module._RATE_LIMIT_BUCKETS["send-email:127.0.0.1"]
-        true_wait = bucket[0] + app_module._RATE_LIMIT_WINDOW_SECONDS - monotonic()
-        self.assertGreaterEqual(retry_after, true_wait)
+        refused_until, _ = app_module._RATE_LIMIT_REFUSALS["send-email:127.0.0.1"]
+        self.assertGreaterEqual(retry_after, refused_until - monotonic())
 
-    def test_rate_limit_evicts_stale_buckets(self) -> None:
+    def test_a_refusal_past_its_deadline_is_swept(self) -> None:
         stale_key = "send-email:198.51.100.99"
-        app_module._RATE_LIMIT_BUCKETS[stale_key] = deque(
-            [monotonic() - app_module._RATE_LIMIT_WINDOW_SECONDS - 1]
-        )
+        # A refusal whose deadline has passed. Keeping it would refuse a caller
+        # the shared tiers are ready to serve again.
+        app_module._RATE_LIMIT_REFUSALS[stale_key] = (monotonic() - 1, "burst")
 
         response = self.client.post(
             "/send-email",
@@ -597,27 +807,27 @@ class AppRateLimitTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn(stale_key, app_module._RATE_LIMIT_BUCKETS)
+        self.assertNotIn(stale_key, app_module._RATE_LIMIT_REFUSALS)
 
     def test_sweep_is_scheduled_rather_than_run_per_request(self) -> None:
         # The sweep walks every bucket, so doing it per request made each
         # request cost O(live keys) -- measured at 0.23ms with 1k buckets and
         # 3.06ms with 20k. Once per window bounds memory just as well, because
         # nothing outlives its expiry by more than a window.
-        app_module._next_bucket_sweep_at = monotonic() + 3600
+        app_module._next_refusal_sweep_at = monotonic() + 3600
         stale_key = "send-email:198.51.100.99"
-        app_module._RATE_LIMIT_BUCKETS[stale_key] = deque([monotonic() - 10_000])
+        app_module._RATE_LIMIT_REFUSALS[stale_key] = (monotonic() - 10_000, "burst")
 
         self.client.post("/send-email", json={"firstName": "Julia", "email": "julia@example.com"})
 
-        self.assertIn(stale_key, app_module._RATE_LIMIT_BUCKETS)
+        self.assertIn(stale_key, app_module._RATE_LIMIT_REFUSALS)
 
     def test_the_current_key_is_pruned_even_between_sweeps(self) -> None:
         # The counterpart: deferring the sweep must not let a client be judged
-        # against a stale window. Its own bucket is pruned inline every time.
-        app_module._next_bucket_sweep_at = monotonic() + 3600
-        expired = monotonic() - app_module._RATE_LIMIT_WINDOW_SECONDS - 1
-        app_module._RATE_LIMIT_BUCKETS["send-email:127.0.0.1"] = deque([expired])
+        # against a refusal that has expired. Its own entry is dropped inline
+        # every time.
+        app_module._next_refusal_sweep_at = monotonic() + 3600
+        app_module._RATE_LIMIT_REFUSALS["send-email:127.0.0.1"] = (monotonic() - 1, "burst")
 
         response = self.client.post(
             "/send-email", json={"firstName": "Julia", "email": "julia@example.com"}
@@ -625,38 +835,45 @@ class AppRateLimitTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-    def test_bucket_count_is_capped(self) -> None:
+    def test_the_refusal_cache_is_capped(self) -> None:
         # The safety valve for a burst of new keys arriving between sweeps.
         # Eviction resets those clients' allowances, so it fails open by
         # design -- better than refusing real submissions or growing until the
         # worker is killed.
-        app_module._RATE_LIMIT_MAX_BUCKETS = 20
-        app_module._next_bucket_sweep_at = monotonic() + 3600
+        app_module._RATE_LIMIT_MAX_TRACKED_KEYS = 20
+        app_module._next_refusal_sweep_at = monotonic() + 3600
         now = monotonic()
         for index in range(50):
-            app_module._RATE_LIMIT_BUCKETS[f"send-email:198.51.100.{index}"] = deque([now - index])
+            # All still live, so the sweep leaves them and the cap is what acts.
+            app_module._RATE_LIMIT_REFUSALS[f"send-email:198.51.100.{index}"] = (
+                now + 60 + index,
+                "burst",
+            )
 
         self.client.post("/send-email", json={"firstName": "Julia", "email": "julia@example.com"})
 
-        self.assertLessEqual(len(app_module._RATE_LIMIT_BUCKETS), 20)
-        # Least-recently-active go first, so the freshest keys survive.
-        self.assertIn("send-email:198.51.100.0", app_module._RATE_LIMIT_BUCKETS)
-        self.assertNotIn("send-email:198.51.100.49", app_module._RATE_LIMIT_BUCKETS)
+        self.assertLessEqual(len(app_module._RATE_LIMIT_REFUSALS), 20)
+        # Soonest to expire go first: they have the least shielding left.
+        self.assertNotIn("send-email:198.51.100.0", app_module._RATE_LIMIT_REFUSALS)
+        self.assertIn("send-email:198.51.100.49", app_module._RATE_LIMIT_REFUSALS)
 
     def test_hitting_the_cap_does_not_force_a_sweep_on_every_request(self) -> None:
         # The property the low-water mark buys. Without headroom the dict sits
         # pinned at the cap and every subsequent request re-sweeps and re-sorts.
-        app_module._RATE_LIMIT_MAX_BUCKETS = 20
-        app_module._next_bucket_sweep_at = monotonic() + 3600
+        app_module._RATE_LIMIT_MAX_TRACKED_KEYS = 20
+        app_module._next_refusal_sweep_at = monotonic() + 3600
         now = monotonic()
         for index in range(25):
-            app_module._RATE_LIMIT_BUCKETS[f"other:198.51.100.{index}"] = deque([now - index])
+            app_module._RATE_LIMIT_REFUSALS[f"other:198.51.100.{index}"] = (
+                now + 60 + index,
+                "burst",
+            )
 
         sweeps = []
-        real_sweep = app_module._sweep_expired_buckets
-        app_module._sweep_expired_buckets = lambda cutoff: (
-            sweeps.append(cutoff),
-            real_sweep(cutoff),
+        real_sweep = app_module._sweep_expired_refusals
+        app_module._sweep_expired_refusals = lambda swept_at: (
+            sweeps.append(swept_at),
+            real_sweep(swept_at),
         )[-1]
         try:
             for _ in range(5):
@@ -664,7 +881,7 @@ class AppRateLimitTests(unittest.TestCase):
                     "/send-email", json={"firstName": "Julia", "email": "j@example.com"}
                 )
         finally:
-            app_module._sweep_expired_buckets = real_sweep
+            app_module._sweep_expired_refusals = real_sweep
 
         self.assertEqual(len(sweeps), 1)
 
@@ -814,10 +1031,10 @@ class AppYardSignTests(unittest.TestCase):
     def setUp(self) -> None:
         self._orig_rate_limit_window_seconds = app_module._RATE_LIMIT_WINDOW_SECONDS
         self._orig_rate_limit_max_requests = app_module._RATE_LIMIT_MAX_REQUESTS
-        self._orig_rate_limit_buckets = app_module._RATE_LIMIT_BUCKETS
+        self._orig_rate_limit_refusals = app_module._RATE_LIMIT_REFUSALS
         self._orig_trusted_client_ip_header = app_module._TRUSTED_CLIENT_IP_HEADER
-        self._orig_next_bucket_sweep_at = app_module._next_bucket_sweep_at
-        self._orig_rate_limit_max_buckets = app_module._RATE_LIMIT_MAX_BUCKETS
+        self._orig_next_refusal_sweep_at = app_module._next_refusal_sweep_at
+        self._orig_rate_limit_max_tracked_keys = app_module._RATE_LIMIT_MAX_TRACKED_KEYS
         self._orig_load_email_config = app_module.load_email_config
         self._orig_load_sheets_config = app_module.load_sheets_config
         self._orig_send_yard_sign_request_email = app_module.send_yard_sign_request_email
@@ -826,7 +1043,7 @@ class AppYardSignTests(unittest.TestCase):
 
         app_module._RATE_LIMIT_WINDOW_SECONDS = 60
         app_module._RATE_LIMIT_MAX_REQUESTS = 5
-        app_module._RATE_LIMIT_BUCKETS = {}
+        app_module._RATE_LIMIT_REFUSALS = {}
 
         self.sent_requests = []
         self.confirmation_requests = []
@@ -877,10 +1094,10 @@ class AppYardSignTests(unittest.TestCase):
     def tearDown(self) -> None:
         app_module._RATE_LIMIT_WINDOW_SECONDS = self._orig_rate_limit_window_seconds
         app_module._RATE_LIMIT_MAX_REQUESTS = self._orig_rate_limit_max_requests
-        app_module._RATE_LIMIT_BUCKETS = self._orig_rate_limit_buckets
+        app_module._RATE_LIMIT_REFUSALS = self._orig_rate_limit_refusals
         app_module._TRUSTED_CLIENT_IP_HEADER = self._orig_trusted_client_ip_header
-        app_module._next_bucket_sweep_at = self._orig_next_bucket_sweep_at
-        app_module._RATE_LIMIT_MAX_BUCKETS = self._orig_rate_limit_max_buckets
+        app_module._next_refusal_sweep_at = self._orig_next_refusal_sweep_at
+        app_module._RATE_LIMIT_MAX_TRACKED_KEYS = self._orig_rate_limit_max_tracked_keys
         app_module.load_email_config = self._orig_load_email_config
         app_module.load_sheets_config = self._orig_load_sheets_config
         app_module.send_yard_sign_request_email = self._orig_send_yard_sign_request_email
@@ -962,10 +1179,10 @@ class AppDeepHealthTests(unittest.TestCase):
         self._orig_verify_smtp = app_module.verify_smtp_credentials
         self._orig_verify_sheets = app_module.verify_sheets_access
         self._orig_rate_limit_max_requests = app_module._RATE_LIMIT_MAX_REQUESTS
-        self._orig_rate_limit_buckets = app_module._RATE_LIMIT_BUCKETS
+        self._orig_rate_limit_refusals = app_module._RATE_LIMIT_REFUSALS
 
         app_module._RATE_LIMIT_MAX_REQUESTS = 5
-        app_module._RATE_LIMIT_BUCKETS = {}
+        app_module._RATE_LIMIT_REFUSALS = {}
         self._ok()
         self.client = app_module.app.test_client()
 
@@ -973,7 +1190,7 @@ class AppDeepHealthTests(unittest.TestCase):
         app_module.verify_smtp_credentials = self._orig_verify_smtp
         app_module.verify_sheets_access = self._orig_verify_sheets
         app_module._RATE_LIMIT_MAX_REQUESTS = self._orig_rate_limit_max_requests
-        app_module._RATE_LIMIT_BUCKETS = self._orig_rate_limit_buckets
+        app_module._RATE_LIMIT_REFUSALS = self._orig_rate_limit_refusals
 
     def _ok(self) -> None:
         app_module.verify_smtp_credentials = lambda config: None
@@ -1495,7 +1712,7 @@ class EdgeTokenTests(unittest.TestCase):
                     self._configured(),
                     mock.patch.multiple(
                         app_module,
-                        _RATE_LIMIT_BUCKETS={},
+                        _RATE_LIMIT_REFUSALS={},
                         load_email_config=lambda *_a, **_kw: email_config,
                         load_sheets_config=lambda *_a, **_kw: sheets_config,
                         send_submission_email=lambda _config, submission: sent.append(submission),
