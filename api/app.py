@@ -532,7 +532,7 @@ def _sweep_degraded_counts(now: float) -> None:
         if not bucket:
             del _DEGRADED_BURST_COUNTS[key]
 
-    if len(_DEGRADED_BURST_COUNTS) > _RATE_LIMIT_MAX_TRACKED_KEYS:
+    if len(_DEGRADED_BURST_COUNTS) >= _RATE_LIMIT_MAX_TRACKED_KEYS:
         logger.warning(
             "Degraded rate-limit counters exceeded %d keys; clearing them",
             _RATE_LIMIT_MAX_TRACKED_KEYS,
@@ -613,8 +613,16 @@ def _consume_rate_limit(scope: str) -> tuple[int, str] | None:
     # each request scale with the number of cached refusals. Once per window is
     # enough to bound memory -- nothing survives its deadline by more than a
     # window -- and turns that into O(1) amortised. The cap is the safety valve
-    # for a burst of new keys arriving between sweeps.
-    if now >= _next_refusal_sweep_at or len(_RATE_LIMIT_REFUSALS) >= _RATE_LIMIT_MAX_TRACKED_KEYS:
+    # for a burst of new keys arriving between sweeps, and it has to watch both
+    # dictionaries: they fill in opposite conditions, the cache only while the
+    # store is answering and the fallback counters only while it is not. Testing
+    # the cache alone left the fallback bounded by the schedule and nothing
+    # else, which is a whole window of unbounded growth during an incident.
+    if (
+        now >= _next_refusal_sweep_at
+        or len(_RATE_LIMIT_REFUSALS) >= _RATE_LIMIT_MAX_TRACKED_KEYS
+        or len(_DEGRADED_BURST_COUNTS) >= _RATE_LIMIT_MAX_TRACKED_KEYS
+    ):
         _sweep_expired_refusals(now)
         _evict_to_cap()
         _sweep_degraded_counts(now)
@@ -760,7 +768,7 @@ _EDGE_LOG_STATE = {"next_at": 0.0, "suppressed": 0}
 
 
 def _log_unproxied_request(path: str) -> None:
-    """Warn about an unproxied caller, at most once per window."""
+    """Warn about an unproxied caller, at most once per window *per worker*."""
     now = monotonic()
     if now < _EDGE_LOG_STATE["next_at"]:
         _EDGE_LOG_STATE["suppressed"] += 1

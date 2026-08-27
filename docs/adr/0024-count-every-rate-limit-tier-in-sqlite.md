@@ -161,7 +161,11 @@ have caused one key at a time.
   [../monitoring.md](../monitoring.md#the-rate-limit-thresholds-are-counted-in-a-11-sample) was calibrated
   against recorded refusals while the effective ceiling was `5 x N`, so expect
   the burst condition to be noisier and re-measure before trusting the number.
-  The hourly condition is the campaign-visible one and is unaffected.
+  The hourly condition may go slightly quieter for the opposite reason: a caller
+  bursty enough to leak past `5 x N` used to reach it and be refused there, and
+  is now stopped a tier earlier. That is the campaign-visible condition, so the
+  change is worth knowing — the patient caller it was sized against is
+  unaffected either way.
 - **A refused caller costs one store round trip per window instead of zero.**
   Bounded by the refusal cache, and paid only by callers who are being refused.
 - **Nothing to migrate, and the deploy order does not matter.** The schema is
@@ -170,10 +174,20 @@ have caused one key at a time.
   does not enforce the burst window in SQLite while it lives. The renamed
   variable is not set in production; were it set, the new name would be unread
   and the cap would fall back to its default of 10,000.
-- **The in-memory tier stops being a place a limit can hide.** The defect in
-  #158 was possible because a control described in four documents lived in a
-  module global whose scope nobody restated. What is left in memory now cannot
-  be mistaken for the limit, because it holds no counts.
+- **The rate limiter stops being a place a limit can hide; the process does
+  not.** The defect in #158 was possible because a control described in four
+  documents lived in a module global whose scope nobody restated. What is left
+  in memory here cannot be mistaken for the limit, because it holds no counts
+  and the fallback that does is named for the condition it runs in.
+
+  The same shape survives elsewhere and this record does not close it.
+  `_EDGE_LOG_STATE` throttles the unproxied-caller warning "at most once per
+  window" ([0020](0020-authenticate-the-origin-path.md)) out of a module global,
+  so the real rate is once per window _per worker_ and the rollout's audit step
+  reads `suppressed` counts fragmented across them. `_deep_health_cache` is the
+  same construction, but [0017](0017-origin-trust-boundary-and-health-probe-cache.md)
+  states its scope outright and sizes the consequence, which is the difference
+  between a per-worker cache that is documented and one that is not.
 
 ## Alternatives considered
 

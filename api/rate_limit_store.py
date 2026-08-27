@@ -160,6 +160,12 @@ def consume(
     Wall clock, not `monotonic()`: every value is written by one worker and read
     by another, and a monotonic reading means nothing outside its own process.
     """
+    if not tiers:
+        # No windows configured is no limit, not a crash. `max()` below is the
+        # only expression in here that can raise outside a handler, and this
+        # module's whole contract is that it never does.
+        return ALLOWED
+
     path = db_path or DEFAULT_DB_PATH
     current = time() if now is None else now
 

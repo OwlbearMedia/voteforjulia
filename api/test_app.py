@@ -606,6 +606,31 @@ class AppRateLimitTests(unittest.TestCase):
 
         self.assertEqual(app_module._DEGRADED_BURST_COUNTS, {})
 
+    def test_the_fallback_counters_are_capped_between_sweeps(self) -> None:
+        """The cap has to hold without waiting for the scheduled sweep.
+
+        This is the case the sibling test above cannot reach. The per-request
+        cap arm used to read only the refusal cache, which is empty in exactly
+        the condition that fills these counters -- so during an incident the
+        fallback was bounded by a 60-second schedule and nothing else.
+        Reproduced before the fix: 200 distinct callers, cap 20, 200 buckets.
+        """
+        app_module._RATE_LIMIT_MAX_TRACKED_KEYS = 20
+        app_module._TRUSTED_CLIENT_IP_HEADER = "X-Forwarded-For"
+        # Far in the future, so nothing here is the scheduled sweep running.
+        app_module._next_refusal_sweep_at = monotonic() + 3600
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        with self._unreachable_store():
+            for index in range(60):
+                self.client.post(
+                    "/send-email", json=payload, headers={"X-Forwarded-For": f"198.51.100.{index}"}
+                )
+
+        self.assertLessEqual(
+            len(app_module._DEGRADED_BURST_COUNTS), app_module._RATE_LIMIT_MAX_TRACKED_KEYS
+        )
+
     def test_burst_tier_429_is_reported_to_the_new_relic_agent(self) -> None:
         # A 429 is a returned response, not a raised exception, so the agent
         # records it with no error and nothing naming the tier. These two

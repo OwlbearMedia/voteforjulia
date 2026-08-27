@@ -318,6 +318,14 @@ def test_a_database_that_fails_mid_transaction_reports_unavailable(db_path, capl
     assert "Rate-limit store" in caplog.text
 
 
+def test_no_tiers_at_all_allows_the_request_rather_than_raising(db_path):
+    # Unreachable from app.py, which always passes two. Pinned because the one
+    # expression in `consume` that can raise outside a handler is the `max()`
+    # over this list, and a limiter that raises is a 500 on a form -- the exact
+    # thing every other path in here bends over backwards to avoid.
+    assert consume("k", tiers=[], db_path=db_path) == ALLOWED
+
+
 def test_the_table_does_not_grow_without_bound(db_path):
     """Expired rows are pruned, so the file cannot grow forever.
 

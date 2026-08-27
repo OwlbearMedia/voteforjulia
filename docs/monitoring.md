@@ -293,8 +293,15 @@ Passenger worker kept its own count and the effective ceiling was 5 x however
 many workers were alive — measured on 2026-08-20, seven rapid requests did not
 trip it and the first refusal came at about fifteen. **The burst tier therefore
 refuses more traffic now than it did when its threshold was calibrated.** Expect
-that condition to be noisier until it is re-measured; the hourly tier's
-behaviour, and its threshold, are unchanged.
+that condition to be noisier until it is re-measured.
+
+**The hourly condition may go quieter, and that is not the same as things being
+calm.** A caller bursty enough to leak past a per-worker burst tier used to
+reach the SQLite hourly tier and be refused there, producing the `hourly`
+refusals that the on-policy, campaign-visible condition counts. Stopped at
+`burst` now, they produce none. The patient caller that tier was actually built
+for — the 2026-08-10 shape, 23 an hour and never three in a minute — is
+unaffected, so the condition still catches what it was sized against.
 
 **Conditions existing is not the same as being alerted.** A policy with no
 notification workflow and destination raises issues that sit in the UI and reach
