@@ -328,6 +328,17 @@ conventions and the traps.
   [ADR-0024](adr/0024-count-every-rate-limit-tier-in-sqlite.md) the counts live
   in SQLite and an allowed request leaves nothing in the process to inspect, so
   "two requests were keyed apart" is shown by a third request being refused.
+- **When the same defect arrives by a third route, test the property instead.**
+  Three bugs on one branch were all "a client honouring `Retry-After` exactly
+  gets refused again" — truncation, a window holding more than its limit, and
+  answering with the first full tier while a later one still held. Each got a
+  test for its own route, and the next route was found in review anyway.
+  `test_every_refusal_advertises_a_wait_that_is_actually_enough` generates
+  states from a fixed seed and asserts the promise directly; it catches all
+  three when their fixes are reverted. Fix the seed — a test that shuffles
+  under you is worse than none — and **assert that the generator still produces
+  the interesting case**, or it will quietly start asserting nothing and go on
+  passing.
 - **A test that restates the diff is not a test**, and the trap is worst right
   after fixing something, because listing what you just added _feels_ like
   checking it. `JuliaButton`'s disabled-link test asserted the three things the

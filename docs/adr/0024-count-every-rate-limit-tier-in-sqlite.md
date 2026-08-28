@@ -211,6 +211,27 @@ wholesale instead, which is blunt on purpose: they only hold anything during an
 incident, and a reset allowance is the same failure selective eviction would
 have caused one key at a time.
 
+## The property, not the three routes to breaking it
+
+Three separate defects on this branch were the same broken promise: **a client
+that honours `Retry-After` exactly must not be refused again**, which
+[0014](0014-do-not-trust-forwarding-headers.md) established and which is the
+only thing the header actually says. Truncating the value broke it. A window
+holding more than its limit broke it. Answering with the first full tier while a
+later one still held broke it. Each was found in review after the previous fix
+had shipped, and each got a test for its own route.
+
+Routes are not the unit worth testing here. `test_every_refusal_advertises_a_wait_that_is_actually_enough`
+generates three hundred states from a fixed seed — arbitrary row patterns,
+including windows holding more than their limit, and both tier orders — and
+asserts the property directly on every refusal. It catches all three of the
+defects above when their fixes are reverted, and would have caught the second
+and third before they were written.
+
+It also asserts that the generator still produces refusals. A generative test
+that stops generating the interesting case asserts nothing while continuing to
+pass, which is the failure mode a property test is most likely to rot into.
+
 ## Consequences
 
 - **The documented limit is the enforced limit.** 5 per 60 seconds, per client

@@ -12,6 +12,7 @@ autouse fixture, since these call `consume` directly.
 from __future__ import annotations
 
 import multiprocessing
+import random
 import sqlite3
 import subprocess
 import sys
@@ -516,6 +517,84 @@ def test_concurrent_workers_cannot_both_take_the_last_slot(db_path):
     )
     # And the losers got a usable Retry-After rather than a bare refusal.
     assert all(1 <= result.refusal.retry_after <= 3600 for result in results if result != ALLOWED)
+
+
+# --- The one promise Retry-After makes, over a generated state space --------
+
+
+def _seed_hits(db_path, key: str, timestamps) -> None:
+    """Put rows in `hits` directly, so states the limiter cannot produce are reachable.
+
+    A window holding more than its limit is one of them: it comes from an old
+    worker counting under a wider window, or from a limit lowered against rows
+    already on disk, and going through `consume` to build it would beg the
+    question.
+    """
+    reset(db_path)
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.executemany(
+            "INSERT INTO hits (key, ts) VALUES (?, ?)", [(key, ts) for ts in timestamps]
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_every_refusal_advertises_a_wait_that_is_actually_enough(db_path):
+    """The property, rather than the three routes to breaking it.
+
+    Three separate defects on this branch were the same broken promise: a client
+    that honours `Retry-After` exactly must not be refused again. Truncating the
+    value did it, a window holding more than its limit did it, and answering
+    with the first full tier while a later one still held did it. Each was found
+    after shipping, and each got a test for its own route.
+
+    This asserts the property those three were instances of, across generated
+    states, so a fourth route fails here rather than in review. The seed is
+    fixed: a failure has to be reproducible, and a test that shuffles under you
+    is worse than no test.
+    """
+    rng = random.Random(20260827)
+    key = "send-email:198.51.100.4"
+    refused = 0
+
+    for scenario in range(300):
+        first = Tier(BURST, rng.randint(1, 6), rng.choice([10, 60, 90]))
+        second = Tier(HOURLY, rng.randint(1, 12), rng.choice([120, 600, 3600]))
+        scenario_tiers = [first, second]
+        rng.shuffle(scenario_tiers)
+
+        # Rows anywhere inside the widest window, including more of them than
+        # either limit allows.
+        span = max(first.window_seconds, second.window_seconds)
+        start = 100_000.0
+        timestamps = sorted(start + rng.uniform(0, span) for _ in range(rng.randint(1, 20)))
+        now = start + span
+
+        _seed_hits(db_path, key, timestamps)
+
+        verdict = consume(key, tiers=scenario_tiers, db_path=db_path, now=now)
+        if verdict.refusal is None:
+            continue
+
+        refused += 1
+        honoured = now + verdict.refusal.retry_after
+        after = consume(key, tiers=scenario_tiers, db_path=db_path, now=honoured)
+
+        assert after == ALLOWED, (
+            f"scenario {scenario}: refused by {verdict.refusal.tier} with "
+            f"Retry-After {verdict.refusal.retry_after} "
+            f"(exact {verdict.refusal.expires_in!r}), and honouring it exactly was "
+            f"refused again by {after.refusal and after.refusal.tier}. "
+            f"tiers={scenario_tiers} now={now} rows={timestamps}"
+        )
+
+    # A generator that stops generating refusals asserts nothing at all, and
+    # would keep passing while the property rotted. This is the floor that says
+    # the loop above did real work; 227 of 300 refuse today, so it fails on a
+    # broken generator rather than on an unlucky one.
+    assert refused >= 100, f"only {refused} of 300 scenarios refused; the generator has drifted"
 
 
 # --- Not asking a database that just failed, ADR-0024 -----------------------
