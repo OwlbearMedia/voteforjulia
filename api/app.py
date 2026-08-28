@@ -482,7 +482,11 @@ def _evict_to_cap() -> None:
     # forces another sweep-and-sort -- which would turn this safety valve back
     # into the per-request O(n) cost it exists to remove. Headroom means it runs
     # once per (cap / 10) new keys instead.
-    keep = max(_RATE_LIMIT_MAX_TRACKED_KEYS * 9 // 10, 1)
+    # Floor of zero, not one. At a cap of 1 a floor of one leaves nothing to
+    # trim, so the cache grows to two, oscillates there, and sorts on every
+    # request -- above the cap the operator asked for. Clearing outright is the
+    # right answer at that size and matches `_sweep_degraded_counts`.
+    keep = max(_RATE_LIMIT_MAX_TRACKED_KEYS * 9 // 10, 0)
     excess = len(_RATE_LIMIT_REFUSALS) - keep
 
     by_soonest_deadline = sorted(_RATE_LIMIT_REFUSALS.items(), key=lambda item: item[1][0])

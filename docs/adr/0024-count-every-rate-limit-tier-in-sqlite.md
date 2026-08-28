@@ -191,11 +191,26 @@ turns a database incident into the worker pile-up [0018](0018-cap-concurrent-sub
 exists to prevent, arriving on the path that was supposed to be the cheap one.
 
 `STORE_BACKOFF_SECONDS` lives in the store rather than in `app.py` so every
-entry point is covered by construction. `acquire` and `release` hold the same
-timeout against the same file, and a submission would otherwise pay it twice
-more on its way through the concurrency cap — the fix landing on the case in
-front of you while its siblings keep the hole open. Each keeps its own fail-open
-answer; what it skips is the wait before reaching it.
+entry point is covered by construction. `acquire` holds the same timeout against
+the same file, and a submission would otherwise pay it again on its way into the
+concurrency cap — the fix landing on the case in front of you while its siblings
+keep the hole open. Each keeps its own fail-open answer; what it skips is the
+wait before reaching it.
+
+**`release` is the deliberate exception, and it is not symmetric with the
+others.** Skipping it leaves a row that `acquire` counts against the cap until
+the TTL expires — 270 seconds by default — so a ten-second incident became
+minutes of `503`s after the database came back, and on `/health/deep`, whose
+entire budget is two slots, the probe refusing itself. That is a worse outcome
+than the wait it avoided, and it is caused by the avoidance rather than by the
+incident.
+
+So `acquire` marks the tokens it hands back without recording anything, and
+`release` drops those without a round trip while still attempting a real one.
+That keeps the common case free — during an incident `acquire` is not recording,
+so its tokens cost nothing to release — and bounds the waits actually paid by
+how many slots exist: a dozen submissions and two probes, once each, at the end
+of a request whose work is already done.
 
 There is no health signal to wait for. The first call after the window simply
 tries, so one request per worker per window probes and the rest are answered

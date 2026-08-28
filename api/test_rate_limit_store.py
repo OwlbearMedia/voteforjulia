@@ -641,25 +641,60 @@ def test_a_failed_database_is_not_asked_again_until_the_backoff_expires(db_path,
 
 
 def test_the_backoff_covers_every_entry_point_rather_than_only_consume(db_path, monkeypatch):
-    """`acquire` and `release` share the file, so they share the timeout.
+    """`acquire` and `consume` share the file, so they share the timeout.
 
     Covering `consume` alone would leave a submission paying the busy timeout
-    twice more on its way through the concurrency cap -- the fix landing on the
-    case in front of you while its siblings keep the hole open.
+    again on its way into the concurrency cap -- the fix landing on the case in
+    front of you while its siblings keep the hole open.
+
+    `release` is the deliberate exception and has its own tests below: a token
+    holding a real slot is released even during a backoff, because skipping it
+    leaks the cap for the whole TTL.
     """
     attempts = []
     monkeypatch.setattr(rate_limit_store, "_connect", _connect_that_always_fails(attempts))
 
     # Armed through `acquire`, to show the state is shared rather than per
     # function: nothing calls `consume` until after the failure.
-    assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path, now=1000.0) is not None
+    unrecorded = acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path, now=1000.0)
+    assert unrecorded is not None
     assert len(attempts) == 1
 
     assert consume("k", tiers=tiers(1, 60), db_path=db_path, now=1000.1) == UNAVAILABLE
     assert acquire(SCOPE, limit=1, ttl_seconds=60, db_path=db_path, now=1000.2) is not None
-    release("some-token", db_path=db_path, now=1000.3)
+    # A token from a failed `acquire` records nothing, so releasing it must not
+    # go looking either -- otherwise every request during an incident pays the
+    # timeout on its way out.
+    release(unrecorded, db_path=db_path, now=1000.3)
 
     assert len(attempts) == 1, "an entry point kept asking a database known to be down"
+
+
+def test_a_real_slot_is_released_even_while_the_store_is_backed_off(db_path):
+    """The leak that skipping every release caused.
+
+    A slot taken before a failure and finished during the backoff used to be
+    skipped, so its row survived until the TTL -- 270 seconds by default. Once
+    the database came back, `acquire` counted that stale row against the cap the
+    whole time. On `/health/deep`, whose entire budget is two slots, that is the
+    probe refusing itself for minutes after a ten-second incident.
+
+    Reproduced before the fix with two slots: both taken, both released during
+    the backoff, and the cap still full after recovery.
+    """
+    token = acquire(SCOPE, limit=1, ttl_seconds=270, db_path=db_path, now=1000.0)
+    assert token is not None
+    assert acquire(SCOPE, limit=1, ttl_seconds=270, db_path=db_path, now=1000.1) is None
+
+    # Something else fails and arms the window; this store is fine.
+    rate_limit_store._note_unreachable(1000.2)
+    release(token, db_path=db_path, now=1000.3)
+
+    # The window passes and the cap is consulted again.
+    rate_limit_store.clear_backoff()
+    assert acquire(SCOPE, limit=1, ttl_seconds=270, db_path=db_path, now=1000.4) is not None, (
+        "the slot was never given back, so the cap stays full until the TTL"
+    )
 
 
 def test_the_backoff_runs_from_when_the_failure_was_seen_not_when_the_call_began(

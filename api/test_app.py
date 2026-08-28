@@ -673,6 +673,29 @@ class AppRateLimitTests(unittest.TestCase):
             len(app_module._DEGRADED_BURST_COUNTS), app_module._RATE_LIMIT_MAX_TRACKED_KEYS
         )
 
+    def test_a_cap_of_one_still_holds_the_cache_to_one(self) -> None:
+        """The smallest cap anyone could set, and the one the trim could not reach.
+
+        A low-water mark floored at one leaves nothing to trim when the cap is
+        one, so the cache grew to two, oscillated there, and sorted on every
+        request -- above the cap that was asked for. Clearing outright is the
+        right answer at that size.
+        """
+        app_module._RATE_LIMIT_MAX_TRACKED_KEYS = 1
+        app_module._TRUSTED_CLIENT_IP_HEADER = "X-Forwarded-For"
+        payload = {"firstName": "Julia", "email": "julia@example.com"}
+
+        for index in range(6):
+            # Two requests per address: the first is allowed, the second refused
+            # and cached, so every pair adds a key.
+            for _ in range(2):
+                self.client.post(
+                    "/send-email", json=payload, headers={"X-Forwarded-For": f"198.51.100.{index}"}
+                )
+            self.assertLessEqual(
+                len(app_module._RATE_LIMIT_REFUSALS), app_module._RATE_LIMIT_MAX_TRACKED_KEYS
+            )
+
     def test_burst_tier_429_is_reported_to_the_new_relic_agent(self) -> None:
         # A 429 is a returned response, not a raised exception, so the agent
         # records it with no error and nothing naming the tier. These two

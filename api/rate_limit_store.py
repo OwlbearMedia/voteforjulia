@@ -100,6 +100,19 @@ STORE_BACKOFF_SECONDS = 10.0
 _backoff_until = 0.0
 
 
+# The mark on a token from a call that never recorded a slot -- the store was
+# unreachable, or was being left alone after a failure. `release` drops these
+# without a round trip, because there is nothing on disk to delete.
+#
+# Telling them apart is what lets a *real* slot still be released during a
+# backoff. Skipping every release leaked the cap: a slot taken before the
+# failure and finished during the window survived until the TTL, so `acquire`
+# counted it for another 270 seconds after the database came back. On
+# `/health/deep`, whose whole budget is two slots, that is the probe refusing
+# itself long after the incident. See ADR-0024.
+_UNRECORDED_PREFIX = "unrecorded-"
+
+
 def _clock(now: float | None) -> float:
     """The current time, unless the caller pinned one. Keeps the test seam."""
     return time() if now is None else now
@@ -196,7 +209,7 @@ def consume(
     db_path: Path | None = None,
     now: float | None = None,
 ) -> Verdict:
-    """Record a request against `key`, or report the first tier that refuses it.
+    """Record a request against `key`, or report the tier still holding it out.
 
     Returns `ALLOWED` when the request is within every tier, `UNAVAILABLE` when
     the database could not be reached, or a `Verdict` carrying a `Refusal` whose
@@ -323,7 +336,8 @@ def acquire(
     budget a supporter's submission needs, or the other way round.
 
     The caller must pass the returned token to `release`. Fails open: a store it
-    cannot reach yields a token, so the request proceeds.
+    cannot reach yields a token anyway, so the request proceeds -- marked, so
+    that releasing it costs nothing, because no slot was ever recorded.
 
     The TTL is what makes this safe without a cleanup job. A worker killed
     mid-request never calls `release`, and Passenger reaps workers here — so
@@ -338,14 +352,14 @@ def acquire(
     if _in_backoff(current):
         # Fail open immediately, which is what an unreachable store does anyway
         # -- the difference is not spending the busy timeout to find out.
-        return token
+        return _UNRECORDED_PREFIX + token
 
     try:
         connection = _connect(path)
     except (sqlite3.Error, OSError):
         logger.exception("Concurrency store unavailable at %s; allowing request", path)
         _note_unreachable(_clock(now))
-        return token
+        return _UNRECORDED_PREFIX + token
 
     try:
         with connection:
@@ -370,20 +384,28 @@ def acquire(
     except (sqlite3.Error, OSError):
         logger.exception("Concurrency store failed at %s; allowing request", path)
         _note_unreachable(_clock(now))
-        return token
+        return _UNRECORDED_PREFIX + token
     finally:
         connection.close()
 
 
 def release(token: str, db_path: Path | None = None, now: float | None = None) -> None:
-    """Give back a slot taken by `acquire`. Safe to call with an expired token."""
-    path = db_path or DEFAULT_DB_PATH
-    current = _clock(now)
+    """Give back a slot taken by `acquire`. Safe to call with an expired token.
 
-    if _in_backoff(current):
-        # The TTL reclaims the slot, which is this function's own answer to
-        # failing. Waiting out the timeout to reach that answer is the part
-        # worth skipping, and this runs in a `finally` on the request path.
+    Unlike its siblings this is attempted even while the store is backed off,
+    and deliberately. A token that holds a real slot is worth the wait: skipping
+    it leaves a row that `acquire` counts against the cap until the TTL expires,
+    turning a ten-second incident into minutes of refusals afterwards. The
+    The common case during an incident costs nothing anyway, because `acquire`
+    will have handed back an unrecorded token, which the check below drops.
+
+    The wait is bounded by how many slots exist -- a dozen submissions and two
+    probes -- and paid once each, at the end of a request whose work is already
+    done.
+    """
+    path = db_path or DEFAULT_DB_PATH
+
+    if token.startswith(_UNRECORDED_PREFIX):
         return
 
     try:
