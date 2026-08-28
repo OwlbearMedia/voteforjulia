@@ -395,7 +395,7 @@ def release(token: str, db_path: Path | None = None, now: float | None = None) -
     Unlike its siblings this is attempted even while the store is backed off,
     and deliberately. A token that holds a real slot is worth the wait: skipping
     it leaves a row that `acquire` counts against the cap until the TTL expires,
-    turning a ten-second incident into minutes of refusals afterwards. The
+    turning a ten-second incident into minutes of refusals afterwards.
     The common case during an incident costs nothing anyway, because `acquire`
     will have handed back an unrecorded token, which the check below drops.
 
