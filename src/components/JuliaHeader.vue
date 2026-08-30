@@ -22,6 +22,7 @@ const navLinks: { to: RouteLocationRaw; label: string }[] = [
   { to: '/meet-julia', label: 'Meet Julia' },
   { to: { path: '/', hash: '#issues' }, label: 'Issues' },
   { to: '/events', label: 'Events' },
+  { to: '/news', label: 'News' },
   { to: '/endorsements', label: 'Endorsements' },
   { to: '/volunteer', label: 'Volunteer' },
   { to: '/yard-signs', label: 'Yard Signs' }
