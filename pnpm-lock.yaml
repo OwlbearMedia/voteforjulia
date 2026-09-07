@@ -12,8 +12,8 @@ importers:
         specifier: ^4.0.1
         version: 4.0.1(vue@3.5.41(typescript@6.0.3))
       '@newrelic/browser-agent':
-        specifier: ^1.320.0
-        version: 1.320.0
+        specifier: ^1.320.1
+        version: 1.320.1
       vue:
         specifier: ^3.5.41
         version: 3.5.41(typescript@6.0.3)
@@ -366,8 +366,8 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
-  '@newrelic/browser-agent@1.320.0':
-    resolution: {integrity: sha512-ViGOA7Pygfn6JaP5p8+eTZdc7dg2GTzkQpCwGyrZ/AkQZai2Obe7z7y42xXbK9QtsxLzyKm2UOv2BWTiB9fw5A==}
+  '@newrelic/browser-agent@1.320.1':
+    resolution: {integrity: sha512-ez008PjVI1hRSYV+ktQxfNQcD2gxnxG3lPUm+NTIFoRGuyIS2d4ANjlLrthFd0ETSwmuAuM1RAcIRkRcZmJ0CA==}
     engines: {node: '>=12.17.0 < 13.0.0 || >=13.7.0'}
 
   '@newrelic/publish-sourcemap@5.1.4':
@@ -3995,7 +3995,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@newrelic/browser-agent@1.320.0':
+  '@newrelic/browser-agent@1.320.1':
     dependencies:
       '@newrelic/rrweb': 1.1.2
       fflate: 0.8.2

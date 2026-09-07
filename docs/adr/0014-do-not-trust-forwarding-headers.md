@@ -69,6 +69,9 @@ Four supporting changes, all in [api/app.py](../../api/app.py):
   amortised instead of O(live keys).
 - **`RATE_LIMIT_MAX_BUCKETS` caps how many keys are tracked** (10,000 default),
   evicting least-recently-active keys down to a low-water mark when crossed.
+  Renamed `RATE_LIMIT_MAX_TRACKED_KEYS` by
+  [0024](0024-count-every-rate-limit-tier-in-sqlite.md), which left the cap and
+  the low-water mark alone and changed what is being counted.
 - **`Retry-After` rounds up.** Truncating it advertised a wait still inside the
   window, so a client that honoured the header exactly earned a second 429 for
   doing the right thing.
@@ -79,7 +82,11 @@ Four supporting changes, all in [api/app.py](../../api/app.py):
 
 - **The rate limiter now does what 0009 says it does.** Everything else in 0009
   still holds: in process memory, per endpoint and per client, no new
-  infrastructure, per-worker limits that reset on deploy.
+  infrastructure, per-worker limits that reset on deploy. _Two of those stopped
+  being true later — the sustained tier moved to SQLite in
+  [0016](0016-second-tier-rate-limiting-and-honeypot.md) and the burst tier
+  followed it in [0024](0024-count-every-rate-limit-tier-in-sqlite.md), which is
+  what makes the limits shared and durable rather than per-worker._
 - **Shared NAT now genuinely shares a bucket.** 0009 listed this as a
   consequence, but it was not actually reachable while any caller could opt out
   by sending a header. Five submissions a minute from one office or campus

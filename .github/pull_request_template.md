@@ -14,6 +14,8 @@
 - [ ] Tests pass (`pnpm test`)
 - [ ] Formatting passes (`pnpm format:check`)
 - [ ] Verified on the test environment
+- [ ] Copilot review (runs automatically on open) — every finding fixed or
+      answered, and its thread resolved
 - [ ] No secrets, ingest keys, or user API keys committed to source
 
 ## Screenshots / notes

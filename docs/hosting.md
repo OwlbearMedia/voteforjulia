@@ -568,8 +568,12 @@ stored per environment rather than on the repository, so that
 [the rule](#every-deploy-secret-is-environment-scoped) has no exceptions to
 remember.
 
-The order is what keeps this from being an outage. Every step fails open, so
-stopping halfway leaves the site working and the gap merely still open.
+The order is what keeps this from being an outage. Every step below fails open,
+so stopping halfway leaves the site working and the gap merely still open —
+**except step 4**, which is why it is step 4. Once the pin is expected, an unset
+`SSH_HOST_FINGERPRINT` aborts all four deploy jobs rather than deploying
+unverified ([ADR-0023](adr/0023-pin-the-deploy-host-key.md)), so on an account
+where it has never been set, nothing deploys until it is.
 
 **Step 0 is a merge, and it is not optional.** The `.htaccess` gate ships as a
 placeholder that the deploy substitutes, and
@@ -658,25 +662,67 @@ repository.)
    the one line that separates "arriving" from "not looking". The value never
    appears in it; the length does.
 
-4. **Pin the SSH host key first**, as `SSH_HOST_FINGERPRINT`. The token is
-   substituted on the runner, so the `.htaccess` upload is the one transfer in
-   either workflow that carries a secret — and `appleboy`'s actions skip host
-   verification entirely when `fingerprint` is empty. `scp-action` documents
-   that default as "skip verification"; `easyssh-proxy` uses
-   `ssh.InsecureIgnoreHostKey()`. Unpinned, anything that can answer for the
-   host receives the armed file.
+4. **Pin the SSH host key first**, as `SSH_HOST_FINGERPRINT`. `appleboy`'s
+   actions skip host verification entirely when `fingerprint` is empty —
+   `scp-action` documents that default as "skip verification"; `easyssh-proxy`
+   uses `ssh.InsecureIgnoreHostKey()`. Unpinned, anything that can answer for
+   the host receives whatever the step sends and runs whatever it scripts. Every
+   step in both workflows pins it ([ADR-0023](adr/0023-pin-the-deploy-host-key.md));
+   the value has to be right before any of them can run.
 
-   **Pin the key type the deploy negotiates, which is neither the one `ssh`
-   picks nor the one Go's current source suggests.** The host offers RSA, ECDSA
-   and Ed25519, and which is presented depends on the client's preference order.
-   OpenSSH prefers Ed25519. Go's `x/crypto/ssh` orders `supportedHostKeyAlgos`
-   differently — **and that order changed between releases**, so it has to be
-   read from the version the action actually pins, not from `master`:
+   **Pin the key type the deploy negotiates, which is not the one `ssh` picks.**
+   The host offers RSA, ECDSA and Ed25519, and which is presented depends on the
+   client's preference order. OpenSSH prefers Ed25519. Go's `x/crypto/ssh` does
+   not, and **the two actions do not even share a version of it** — the deploy
+   runs two different Go binaries:
 
-   | `x/crypto` version                                      | First non-certificate algorithm |
-   | ------------------------------------------------------- | ------------------------------- |
-   | v0.17.0 — via `scp-action@v0.1.7` → `drone-scp` v1.6.14 | `ecdsa-sha2-nistp256`           |
-   | current `master`                                        | `rsa-sha2-256`                  |
+   | Action              | Binary             | `x/crypto` | Client proposes         | First non-certificate |
+   | ------------------- | ------------------ | ---------- | ----------------------- | --------------------- |
+   | `scp-action@v0.1.7` | `drone-scp` 1.6.14 | v0.17.0    | `supportedHostKeyAlgos` | `ecdsa-sha2-nistp256` |
+   | `ssh-action@v1.2.5` | `drone-ssh` 1.8.2  | v0.45.0    | `defaultHostKeyAlgos`   | `ecdsa-sha2-nistp256` |
+
+   They agree, so one stored value serves every step in the pipeline — but
+   **read the
+   variable the handshake actually proposes, not the one named "supported"**.
+   Modern `x/crypto` has both, and they differ: v0.45.0's `supportedHostKeyAlgos`
+   leads with `rsa-sha2-256` and is only the list of what the package
+   implements, while `handshake.go` proposes `defaultHostKeyAlgos` when
+   `HostKeyAlgorithms` is unset — and `easyssh-proxy` never sets it. An earlier
+   version of this page read the first list and recorded RSA for current
+   releases; pinning an RSA fingerprint for `ssh-action` on that basis would
+   have failed every deploy in the pipeline. Confirm with the version in the
+   action's own `go.mod` rather than `master`:
+
+   ```
+   gh api "repos/appleboy/ssh-action/contents/entrypoint.sh?ref=v1.2.5" --jq .content \
+     | base64 -d | grep DRONE_SSH_VERSION
+   curl -fsSL https://raw.githubusercontent.com/golang/crypto/v0.45.0/ssh/handshake.go \
+     | grep -n 'config.HostKeyAlgorithms'
+   ```
+
+   **Better than reading it: run the binary.** `ssh-action` downloads
+   `drone-ssh` from GitHub releases, so the thing the deploy runs can be run by
+   hand, and this is the only check that covers the whole stack rather than the
+   two layers above. Run it **twice** — a success alone does not show the
+   fingerprint was compared rather than skipped, which is the failure mode this
+   whole section exists for:
+
+   ```
+   curl -fsSL https://github.com/appleboy/drone-ssh/releases/download/v1.8.2/drone-ssh-1.8.2-darwin-arm64 \
+     -o /tmp/drone-ssh && chmod +x /tmp/drone-ssh
+   eval "$(ssh -G vfj | awk '/^hostname /{print "H="$2} /^port /{print "P="$2} /^user /{print "U="$2}')"
+
+   # Want: connects. Then swap in the RSA fingerprint and want: mismatch.
+   /tmp/drone-ssh -H "$H" -p "$P" -u "$U" -i ~/.ssh/id_ed25519 \
+     --fingerprint "$(ssh-keygen -F "[$H]:$P" -l | awk '/ECDSA/{print $3}')" \
+     --script.string 'echo ok'
+   ```
+
+   Measured 2026-08-25: ECDSA connects, RSA gives
+   `ssh: handshake failed: ssh: host key fingerprint mismatch`. Do this after
+   any bump of either action — [scripts/test_deploy_workflows.py](../scripts/test_deploy_workflows.py)
+   fails the PR precisely so that the bump stops here rather than on the next
+   production deploy.
 
    So today the deploy is presented the **ECDSA** host key. Ask the server
    directly, with a client told to use the pinned version's order:
@@ -694,7 +740,10 @@ repository.)
    Getting this wrong is loud and safe: the handshake fails, `drone-scp`
    reports `ssh: handshake failed: ssh: host key fingerprint mismatch`, and
    the deploy stops before uploading anything. It costs a run, not an outage
-   — measured 2026-08-18, when this page still said RSA.
+   — measured 2026-08-18, when this page still said RSA. Loud is not the same as
+   cheap now that everything is pinned: the first run of a deploy-workflow
+   change is against production, so a wrong value is a failed production deploy
+   rather than a failed test one.
 
    **Cross-check it before trusting it**, because that single connection is
    trust-on-first-use and would confirm an impostor as readily as the real host.
@@ -730,8 +779,10 @@ repository.)
    If the deploy later fails with a fingerprint mismatch, the server presented
    a different key type than the one pinned — take that type's
    fingerprint from the first command rather than pasting whatever the error
-   reports. **Each deploy refuses to run once its own token secret is set and
-   this is not**, so the ordering is enforced rather than remembered.
+   reports. **Each deploy job refuses to start when this secret is unset**, so
+   the ordering is enforced rather than remembered — an empty `fingerprint:` is
+   not an error in these actions, it is silently no verification, which is the
+   one failure this guard exists to make loud.
 
 5. **Add `EDGE_SHARED_TOKEN` to the `test` environment first**, since test is
    where a mistake is survivable, then to `production` — Settings →
@@ -1196,19 +1247,19 @@ Abuse controls — read at import, **restart required**:
 | `ORIGIN_ENFORCED`                     | `true`                                      | `false` logs cross-site posts without refusing them. [ADR-0017](adr/0017-origin-trust-boundary-and-health-probe-cache.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `HONEYPOT_ENFORCED`                   | `true`                                      | `false` logs a filled honeypot without refusing it. [ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `CORS_ALLOWED_ORIGINS`                | apex, www, test, test-api, `localhost:5173` | Comma-separated. Since ADR-0017 this also decides who may _submit_, not only who may read a response.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `RATE_LIMIT_MAX_REQUESTS`             | `5`                                         | Burst tier, per client per endpoint.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `RATE_LIMIT_MAX_REQUESTS`             | `5`                                         | Burst tier, per client per endpoint, counted across every worker since [ADR-0024](adr/0024-count-every-rate-limit-tier-in-sqlite.md).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `RATE_LIMIT_WINDOW_SECONDS`           | `60`                                        |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `LONG_RATE_LIMIT_MAX_REQUESTS`        | `10`                                        | Sustained tier, counted in SQLite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `LONG_RATE_LIMIT_WINDOW_SECONDS`      | `3600`                                      |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `HEALTH_LONG_RATE_LIMIT_MAX_REQUESTS` | `30`                                        | `/health/deep` only. Raise before shortening the monitor's period.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `RATE_LIMIT_MAX_BUCKETS`              | `10000`                                     | Memory backstop; crossing it resets allowances, failing open.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `RATE_LIMIT_MAX_TRACKED_KEYS`         | `10000`                                     | Backstop on how many keys one worker holds in memory — the refusal cache, and the fallback counters used while the store is unreachable. Crossing it costs a store round trip or a reset allowance, never correctness. Renamed from `RATE_LIMIT_MAX_BUCKETS` on 2026-08-26 ([ADR-0024](adr/0024-count-every-rate-limit-tier-in-sqlite.md)); the old name is unread, so a stale cPanel value silently means the default.                                                                                                                                                                                                                                             |
 | `TRUSTED_CLIENT_IP_HEADER`            | _unset_                                     | **Leave unset unless something really does front the app.** Setting it lets any caller mint a fresh bucket per request. [ADR-0014](adr/0014-do-not-trust-forwarding-headers.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `MAX_CONCURRENT_SUBMISSIONS`          | `12`                                        | Submissions served at once, across all workers; the overflow gets a 503. Sized against the LVE memory cap, not the process cap. [ADR-0018](adr/0018-cap-concurrent-submissions.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `MAX_CONCURRENT_HEALTH_PROBES`        | `2`                                         | `/health/deep`'s own slot budget, counted separately so a probe flood cannot close the forms.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `INFLIGHT_TTL_SECONDS`                | unset (derives; `270` on default timeouts)  | How long a slot survives unreleased, for a worker killed mid-request. Derived **per request** from the configured timeouts, so raising `SMTP_TIMEOUT_SECONDS` raises this automatically — it bounds each socket operation, not the session, and a session is a dozen of them. Set a value only to pin it; leave it unset to derive. `/health/deep` gets a shorter bound of its own, since a probe is half the work.                                                                                                                                                                                                                                                 |
 | `EDGE_SHARED_TOKEN`                   | _unset_                                     | The secret Cloudflare stamps as `X-Origin-Token`, **a different value on each app** — `api-sub` carries production's, `api_test` the test one, so PR code deployed to test cannot read production's. **At least 32 ASCII alphanumeric characters** — the same rule the deploy applies to the GitHub secret, re-applied here because this copy is typed in by hand and the deploy never sees it. An invalid value is logged and then read as unset. **Unset ⇒ the check does nothing at all**, whatever `EDGE_TOKEN_ENFORCED` says. Must match that environment's Transform Rule and GitHub environment secret. [ADR-0020](adr/0020-authenticate-the-origin-path.md) |
 | `EDGE_TOKEN_ENFORCED`                 | `false`                                     | `false` logs an unproxied request without refusing it. Defaults off because arming it before the Transform Rule exists refuses every caller, monitors included. See [the runbook](#closing-the-direct-to-origin-path).                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `EDGE_LOG_WINDOW_SECONDS`             | `60`                                        | At most one unproxied-caller warning per window, the next one carrying the count it stands for. A refused caller never reached the edge's rate limiting, so without this the log is the cheapest thing on the origin to flood. Lower it while running the runbook's audit step if the warnings are wanted per request.                                                                                                                                                                                                                                                                                                                                              |
+| `EDGE_LOG_WINDOW_SECONDS`             | `60`                                        | At most one unproxied-caller warning per window **per worker** — the throttle is a module global, so the real rate is that times however many workers are alive, and the audit step reads `suppressed` counts fragmented across them ([ADR-0024](adr/0024-count-every-rate-limit-tier-in-sqlite.md) records the same shape in the rate limiter). The next warning carries the count it stands for. A refused caller never reached the edge's rate limiting, so without this the log is the cheapest thing on the origin to flood. Lower it while running the runbook's audit step if the warnings are wanted per request.                                           |
 | `MAX_REQUEST_BYTES`                   | `65536`                                     | Bodies above this are refused with 413 before parsing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 Ops — read at import, **restart required**:

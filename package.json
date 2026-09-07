@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@imagekit/vue": "^4.0.1",
-    "@newrelic/browser-agent": "^1.320.0",
+    "@newrelic/browser-agent": "^1.320.1",
     "vue": "^3.5.41",
     "vue-gtag": "^3.7.1"
   },

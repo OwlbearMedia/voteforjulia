@@ -354,6 +354,12 @@ mutation ConditionMonitorNotRunning {
 # roughly 30 real. An earlier draft used 20, which needed ~180 real refusals per
 # window and would have been silent through anything short of an attack.
 # Re-measure if the sampling changes. Live id 66284760.
+#
+# ALSO RE-MEASURE THE REAL VOLUME. That figure was taken on 2026-08-20, while
+# the burst tier was a per-worker count and its effective ceiling was 5 x live
+# workers. Since 2026-08-26 it counts in SQLite and enforces 5 (ADR-0024), so it
+# refuses traffic it used to allow and this threshold is calibrated against the
+# looser limit. The sampling ratio above is unaffected; the arrival rate is not.
 
 mutation ConditionBurstRateLimit {
   alertsNrqlConditionStaticCreate(

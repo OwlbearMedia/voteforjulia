@@ -39,6 +39,14 @@ resolves this instance and nothing about the next one.
 
 Two further facts shaped the design.
 
+> **Amended 2026-08-26 by [0024](0024-count-every-rate-limit-tier-in-sqlite.md).**
+> The paragraph below is right about time and wrong about concurrency: it treats
+> a warm worker as the only thing a 60-second window needs, and does not ask
+> what several workers alive at once do to a count held in each of them. They
+> multiply it. The burst tier shipped at an effective `5 x N` and now counts in
+> SQLite alongside the hourly one. The reasoning is left standing because the
+> gap in it is the useful part.
+
 **Process memory cannot hold an hour.** 0009 justified an in-memory limiter on
 the grounds that there is "a single Passenger app, and in practice a single
 long-lived worker". The measurement in
@@ -79,6 +87,13 @@ another.
 **The store fails open.** A limiter that cannot reach its database logs and
 allows the request. The burst tier is still in front of it, and refusing a real
 volunteer is the worse failure.
+
+> **Since [0024](0024-count-every-rate-limit-tier-in-sqlite.md) the burst tier
+> is not in front of it** — it is the same call, so an unreachable store fails
+> both tiers open at once. What the sentence above promised is kept by a
+> fallback instead: a per-worker burst counter that runs only while the store
+> cannot answer. The hourly tier has no equivalent and cannot have one, so a
+> store outage does mean an unbounded hourly allowance.
 
 **3. A honeypot field on both forms.** A `referralCode` input hidden with
 `display: none`; a submission that arrives with it non-empty is refused with
@@ -193,10 +208,11 @@ shorter:
 - **A new on-disk artefact exists on the host**, and it is runtime state rather
   than code: gitignored, excluded from the deploy prune, pruned of expired rows
   on every call. At this traffic the table holds a few dozen rows.
-- **The two tiers can disagree about what a "client" is.** They do not today —
-  both call `_rate_limit_key()` — but the persistent one would keep counting a
-  key the in-memory one had evicted under `RATE_LIMIT_MAX_BUCKETS` pressure.
-  That is the safe direction.
+- ~~**The two tiers can disagree about what a "client" is.**~~ **Moot since
+  [0024](0024-count-every-rate-limit-tier-in-sqlite.md):** both windows now
+  count the same rows under the same key in one transaction, so there is nothing
+  left to disagree. What the cap bounds is a cache of refusals, and evicting an
+  entry costs a store round trip rather than an allowance.
 - **A shared NAT shares the hourly bucket**, as 0009 already noted for the
   per-minute one. Eleven volunteers signing up within an hour from one office or
   campus network would see a 429 — they are told to retry, not turned away, and
