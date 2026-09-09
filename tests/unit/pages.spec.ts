@@ -121,12 +121,17 @@ describe('Page components', () => {
       'https://cd1dfl.org/blue-earth'
     );
 
-    // Both logo lists render through the same card markup, and the intrinsic
-    // size is per-asset: a square placeholder on the 429x184 DFL logo reserves
-    // the wrong box and the page jumps when it loads.
-    const logo = wrapper.find('#letters-of-support img');
-    expect(logo.attributes('width')).toBe('429');
-    expect(logo.attributes('height')).toBe('184');
+    // Both lists render through one JuliaEndorsementCard, so the intrinsic size
+    // has to come from each entry: a square placeholder on the 429x184 DFL logo
+    // reserves the wrong box and the page jumps when it loads.
+    const dflLogo = wrapper.find('#letters-of-support img');
+    expect(dflLogo.attributes('width')).toBe('429');
+    expect(dflLogo.attributes('height')).toBe('184');
+    expect(dflLogo.attributes('srcset')).not.toContain('w-1454');
+
+    const endorsementLogo = wrapper.find('#endorsements img');
+    expect(endorsementLogo.attributes('width')).toBe('960');
+    expect(endorsementLogo.attributes('height')).toBe('960');
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Endorsements | Julia Hamann for Mankato Mayor',
