@@ -112,12 +112,10 @@ useHead(
     </ul>
   </section>
 
+  <hr />
+
   <section id="letters-of-support">
     <h2>Letters of Support</h2>
-
-    <p class="my-4 rounded-lg bg-sprout/50 p-4 text-center font-accent text-xl">
-      Julia is grateful for the support of:
-    </p>
 
     <ul class="my-8 flex list-none flex-col gap-12 p-0">
       <li v-for="support in supports" :key="support.name">
