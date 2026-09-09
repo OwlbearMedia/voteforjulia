@@ -22,9 +22,10 @@ function getWindowObject(): Window | null {
 }
 
 // Form bodies contain PII (names, emails, phone numbers, addresses, free-text
-// messages) that must not reach third-party analytics. The API logs the full
-// submission server-side instead (see api/app.py), so New Relic only needs to
-// show which fields were filled in. Fields are redacted by default; only the
+// messages) that must not reach third-party analytics. The API applies the same
+// rule server-side -- `_log_request_fields` in api/app.py logs which fields were
+// filled and never their values -- so nothing here is relying on the submission
+// being captured in full elsewhere. Fields are redacted by default; only the
 // non-identifying multiple-choice fields below are sent verbatim. Empty values
 // stay empty so a missing field is distinguishable from a redacted one.
 const NON_PII_FIELDS = new Set(['helpWays', 'preferredPayment']);
