@@ -39,6 +39,22 @@ describe('Page components', () => {
 
     expect(wrapper.text()).toContain('Meet Julia');
     expect(wrapper.text()).toContain('Environmental Justice and Sustainability');
+
+    // The players are third-party frames on the busiest page: lazy so they stay
+    // out of the initial load, titled per video because that is what a screen
+    // reader announces for a frame, and on the no-cookie host.
+    const players = wrapper.findAll('iframe');
+    expect(players).toHaveLength(2);
+    expect(players.map((player) => player.attributes('title'))).toEqual([
+      'Julia Hamann on community input and transparency',
+      'Julia Hamann on affordability and tenants rights'
+    ]);
+    for (const player of players) {
+      expect(player.attributes('src')).toMatch(
+        /^https:\/\/www\.youtube-nocookie\.com\/embed\/[\w-]+$/
+      );
+      expect(player.attributes('loading')).toBe('lazy');
+    }
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Home | Julia Hamann for Mankato Mayor',
@@ -99,6 +115,18 @@ describe('Page components', () => {
     expect(wrapper.text()).toContain(
       'Endorsements Julia is grateful to be endorsed by: Indivisible St. Peter/Greater Mankato'
     );
+    expect(wrapper.text()).toContain('Letters of Support');
+    expect(wrapper.text()).toContain('Blue Earth County DFL');
+    expect(wrapper.find('#letters-of-support a').attributes('href')).toBe(
+      'https://cd1dfl.org/blue-earth'
+    );
+
+    // Both logo lists render through the same card markup, and the intrinsic
+    // size is per-asset: a square placeholder on the 429x184 DFL logo reserves
+    // the wrong box and the page jumps when it loads.
+    const logo = wrapper.find('#letters-of-support img');
+    expect(logo.attributes('width')).toBe('429');
+    expect(logo.attributes('height')).toBe('184');
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Endorsements | Julia Hamann for Mankato Mayor',

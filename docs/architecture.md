@@ -14,7 +14,7 @@ as cPanel apps on one shared LiteSpeed host. There is no database, no container
 runtime, and no server-side rendering: pages are HTML files on disk, and the only
 dynamic behaviour on the whole site is two form endpoints, which fan out to email
 and a Google Sheet. Everything that would normally need infrastructure —
-payments, images, analytics, error tracking — is a third-party service reached
+payments, images, video, analytics, error tracking — is a third-party service reached
 directly from the browser.
 
 ## System context
@@ -33,6 +33,7 @@ flowchart TB
         imagekit["ImageKit<br/>image CDN"]
         ga["Google Analytics 4"]
         nr["New Relic Browser"]
+        yt["YouTube<br/>embedded players"]
     end
 
     subgraph out["Third-party, called from the API"]
@@ -46,6 +47,7 @@ flowchart TB
     visitor --> imagekit
     visitor --> ga
     visitor --> nr
+    visitor --> yt
     api --> smtp
     api --> sheets
 

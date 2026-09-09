@@ -127,7 +127,7 @@ useHead(
       </p>
       <iframe
         class="aspect-video w-full rounded-lg shadow-soft"
-        src="https://www.youtube.com/embed/CaBHPV8mm2k?si=O4GhUaw3Co900eps"
+        src="https://www.youtube-nocookie.com/embed/CaBHPV8mm2k"
         title="Julia Hamann on community input and transparency"
         loading="lazy"
         allow="
@@ -160,7 +160,7 @@ useHead(
       </p>
       <iframe
         class="aspect-video w-full rounded-lg shadow-soft"
-        src="https://www.youtube.com/embed/4CE6IQ4mVNQ?si=-O7u2T72pXc1J2AL"
+        src="https://www.youtube-nocookie.com/embed/4CE6IQ4mVNQ"
         title="Julia Hamann on affordability and tenants rights"
         loading="lazy"
         allow="
