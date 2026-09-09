@@ -34,7 +34,11 @@ or devtools against the deployed test site. See
 
 ## If the change renders an image
 
-Images go through ImageKit's `<Image>` component.
+Content imagery goes through ImageKit's `<Image>` component. Small static
+assets — icons, favicons, the social banner, `src/assets/sprout.png` — stay in
+the repository and render as a native `<img>` or a CSS background. That split is
+[ADR-0012](../../../docs/adr/0012-imagekit-for-images.md), so an icon change
+using neither of the rules below is not a defect. For the ImageKit path:
 
 - `width` and `height` must be the asset's **real pixel size**. They reserve the
   box before the image loads, so a value copied from a differently shaped asset
@@ -51,10 +55,13 @@ dimensions can be measured rather than assumed.
 
 Adding a page means touching a fixed set of files, and missing one fails a test
 somewhere unrelated. The checklist is in
-[docs/conventions.md](../../../docs/conventions.md#adding-a-page). The one with
-no test to remind you is [perf-budgets.json](../../../perf-budgets.json): CI
-fails a route with no budget entry rather than skipping it, deliberately, so a
-new page cannot opt itself out of the budget by existing.
+[docs/conventions.md](../../../docs/conventions.md#adding-a-page).
+
+The entry that fails furthest from the change is
+[perf-budgets.json](../../../perf-budgets.json). The budget script exits 1 on a
+built route with no entry rather than skipping it, so a missing budget turns up
+in the performance job rather than in the frontend tests — deliberately, so that
+a new page cannot opt itself out of the budget by existing.
 
 ## If the change is applied at deploy time
 
@@ -81,9 +88,12 @@ rather than its body by whoever reads it next. Ask whether the test would still
 pass if the thing it names were gutted, and whether a matcher standing in for a
 concept pins the near misses that must not fire as well as the cases that must.
 
-For user text, draw inputs from
-[api/test_text_corpus.py](../../../api/test_text_corpus.py) and add to it, so
-the corpus grows in one place instead of per caller.
+Anything that transforms user text — a name, an address, a message — belongs in
+`TEXT_TRANSFORMERS` in
+[api/test_text_corpus.py](../../../api/test_text_corpus.py). That registration
+is the whole interface: one line inherits normalisation-invariance and
+idempotence across every script in the corpus. New cases go in the corpus when
+real input breaks something, not in one caller's test file.
 
 ## Do not suggest
 
