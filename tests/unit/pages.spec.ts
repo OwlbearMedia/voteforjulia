@@ -41,18 +41,24 @@ describe('Page components', () => {
     expect(wrapper.text()).toContain('Environmental Justice and Sustainability');
 
     // The players are third-party frames on the busiest page: lazy so they stay
-    // out of the initial load, titled per video because that is what a screen
-    // reader announces for a frame, and on the no-cookie host.
+    // out of the initial load, and titled per video because that is what a
+    // screen reader announces for a frame. Title and id are pinned as a pair
+    // rather than by shape — the first draft of this section had the same video
+    // under both headings, which any check of the URL's form would have passed.
     const players = wrapper.findAll('iframe');
-    expect(players).toHaveLength(2);
-    expect(players.map((player) => player.attributes('title'))).toEqual([
-      'Julia Hamann on community input and transparency',
-      'Julia Hamann on affordability and tenants rights'
-    ]);
+    expect(players.map((player) => [player.attributes('title'), player.attributes('src')])).toEqual(
+      [
+        [
+          'Julia Hamann on community input and transparency',
+          'https://www.youtube-nocookie.com/embed/CaBHPV8mm2k'
+        ],
+        [
+          'Julia Hamann on affordability and tenants rights',
+          'https://www.youtube-nocookie.com/embed/4CE6IQ4mVNQ'
+        ]
+      ]
+    );
     for (const player of players) {
-      expect(player.attributes('src')).toMatch(
-        /^https:\/\/www\.youtube-nocookie\.com\/embed\/[\w-]+$/
-      );
       expect(player.attributes('loading')).toBe('lazy');
     }
     expect(useHeadMock).toHaveBeenCalledWith(
