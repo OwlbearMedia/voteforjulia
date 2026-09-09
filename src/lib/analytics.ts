@@ -22,12 +22,13 @@ function getWindowObject(): Window | null {
 }
 
 // Form bodies contain PII (names, emails, phone numbers, addresses, free-text
-// messages) that must not reach third-party analytics. The API applies the same
-// rule server-side -- `_log_request_fields` in api/app.py logs which fields were
-// filled and never their values -- so nothing here is relying on the submission
-// being captured in full elsewhere. Fields are redacted by default; only the
-// non-identifying multiple-choice fields below are sent verbatim. Empty values
-// stay empty so a missing field is distinguishable from a redacted one.
+// messages) that must not reach third-party analytics. The API holds the same
+// line: `_log_request_fields` in api/app.py logs which fields were filled and
+// never their values, and `_log_request_body` dumps one only on the failure
+// paths where the submission is already lost for good. Fields are redacted by
+// default; only the non-identifying multiple-choice fields below are sent
+// verbatim. Empty values stay empty so a missing field is distinguishable from
+// a redacted one.
 const NON_PII_FIELDS = new Set(['helpWays', 'preferredPayment']);
 
 function redactPii(requestBody: Record<string, string>): Record<string, string> {
