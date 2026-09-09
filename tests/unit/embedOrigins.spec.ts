@@ -61,9 +61,11 @@ describe('iframe origins are covered by the CSP', () => {
   });
 
   it('has no iframe whose src is bound, since this check cannot follow one', () => {
-    // A `:src` or `v-bind:src` resolves at runtime, so the assertion above would
-    // skip it silently. Adding one means checking its origin by hand and saying
-    // so here.
+    // A `:src` or `v-bind:src` resolves at runtime, so neither this check nor
+    // the one above it can see where the frame points — the origin test throws
+    // on the missing static src, and this one fails on the binding. Bound
+    // sources are unsupported rather than exempt: adding one means teaching
+    // this spec to resolve it, not documenting an exception here.
     const bound = iframeTags().filter(({ tag }) => /\s(?::|v-bind:)src=/.test(tag));
     expect(bound.map(({ path }) => path)).toEqual([]);
   });
