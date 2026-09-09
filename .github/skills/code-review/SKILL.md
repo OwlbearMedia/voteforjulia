@@ -7,8 +7,16 @@ license: MIT
 # Reviewing this repository
 
 A prerendered Vue 3 site (vite-ssg, Tailwind v4) and a small Flask API, both
-deployed as cPanel apps on one shared LiteSpeed host. No database, no container
-runtime, no server-side rendering.
+deployed as cPanel apps on one shared LiteSpeed host. No container runtime and
+no server-side rendering.
+
+Submissions have no database — email and a Google Sheet are the system of record
+([ADR-0004](../../../docs/adr/0004-no-database.md)). The API does keep
+operational state, though: every rate-limit tier counts in SQLite under the
+app's `tmp/`
+([ADR-0024](../../../docs/adr/0024-count-every-rate-limit-tier-in-sqlite.md)),
+so a change there carries locking, schema and fail-open consequences that the
+rest of the codebase does not have.
 
 Most defects that reach production here are not wrong lines in the diff. They
 are a second file the change should have touched — usually in a different
