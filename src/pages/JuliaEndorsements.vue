@@ -83,7 +83,7 @@ const supports: Endorsement[] = [
         url: 'https://cd1dfl.org/blue-earth'
       }
     ]
-  },
+  }
 ];
 
 useHead(
