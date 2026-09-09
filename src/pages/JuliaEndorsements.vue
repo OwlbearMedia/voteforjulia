@@ -1,24 +1,19 @@
 <script setup lang="ts">
-import { Image } from '@imagekit/vue';
 import { useHead } from '@unhead/vue';
+import JuliaEndorsementCard from '../components/JuliaEndorsementCard.vue';
+import type { Endorsement } from '../lib/endorsements';
 import { buildPageHead } from '../lib/pageHead';
 
 defineOptions({
   name: 'JuliaEndorsements'
 });
 
-interface Endorsement {
-  name: string;
-  logo: string;
-  url: string;
-  body: string[];
-  links?: { label: string; url: string }[];
-}
-
 const endorsements: Endorsement[] = [
   {
     name: 'Indivisible St. Peter/Greater Mankato',
     logo: '/indivisible.png',
+    logoWidth: 960,
+    logoHeight: 960,
     url: 'https://sites.google.com/indivisiblespgm.org/indivisiblespgm/about',
     body: [
       'Indivisible St. Peter/Greater Mankato, is a non-partisan, community group dedicated to positive, progressive action to make people’s lives better. They seek to create a more sustainable, equitable, and inclusive world by inspiring and empowering members to get involved in democracy and their communities.'
@@ -37,6 +32,8 @@ const endorsements: Endorsement[] = [
   {
     name: 'Run for Something',
     logo: '/run-for-something.jpg',
+    logoWidth: 400,
+    logoHeight: 400,
     url: 'https://www.runforsomething.net/',
     body: [
       'Run for Something is a national organization that recruits and supports the next generation of progressive leaders for state and local office.'
@@ -55,6 +52,8 @@ const endorsements: Endorsement[] = [
   {
     name: 'National Association of Social Workers - MN Chapter',
     logo: '/nasw-mn.jpeg',
+    logoWidth: 447,
+    logoHeight: 447,
     url: 'https://naswmn.socialworkers.org/About/What-We-Do',
     body: [
       "NASW's Minnesota Chapter (NASW-MN) currently maintains a membership base of nearly 2,000 professionally-trained social workers and students. Every year, they host a number of training and advocacy events around the state, including the Annual Conference, Social Work Summit, and Social Work Day at the Capitol. Their staff, interns, and volunteers work with community partners to promote practices and policies that align with social work ethics and values, and promote social justice."
@@ -63,6 +62,26 @@ const endorsements: Endorsement[] = [
       {
         label: 'NASW-MN',
         url: 'https://naswmn.socialworkers.org/About/What-We-Do'
+      }
+    ]
+  }
+];
+
+const supports: Endorsement[] = [
+  {
+    name: 'Blue Earth County DFL',
+    logo: '/mn-dfl-logo.svg',
+    logoWidth: 429,
+    logoHeight: 184,
+    url: 'https://cd1dfl.org/blue-earth',
+    body: [
+      'I am thankful for the letter of support for my campaign from the Blue Earth County DFL.',
+      'As Mankato Mayor is a non-partisan position, this campaign is not associated with a specific political party, nor can the DFL extend official endorsement, but I am appreciative of their recognition, understanding the value of younger candidates with progressive values getting active in local politics.'
+    ],
+    links: [
+      {
+        label: 'Blue Earth County DFL',
+        url: 'https://cd1dfl.org/blue-earth'
       }
     ]
   }
@@ -88,39 +107,19 @@ useHead(
 
     <ul class="my-8 flex list-none flex-col gap-12 p-0">
       <li v-for="endorsement in endorsements" :key="endorsement.name">
-        <div class="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
-          <a
-            :href="endorsement.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="block md:col-span-1"
-          >
-            <Image
-              url-endpoint="https://ik.imagekit.io/voteforjulia"
-              :src="endorsement.logo"
-              :alt="`${endorsement.name} logo`"
-              class="h-auto w-full"
-              sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 7rem) / 3), 283px"
-              :image-breakpoints="[240, 320, 440, 566, 728, 960, 1454]"
-              :device-breakpoints="[]"
-              width="960"
-              height="960"
-              crossorigin="anonymous"
-              loading="lazy"
-              decoding="async"
-            />
-          </a>
+        <JuliaEndorsementCard :endorsement="endorsement" />
+      </li>
+    </ul>
+  </section>
 
-          <div class="md:col-span-2">
-            <h3>{{ endorsement.name }}</h3>
-            <p v-for="(paragraph, index) in endorsement.body" :key="index">{{ paragraph }}</p>
-            <ul v-if="endorsement.links" class="m-0 list-none p-0">
-              <li v-for="link in endorsement.links" :key="link.url" class="mb-1">
-                <a :href="link.url" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>
-              </li>
-            </ul>
-          </div>
-        </div>
+  <hr />
+
+  <section id="letters-of-support">
+    <h2>Letters of Support</h2>
+
+    <ul class="my-8 flex list-none flex-col gap-12 p-0">
+      <li v-for="support in supports" :key="support.name">
+        <JuliaEndorsementCard :endorsement="support" />
       </li>
     </ul>
   </section>
