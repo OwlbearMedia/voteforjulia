@@ -32,9 +32,14 @@ matching directive in the Content-Security-Policy in
 
 **This fails in production only.** The dev server sends no CSP, so an embed
 missing from the policy works on every developer machine and is blocked for
-every visitor. Nothing in the test suite connects the two: the markup and the
-policy are different languages in different directories, and neither mentions
-the other.
+every visitor.
+
+One directive is covered:
+[tests/unit/embedOrigins.spec.ts](../../../tests/unit/embedOrigins.spec.ts)
+fails if a static `<iframe>` anywhere under `src/` has an origin the
+`frame-src` allowlist does not name, and fails on an iframe whose `src` is
+bound, because it cannot resolve one. `script-src`, `font-src`, `img-src` and
+`connect-src` have no such test — check those by hand.
 
 The header is applied at the edge, so it can only be confirmed with `curl -sI`
 or devtools against the deployed test site. See
@@ -54,7 +59,10 @@ using neither of the rules below is not a defect. For the ImageKit path:
 - A srcset candidate wider than the asset is wrong. ImageKit's `c-at_max` never
   upscales, so the candidate returns the asset unchanged while telling the
   browser it is larger — costing a high-DPR screen the sharper choice it thought
-  it was making. Cap `image-breakpoints` at the asset's own width.
+  it was making. Cap `image-breakpoints` at the asset's own width;
+  `logoBreakpoints` in
+  [src/lib/endorsements.ts](../../../src/lib/endorsements.ts) does this for the
+  endorsement logos, and is the pattern to follow for a new list of images.
 
 The assets are public URLs under `https://ik.imagekit.io/voteforjulia`, so their
 dimensions can be measured rather than assumed.
