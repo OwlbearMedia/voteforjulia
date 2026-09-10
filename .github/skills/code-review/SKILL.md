@@ -25,10 +25,12 @@ files. [docs/architecture.md](../../../docs/architecture.md) is the map.
 
 ## If the change adds a third-party origin
 
-Any new `<iframe>`, `<script src>`, webfont, image host, or fetch target needs a
-matching directive in the Content-Security-Policy in
+Any new `<iframe>`, `<script src>`, stylesheet, webfont, image host, or fetch
+target needs a matching directive in the Content-Security-Policy in
 [public/.htaccess](../../../public/.htaccess) — `frame-src`, `script-src`,
-`font-src`, `img-src`, `connect-src`.
+`style-src`, `font-src`, `img-src`, `connect-src`. A remotely hosted webfont
+needs two: `style-src` for the stylesheet and `font-src` for the files it then
+pulls, which is why `rsms.me` appears in both.
 
 **This fails in production only.** The dev server sends no CSP, so an embed
 missing from the policy works on every developer machine and is blocked for
@@ -115,9 +117,10 @@ real input breaks something, not in one caller's test file.
 
 - **Making a deploy workflow's check required** — every job in
   `deploy-production.yml` and `deploy-test.yml`, such as `Build frontend`,
-  `Deploy frontend` and `Verify Python API`. They run on `workflow_run` for
-  pushes and never report on a PR head, so requiring one leaves every pull
-  request waiting indefinitely with no error displayed.
+  `Deploy frontend` and `Verify Python API`. They are triggered by
+  `workflow_run` when a CI run completes, and a `workflow_run` job's check
+  never reports on the pull request's head, so requiring one leaves every pull
+  request waiting indefinitely with nothing displayed to explain it.
 - **Requiring approvals, or `codecov/patch`.** One maintainer has write access
   and GitHub does not allow approving your own pull request, so a required
   approval makes every PR unmergeable. Codecov runs with `continue-on-error` and
