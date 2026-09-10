@@ -40,8 +40,8 @@ One directive is covered:
 [tests/unit/embedOrigins.spec.ts](../../../tests/unit/embedOrigins.spec.ts)
 fails if a static `<iframe>` anywhere under `src/` has an origin the
 `frame-src` allowlist does not name, and fails on an iframe whose `src` is
-bound, because it cannot resolve one. `script-src`, `font-src`, `img-src` and
-`connect-src` have no such test — check those by hand.
+bound, because it cannot resolve one. `script-src`, `style-src`, `font-src`,
+`img-src` and `connect-src` have no such test — check those by hand.
 
 The header is applied at the edge, so it can only be confirmed with `curl -sI`
 or devtools against the deployed test site. See
@@ -71,15 +71,21 @@ dimensions can be measured rather than assumed.
 
 ## If the change adds a page or route
 
-Adding a page means touching a fixed set of files, and missing one fails a test
-somewhere unrelated. The checklist is in
-[docs/conventions.md](../../../docs/conventions.md#adding-a-page).
+Adding a page means touching a fixed set of files. The checklist is in
+[docs/conventions.md](../../../docs/conventions.md#adding-a-page); what it does
+not say is which entries a failing test will catch for you.
 
-The entry that fails furthest from the change is
-[perf-budgets.json](../../../perf-budgets.json). The budget script exits 1 on a
-built route with no entry rather than skipping it, so a missing budget turns up
-in the performance job rather than in the frontend tests — deliberately, so that
-a new page cannot opt itself out of the budget by existing.
+- **Caught.** `tests/unit/App.spec.ts` cross-checks the `<h1>` title map in
+  `App.vue` against `appRoutePaths`, so a route missing from either list fails.
+  The sitemap specs derive from the same list and follow automatically.
+- **Caught, in a different job.**
+  [perf-budgets.json](../../../perf-budgets.json) — the budget script exits 1 on
+  a built route with no entry rather than skipping it, so a missing budget turns
+  up in the performance job rather than in the frontend tests. Deliberate: a new
+  page cannot opt itself out of the budget by existing.
+- **Not caught.** `tests/unit/pages.spec.ts` imports each page by hand and
+  asserts nothing about the set being complete, so a new page with no render or
+  SEO case there leaves the suite green. This one is a review check.
 
 ## If the change is applied at deploy time
 
