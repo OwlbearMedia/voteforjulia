@@ -240,6 +240,27 @@ The crash this avoids, why `<dbox-widget>` is an in-page element rather than an
 iframe, and what that implies for the security headers are all in
 [donate-integration.md](donate-integration.md).
 
+## Embedded iframes
+
+Third-party video (the YouTube embeds on the home page) goes in as a plain
+`<iframe>`: `aspect-video w-full` for the responsive box, `loading="lazy"`, and
+a `title` naming the specific video rather than the `YouTube video player` the
+share dialog hands you — the title is what a screen reader announces for the
+frame, so two identical ones are indistinguishable.
+
+Two things that are not obvious:
+
+- **Prettier explodes the `allow` attribute across several lines**, trailing
+  `;` included. That is deliberate: its HTML printer has a dedicated case for
+  `allow` on an `iframe`, alongside `srcset`. The value parses the same way, so
+  leave it — re-collapsing it onto one line just fails `format:check`.
+- **A new embed origin needs a `frame-src` entry in
+  [public/.htaccess](../public/.htaccess).** Without one the frame is blocked
+  in production only: the dev server sends no CSP, so the embed works locally
+  right up to the deploy. The header ships with the frontend build, so it lands
+  in the same commit as the markup — see
+  [ADR-0010](adr/0010-edge-policy-in-htaccess.md).
+
 ## Diagrams in docs
 
 Diagrams are Mermaid in fenced ` ```mermaid ` blocks, rendered by GitHub. They
