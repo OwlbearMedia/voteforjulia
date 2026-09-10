@@ -117,13 +117,32 @@ useHead(
       Julia wants to ensure that citizens are listened to and that city government remains
       transparent and accountable to the community.
     </p>
-    <p>
-      She hopes to create more opportunities for open dialogue between the City Council and Mankato
-      residents by exploring new ways to gather feedback from citizens, especially from those most
-      impacted by decisions and voices often left out of conversations. She wants to increase
-      transparency in the council’s decision-making processes and ensure that the council is
-      responsive and respectful to feedback and ideas from their constituents.
-    </p>
+    <div class="grid grid-cols-1 items-center gap-6 md:grid-cols-2">
+      <p class="mb-0">
+        She hopes to create more opportunities for open dialogue between the City Council and
+        Mankato residents by exploring new ways to gather feedback from citizens, especially from
+        those most impacted by decisions and voices often left out of conversations. She wants to
+        increase transparency in the council’s decision-making processes and ensure that the council
+        is responsive and respectful to feedback and ideas from their constituents.
+      </p>
+      <iframe
+        class="aspect-video w-full rounded-lg shadow-soft"
+        src="https://www.youtube-nocookie.com/embed/CaBHPV8mm2k"
+        title="Julia Hamann on community input and transparency"
+        loading="lazy"
+        allow="
+          accelerometer;
+          autoplay;
+          clipboard-write;
+          encrypted-media;
+          gyroscope;
+          picture-in-picture;
+          web-share;
+        "
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen
+      ></iframe>
+    </div>
 
     <hr />
 
@@ -132,11 +151,31 @@ useHead(
       Julia understands that Mankato citizens are experiencing serious financial strain and the gap
       between the richest and most impoverished individuals is growing.
     </p>
-    <p>
-      Julia plans to re-examine how the city defines affordable housing and invests in the creation
-      of more affordable units. She is also committed to ensuring fair and just rental practices.
-      She’s interested in exploring ways city policy can support businesses in paying living wage.
-    </p>
+    <div class="grid grid-cols-1 items-center gap-6 md:grid-cols-2">
+      <p class="mb-0">
+        Julia plans to re-examine how the city defines affordable housing and invests in the
+        creation of more affordable units. She is also committed to ensuring fair and just rental
+        practices. She’s interested in exploring ways city policy can support businesses in paying
+        living wage.
+      </p>
+      <iframe
+        class="aspect-video w-full rounded-lg shadow-soft"
+        src="https://www.youtube-nocookie.com/embed/4CE6IQ4mVNQ"
+        title="Julia Hamann on affordability and tenants rights"
+        loading="lazy"
+        allow="
+          accelerometer;
+          autoplay;
+          clipboard-write;
+          encrypted-media;
+          gyroscope;
+          picture-in-picture;
+          web-share;
+        "
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen
+      ></iframe>
+    </div>
 
     <hr />
 

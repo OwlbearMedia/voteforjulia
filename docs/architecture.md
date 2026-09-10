@@ -10,12 +10,15 @@ choice lives in the [ADRs](adr/). For day-to-day work see
 This is a campaign site for a single municipal race with a fixed content set, a
 few hundred visitors on a good day, and a budget measured in tens of dollars a
 month. It is a **prerendered static site plus one small Flask API**, both living
-as cPanel apps on one shared LiteSpeed host. There is no database, no container
-runtime, and no server-side rendering: pages are HTML files on disk, and the only
-dynamic behaviour on the whole site is two form endpoints, which fan out to email
-and a Google Sheet. Everything that would normally need infrastructure —
-payments, images, analytics, error tracking — is a third-party service reached
-directly from the browser.
+as cPanel apps on one shared LiteSpeed host. There is no container runtime and
+no server-side rendering: pages are HTML files on disk, and the only dynamic
+behaviour on the whole site is two form endpoints, which fan out to email and a
+Google Sheet. No database holds a submission either — that Sheet and the mail
+are the system of record ([ADR-0004](adr/0004-no-database.md)) — though the API
+does count its rate-limit tiers in SQLite, described under Abuse below.
+Everything that would normally need infrastructure — payments, images, video,
+analytics, error tracking — is a third-party service reached directly from the
+browser.
 
 ## System context
 
@@ -33,6 +36,7 @@ flowchart TB
         imagekit["ImageKit<br/>image CDN"]
         ga["Google Analytics 4"]
         nr["New Relic Browser"]
+        yt["YouTube<br/>embedded players"]
     end
 
     subgraph out["Third-party, called from the API"]
@@ -46,6 +50,7 @@ flowchart TB
     visitor --> imagekit
     visitor --> ga
     visitor --> nr
+    visitor --> yt
     api --> smtp
     api --> sheets
 

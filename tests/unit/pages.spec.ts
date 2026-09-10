@@ -39,6 +39,28 @@ describe('Page components', () => {
 
     expect(wrapper.text()).toContain('Meet Julia');
     expect(wrapper.text()).toContain('Environmental Justice and Sustainability');
+
+    // The players are third-party frames on the busiest page: lazy so they stay
+    // out of the initial load, and titled per video because that is what a
+    // screen reader announces for a frame. Title and id are pinned as a pair
+    // rather than by shape — the first draft of this section had the same video
+    // under both headings, which any check of the URL's form would have passed.
+    const players = wrapper.findAll('iframe');
+    expect(players.map((player) => [player.attributes('title'), player.attributes('src')])).toEqual(
+      [
+        [
+          'Julia Hamann on community input and transparency',
+          'https://www.youtube-nocookie.com/embed/CaBHPV8mm2k'
+        ],
+        [
+          'Julia Hamann on affordability and tenants rights',
+          'https://www.youtube-nocookie.com/embed/4CE6IQ4mVNQ'
+        ]
+      ]
+    );
+    for (const player of players) {
+      expect(player.attributes('loading')).toBe('lazy');
+    }
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Home | Julia Hamann for Mankato Mayor',
@@ -99,6 +121,23 @@ describe('Page components', () => {
     expect(wrapper.text()).toContain(
       'Endorsements Julia is grateful to be endorsed by: Indivisible St. Peter/Greater Mankato'
     );
+    expect(wrapper.text()).toContain('Letters of Support');
+    expect(wrapper.text()).toContain('Blue Earth County DFL');
+    expect(wrapper.find('#letters-of-support a').attributes('href')).toBe(
+      'https://cd1dfl.org/blue-earth'
+    );
+
+    // Both lists render through one JuliaEndorsementCard, so the intrinsic size
+    // has to come from each entry: a square placeholder on the 429x184 DFL logo
+    // reserves the wrong box and the page jumps when it loads.
+    const dflLogo = wrapper.find('#letters-of-support img');
+    expect(dflLogo.attributes('width')).toBe('429');
+    expect(dflLogo.attributes('height')).toBe('184');
+    expect(dflLogo.attributes('srcset')).not.toContain('w-1454');
+
+    const endorsementLogo = wrapper.find('#endorsements img');
+    expect(endorsementLogo.attributes('width')).toBe('960');
+    expect(endorsementLogo.attributes('height')).toBe('960');
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Endorsements | Julia Hamann for Mankato Mayor',
