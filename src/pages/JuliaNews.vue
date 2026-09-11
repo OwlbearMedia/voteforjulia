@@ -25,7 +25,8 @@ interface NewsItem {
   outlet: string;
   /** One entry per person — each becomes its own schema.org `author` Person. */
   authors?: string[];
-  /** ISO date — drives both the schema node and the rendered date. */
+  /** ISO date, Mankato-local — not the UTC date some outlets put in the URL.
+   *  Drives both the schema node and the rendered date. */
   published: string;
   url: string;
   linkLabel: string;

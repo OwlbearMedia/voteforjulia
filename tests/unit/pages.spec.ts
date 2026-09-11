@@ -185,7 +185,12 @@ describe('Page components', () => {
       expect(wrapper.text()).toContain('June 29, 2026 · KEYC');
       expect(wrapper.text()).toContain('May 30, 2026 · Mankato Free Press');
     } finally {
-      process.env.TZ = originalTz;
+      // Assigning `undefined` would store the string "undefined", not unset it.
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
     }
   });
 
