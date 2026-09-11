@@ -32,9 +32,6 @@ interface NewsItem {
   linkLabel: string;
   body: string[];
   image?: NewsImage;
-  /** Present when the coverage is a video, which makes it a VideoObject rather
-   *  than a NewsArticle in the JSON-LD graph. */
-  video?: { description: string; thumbnailUrl: string };
 }
 
 /** Newest first — the page renders them in this order. */
@@ -84,7 +81,7 @@ const newsItems: NewsItem[] = [
     url: 'https://youtu.be/h-v45bBwLtM?si=gu2ppF80kg-aVN7q',
     linkLabel: 'Watch the video on YouTube',
     body: [
-      'Julia Hamann and Jacob Bases sit down with Mike and Becky, hosts of the Woven Record, to share about their motivations for running and their goals as progressive candidates.'
+      'Julia Hamann and Jacob Bases sit down with Mike and Becki, hosts of the Woven Record, to share about their motivations for running and their goals as progressive candidates.'
     ],
     image: {
       src: '/woven-record.jpg',
@@ -92,11 +89,6 @@ const newsItems: NewsItem[] = [
       width: 1000,
       height: 522,
       imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1000]
-    },
-    video: {
-      description:
-        'Julia Hamann and Jacob Bases sit down with Mike and Becky, hosts of the Woven Record, to share about their motivations for running and their goals as progressive candidates.',
-      thumbnailUrl: 'https://i.ytimg.com/vi/h-v45bBwLtM/hqdefault.jpg'
     }
   },
   {
@@ -133,11 +125,6 @@ const newsItems: NewsItem[] = [
       width: 1000,
       height: 522,
       imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1000]
-    },
-    video: {
-      description:
-        'We sat down with candidate for Mankato mayor Julia Hamann to discuss her campaign and her stances on important issues to the city.',
-      thumbnailUrl: 'https://i.ytimg.com/vi/UnVrel_BRfs/hqdefault.jpg'
     }
   },
   {
@@ -191,34 +178,17 @@ function formatPublished(isoDate: string): string {
 const aboutJulia = { '@type': 'Person', name: 'Julia Hamann' };
 
 // Derived from the same list the page renders, so a new item cannot appear on
-// the page without appearing in the structured data.
-const schemaNodes = newsItems.map((item) => {
-  const credit = item.authors
-    ? { author: item.authors.map((name) => ({ '@type': 'Person', name })) }
-    : {};
-
-  return item.video
-    ? {
-        '@type': 'VideoObject',
-        name: item.headline,
-        uploadDate: item.published,
-        description: item.video.description,
-        thumbnailUrl: item.video.thumbnailUrl,
-        ...credit,
-        publisher: { '@type': 'Organization', name: item.outlet },
-        url: item.url,
-        about: aboutJulia
-      }
-    : {
-        '@type': 'NewsArticle',
-        headline: item.headline,
-        datePublished: item.published,
-        ...credit,
-        publisher: { '@type': 'Organization', name: item.outlet },
-        url: item.url,
-        about: aboutJulia
-      };
-});
+// the page without appearing in the structured data. Linked videos are
+// NewsArticles too: `VideoObject` needs the video playable on this page.
+const schemaNodes = newsItems.map((item) => ({
+  '@type': 'NewsArticle',
+  headline: item.headline,
+  datePublished: item.published,
+  ...(item.authors ? { author: item.authors.map((name) => ({ '@type': 'Person', name })) } : {}),
+  publisher: { '@type': 'Organization', name: item.outlet },
+  url: item.url,
+  about: aboutJulia
+}));
 
 useHead(
   buildPageHead({
@@ -245,7 +215,7 @@ useHead(
         :key="item.url"
         class="rounded-4xl bg-forest px-8 py-4 text-white shadow-strong"
       >
-        <h3 class="text-news text-lime">{{ item.headline }}</h3>
+        <h3 class="text-lime">{{ item.headline }}</h3>
         <a
           class="mb-2 inline-flex items-center gap-1.5 font-accent font-normal text-white"
           :href="item.url"

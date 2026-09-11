@@ -194,7 +194,7 @@ describe('Page components', () => {
     }
   });
 
-  it('JuliaNews describes every rendered item, with the videos as VideoObjects', () => {
+  it('JuliaNews describes every rendered item as a NewsArticle, linked videos included', () => {
     const wrapper = mount(JuliaNews);
 
     const head = useHeadMock.mock.calls.at(-1)?.[0] as {
@@ -214,28 +214,30 @@ describe('Page components', () => {
     const renderedHeadlines = wrapper.findAll('h3').map((heading) => heading.text());
 
     expect(renderedHeadlines.length).toBeGreaterThan(0);
-    expect(coverage.map((node) => node.headline ?? node.name).sort()).toEqual(
-      [...renderedHeadlines].sort()
+    expect(coverage.map((node) => node.headline).sort()).toEqual([...renderedHeadlines].sort());
+    // No player on /news, so nothing may claim to be a VideoObject.
+    expect(coverage.map((node) => node['@type'])).toEqual(
+      renderedHeadlines.map(() => 'NewsArticle')
     );
-    expect(coverage.filter((node) => node['@type'] === 'VideoObject')).toEqual([
+    expect(coverage).toContainEqual(
       expect.objectContaining({
-        name: 'Julia Hamann and Jacob Bases on running together in Mankato | Get Election Ready',
-        uploadDate: '2026-08-06',
+        headline: 'Julia Hamann and Jacob Bases on running together in Mankato | Get Election Ready',
+        datePublished: '2026-08-06',
         url: 'https://youtu.be/h-v45bBwLtM?si=gu2ppF80kg-aVN7q',
-        thumbnailUrl: 'https://i.ytimg.com/vi/h-v45bBwLtM/hqdefault.jpg',
         author: [
           { '@type': 'Person', name: 'Mike Lagerquist' },
           { '@type': 'Person', name: 'Becki True' }
         ]
-      }),
+      })
+    );
+    expect(coverage).toContainEqual(
       expect.objectContaining({
-        name: 'RACE TO WATCH: Julia Hamann',
-        uploadDate: '2026-06-25',
+        headline: 'RACE TO WATCH: Julia Hamann',
+        datePublished: '2026-06-25',
         url: 'https://www.youtube.com/watch?v=UnVrel_BRfs',
-        thumbnailUrl: 'https://i.ytimg.com/vi/UnVrel_BRfs/hqdefault.jpg',
         author: [{ '@type': 'Person', name: 'Ethan Becker' }]
       })
-    ]);
+    );
     expect(coverage).toContainEqual(
       expect.objectContaining({
         '@type': 'NewsArticle',
