@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// import { Image } from '@imagekit/vue';
+import { Image } from '@imagekit/vue';
 import { useHead } from '@unhead/vue';
 import IconCalendar from '../components/icons/IconCalendar.vue';
 import { buildPageHead } from '../lib/pageHead';
@@ -15,7 +15,7 @@ interface NewsImage {
   width: number;
   height: number;
   imageBreakpoints: number[];
-  /** Only the first card is above the fold; everything below it loads lazily. */
+  /** First card only: it is the one card above the fold at every width. */
   eager?: boolean;
 }
 
@@ -23,8 +23,8 @@ interface NewsItem {
   headline: string;
   /** Publication, used for the byline and the JSON-LD publisher. */
   outlet: string;
-  /** Reporter's byline where the piece has one; the video interview does not. */
-  author?: string;
+  /** One entry per person — each becomes its own schema.org `author` Person. */
+  authors?: string[];
   /** ISO date — drives both the schema node and the rendered date. */
   published: string;
   url: string;
@@ -39,43 +39,92 @@ interface NewsItem {
 /** Newest first — the page renders them in this order. */
 const newsItems: NewsItem[] = [
   {
+    headline: 'Mankato precinct results mirror primary results',
+    outlet: 'Mankato Free Press',
+    authors: ['Ethan Becker'],
+    published: '2026-08-19',
+    url: 'https://www.mankatofreepress.com/news/local_news/mankato-precinct-results-mirror-primary-results/article_51888182-16d7-44d9-8810-42d4997e9418.html',
+    linkLabel: 'Read the full article at Mankato Free Press',
+    body: [
+      'Julia prevails in the primary election. “Incumbent Najwa Massad would end up getting just 114 more votes than the runner-up in the race, Julia Hamann, with Massad receiving 2,378 votes to Hamann’s 2,264. The two will advance to the general election in November…Despite the vote totals, Hamann was actually able to secure more precincts than Massad, winning in 10 of Mankato’s 17 precincts compared to Massad’s seven.”'
+    ],
+    image: {
+      src: '/primary-win.jpg',
+      alt: 'Julia Hamann wins primary for Mankato Mayor',
+      width: 1009,
+      height: 1412,
+      imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1009],
+      eager: true
+    }
+  },
+  {
     headline: 'Mankato mayor candidates address questions ahead of primary election',
     outlet: 'Mankato Free Press',
-    author: 'Ethan Becker',
+    authors: ['Ethan Becker'],
     published: '2026-08-07',
     url: 'https://www.mankatofreepress.com/news/local_news/mankato-mayor-candidates-address-questions-ahead-of-primary-election/article_7d757752-b589-4311-892b-646cd708193a.html',
     linkLabel: 'Read the full article at Mankato Free Press',
     body: [
       'With just days to go before the primary election, The Free Press sent each candidate — Mankato Mayor Najwa Massad, Toby Leonard and Julia Hamann — the same list of questions via email. The following are their responses.'
-    ]
+    ],
+    image: {
+      src: '/questions.jpg',
+      alt: 'Julia Hamann addresses questions ahead of primary election',
+      width: 2048,
+      height: 1536,
+      imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1664]
+    }
+  },
+  {
+    headline: 'Julia Hamann and Jacob Bases on running together in Mankato | Get Election Ready',
+    outlet: 'The Woven Record',
+    authors: ['Mike Lagerquist', 'Becki True'],
+    published: '2026-08-06',
+    url: 'https://youtu.be/h-v45bBwLtM?si=gu2ppF80kg-aVN7q',
+    linkLabel: 'Watch the video on YouTube',
+    body: [
+      'Julia Hamann and Jacob Bases sit down with Mike and Becky, hosts of the Woven Record, to share about their motivations for running and their goals as progressive candidates.'
+    ],
+    image: {
+      src: '/woven-record.jpg',
+      alt: 'Julia and Jacob on the Woven Record',
+      width: 1000,
+      height: 522,
+      imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1000]
+    },
+    video: {
+      description:
+        'Julia Hamann and Jacob Bases sit down with Mike and Becky, hosts of the Woven Record, to share about their motivations for running and their goals as progressive candidates.',
+      thumbnailUrl: 'https://i.ytimg.com/vi/h-v45bBwLtM/hqdefault.jpg'
+    }
   },
   {
     headline: 'Candidate for Mankato Mayor Hosts Campaign Launch Party',
     outlet: 'KEYC',
-    author: 'Kate Jones',
+    authors: ['Kate Jones'],
     published: '2026-06-29',
     url: 'https://www.keyc.com/2026/06/30/candidate-mankato-mayor-hosts-campaign-launch-party/',
     linkLabel: 'Read the full article at KEYC',
     body: [
-      'Julia’s campaign launch party at The Makerspace drew more than 100 attendees for button-making, screen printing, and live music. Guests connected directly with Julia, chipped in donations for Food Not Bombs, and picked up $10 yard signs to show their support ahead of the August 11th primary.'
+      'Julia hosts a campaign launch party at Mankato Makerspace. Over 100 people were in attendance to connect, hear speeches, and make their own campaign swag.'
     ],
     image: {
-      src: '/launch-party.jpg',
+      src: '/launch-party-crowd.jpg',
       alt: 'Julia Hamann for Mankato Mayor launch party',
       width: 2048,
-      height: 1365,
-      imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1664],
-      eager: true
+      height: 1360,
+      imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1664]
     }
   },
   {
     headline: 'RACE TO WATCH: Julia Hamann',
     outlet: 'Mankato Free Press',
+    authors: ['Ethan Becker'],
     published: '2026-06-25',
     url: 'https://www.youtube.com/watch?v=UnVrel_BRfs',
     linkLabel: 'Watch the video on YouTube',
     body: [
-      'Julia sat down with the Mankato Free Press to discuss her campaign and her stances on the issues that matter most to the city.'
+      'Julia sits down with Ethan Becker for a recorded interview regarding her motivations for running, her background, and her perspective on issues.'
     ],
     image: {
       src: '/race-to-watch.jpeg',
@@ -91,37 +140,22 @@ const newsItems: NewsItem[] = [
     }
   },
   {
-    headline: 'RACE TO WATCH: Hamann hopes to bring conversation to City Council',
-    outlet: 'Mankato Free Press',
-    author: 'Ethan Becker',
-    published: '2026-06-08',
-    url: 'https://www.mankatofreepress.com/news/local_news/race-to-watch-hamann-hopes-to-bring-conversation-to-city-council/article_167d04f5-3f33-4b85-a921-8e6e72a43b16.html',
-    linkLabel: 'Read the full article at Mankato Free Press',
-    body: [
-      'In this “Race to Watch” profile, the Mankato Free Press explored Julia’s approach heading into the primary against incumbent Najwa Massad and challenger Toby Leonard. Rather than leading with a fixed policy platform, Julia emphasized bringing more community conversation into City Council decisions — including participatory budgeting, stronger tenant protections, and a careful look at data center development.'
-    ]
-  },
-  {
-    headline: 'Mankato candidates officially file for office, with passing of Tuesday deadline',
-    outlet: 'KEYC',
-    author: 'Aaron Stuve',
-    published: '2026-06-03',
-    url: 'https://www.keyc.com/2026/06/03/mankato-candidates-file-office/',
-    linkLabel: 'Read the full article at KEYC',
-    body: [
-      'Tuesday marked the filing deadline for Minnesota candidates across local, state, and federal races. In Mankato’s mayoral contest, incumbent Mayor Najwa Massad is seeking her third term, facing challengers Toby Leonard and Julia, who is making a push through a grassroots campaign. An August primary will narrow the mayoral field to two candidates before the November general election.'
-    ]
-  },
-  {
     headline: 'Hamann, Bases look to bring new conversations to Mankato leadership',
     outlet: 'Mankato Free Press',
-    author: 'Ethan Becker',
+    authors: ['Ethan Becker'],
     published: '2026-05-30',
     url: 'https://www.mankatofreepress.com/news/local_news/hamann-bases-look-to-bring-new-conversations-to-mankato-leadership/article_5c4264bb-8a5e-4d76-81e3-972ead716ebb.html',
     linkLabel: 'Read the full article at Mankato Free Press',
     body: [
-      'This profile looks at Julia, 33, and Jacob Bases, 37, who is running for the Ward 3 City Council seat — both of whom would be among the youngest members of Mankato’s leadership if elected. Julia discussed how her age and background in social services shape her perspective on rental equity, public safety reform, and environmental justice.'
-    ]
+      'Julia files her affidavit of candidacy for Mayor, alongside Jacob Bases running for city council Ward 3. The two wish to bring new conversations to the city council centered in progressive values.'
+    ],
+    image: {
+      src: '/new-conversation.jpg',
+      alt: 'Julia Hamann files her affidavit of candidacy for Mayor of Mankato',
+      width: 1101,
+      height: 1442,
+      imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1101]
+    }
   }
 ];
 
@@ -157,14 +191,19 @@ const aboutJulia = { '@type': 'Person', name: 'Julia Hamann' };
 
 // Derived from the same list the page renders, so a new item cannot appear on
 // the page without appearing in the structured data.
-const schemaNodes = newsItems.map((item) =>
-  item.video
+const schemaNodes = newsItems.map((item) => {
+  const credit = item.authors
+    ? { author: item.authors.map((name) => ({ '@type': 'Person', name })) }
+    : {};
+
+  return item.video
     ? {
         '@type': 'VideoObject',
         name: item.headline,
         uploadDate: item.published,
         description: item.video.description,
         thumbnailUrl: item.video.thumbnailUrl,
+        ...credit,
         publisher: { '@type': 'Organization', name: item.outlet },
         url: item.url,
         about: aboutJulia
@@ -173,19 +212,19 @@ const schemaNodes = newsItems.map((item) =>
         '@type': 'NewsArticle',
         headline: item.headline,
         datePublished: item.published,
-        ...(item.author ? { author: { '@type': 'Person', name: item.author } } : {}),
+        ...credit,
         publisher: { '@type': 'Organization', name: item.outlet },
         url: item.url,
         about: aboutJulia
-      }
-);
+      };
+});
 
 useHead(
   buildPageHead({
     path: '/news',
     title: 'News | Julia Hamann for Mankato Mayor',
     description:
-      'Read the latest news coverage of Julia Hamann’s campaign for Mayor of Mankato — profiles, interviews, and reporting from KEYC and the Mankato Free Press.',
+      'Read the latest news coverage of Julia Hamann’s campaign for Mayor of Mankato — profiles, interviews, and reporting from KEYC, the Mankato Free Press, and The Woven Record.',
     socialDescription:
       'Read the latest news coverage of Julia Hamann’s campaign for Mankato Mayor.',
     schemaNodes
@@ -199,21 +238,20 @@ useHead(
 
     <p>Check out the latest coverage of Julia’s campaign:</p>
 
-    <article
-      v-for="item in newsItems"
-      :key="item.url"
-      class="mb-8 rounded-4xl bg-forest px-8 py-4 text-white shadow-strong"
-    >
-      <h3 class="text-event text-lime">{{ item.headline }}</h3>
-      <a
-        class="mb-2 inline-flex items-center gap-1.5 font-accent text-xl font-normal text-white"
-        :href="item.url"
-        target="_blank"
-        rel="noopener noreferrer"
-        ><IconCalendar /> {{ formatPublished(item.published) }} &middot; {{ item.outlet }}</a
+    <div class="grid gap-8 md:grid-cols-2">
+      <article
+        v-for="item in newsItems"
+        :key="item.url"
+        class="rounded-4xl bg-forest px-8 py-4 text-white shadow-strong"
       >
-
-      <!-- <hr class="hr-event" />
+        <h3 class="text-news text-lime">{{ item.headline }}</h3>
+        <a
+          class="mb-2 inline-flex items-center gap-1.5 font-accent font-normal text-white"
+          :href="item.url"
+          target="_blank"
+          rel="noopener noreferrer"
+          ><IconCalendar /> {{ formatPublished(item.published) }} &middot; {{ item.outlet }}</a
+        >
 
         <a
           v-if="item.image"
@@ -222,12 +260,13 @@ useHead(
           target="_blank"
           rel="noopener noreferrer"
         >
+          <!-- `sizes` is main's width minus the grid gap and card padding; it moves with either. -->
           <Image
             url-endpoint="https://ik.imagekit.io/voteforjulia"
             :src="item.image.src"
             :alt="item.image.alt"
             class="h-auto w-full rounded-lg"
-            sizes="(max-width: 767px) calc(100vw - 6.5rem), (max-width: 960px) calc(100vw - 8rem), 832px"
+            sizes="(max-width: 767px) calc(100vw - 6.5rem), (max-width: 960px) calc(50vw - 7rem), 368px"
             :image-breakpoints="item.image.imageBreakpoints"
             :device-breakpoints="[]"
             :width="item.image.width"
@@ -239,13 +278,14 @@ useHead(
           />
         </a>
 
-        <p v-for="(paragraph, index) in item.body" :key="index">{{ paragraph }}</p> -->
+        <p v-for="(paragraph, index) in item.body" :key="index">{{ paragraph }}</p>
 
-      <p>
-        <a class="text-lime" :href="item.url" target="_blank" rel="noopener noreferrer">{{
-          item.linkLabel
-        }}</a>
-      </p>
-    </article>
+        <p>
+          <a class="text-lime" :href="item.url" target="_blank" rel="noopener noreferrer">{{
+            item.linkLabel
+          }}</a>
+        </p>
+      </article>
+    </div>
   </section>
 </template>

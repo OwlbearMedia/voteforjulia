@@ -189,7 +189,7 @@ describe('Page components', () => {
     }
   });
 
-  it('JuliaNews describes every rendered item, with the video as a VideoObject', () => {
+  it('JuliaNews describes every rendered item, with the videos as VideoObjects', () => {
     const wrapper = mount(JuliaNews);
 
     const head = useHeadMock.mock.calls.at(-1)?.[0] as {
@@ -214,9 +214,21 @@ describe('Page components', () => {
     );
     expect(coverage.filter((node) => node['@type'] === 'VideoObject')).toEqual([
       expect.objectContaining({
+        name: 'Julia Hamann and Jacob Bases on running together in Mankato | Get Election Ready',
+        uploadDate: '2026-08-06',
+        url: 'https://youtu.be/h-v45bBwLtM?si=gu2ppF80kg-aVN7q',
+        thumbnailUrl: 'https://i.ytimg.com/vi/h-v45bBwLtM/hqdefault.jpg',
+        author: [
+          { '@type': 'Person', name: 'Mike Lagerquist' },
+          { '@type': 'Person', name: 'Becki True' }
+        ]
+      }),
+      expect.objectContaining({
         name: 'RACE TO WATCH: Julia Hamann',
         uploadDate: '2026-06-25',
-        url: 'https://www.youtube.com/watch?v=UnVrel_BRfs'
+        url: 'https://www.youtube.com/watch?v=UnVrel_BRfs',
+        thumbnailUrl: 'https://i.ytimg.com/vi/UnVrel_BRfs/hqdefault.jpg',
+        author: [{ '@type': 'Person', name: 'Ethan Becker' }]
       })
     ]);
     expect(coverage).toContainEqual(
@@ -224,7 +236,7 @@ describe('Page components', () => {
         '@type': 'NewsArticle',
         headline: 'Candidate for Mankato Mayor Hosts Campaign Launch Party',
         datePublished: '2026-06-29',
-        author: { '@type': 'Person', name: 'Kate Jones' },
+        author: [{ '@type': 'Person', name: 'Kate Jones' }],
         publisher: { '@type': 'Organization', name: 'KEYC' }
       })
     );

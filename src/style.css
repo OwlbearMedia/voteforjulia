@@ -45,6 +45,7 @@
 
   /* Extends Tailwind's text scale (no built-in 2rem step); event-card titles. */
   --text-event: 2rem;
+  --text-news: 1.5rem;
 
   /* The site uses a uniform 1.6 body leading. Tailwind's size utilities ship
      their own tighter line-height, so pin the ones we use back to 1.6 to keep
