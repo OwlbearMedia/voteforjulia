@@ -215,6 +215,15 @@ describe('Page components', () => {
 
     expect(renderedHeadlines.length).toBeGreaterThan(0);
     expect(coverage.map((node) => node.headline).sort()).toEqual([...renderedHeadlines].sort());
+    // Google ignores or flags markup for content readers cannot see, so every
+    // credited author must be named on the page, not only in the JSON-LD.
+    const credited = coverage.flatMap((node) =>
+      ((node.author ?? []) as { name: string }[]).map((person) => person.name)
+    );
+    expect(credited.length).toBeGreaterThan(0);
+    for (const name of credited) {
+      expect(wrapper.text()).toContain(name);
+    }
     // No player on /news, so nothing may claim to be a VideoObject.
     expect(coverage.map((node) => node['@type'])).toEqual(
       renderedHeadlines.map(() => 'NewsArticle')

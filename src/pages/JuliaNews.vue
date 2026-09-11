@@ -15,7 +15,8 @@ interface NewsImage {
   width: number;
   height: number;
   imageBreakpoints: number[];
-  /** First card only: it is the one card above the fold at every width. */
+  /** First card only: it is above the fold at every width. Its md+ row-mate stays
+   *  lazy so it does not compete with the header logo, the LCP (docs/performance.md). */
   eager?: boolean;
 }
 
@@ -175,6 +176,8 @@ function formatPublished(isoDate: string): string {
   return `${MONTH_NAMES[month - 1]} ${day}, ${year}`;
 }
 
+const authorList = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' });
+
 const aboutJulia = { '@type': 'Person', name: 'Julia Hamann' };
 
 // Derived from the same list the page renders, so a new item cannot appear on
@@ -223,6 +226,10 @@ useHead(
           rel="noopener noreferrer"
           ><IconCalendar /> {{ formatPublished(item.published) }} &middot; {{ item.outlet }}</a
         >
+        <!-- Must stay visible: the JSON-LD credits these authors, and Google ignores unseen markup. -->
+        <p v-if="item.authors" class="mb-2 font-accent text-white">
+          By {{ authorList.format(item.authors) }}
+        </p>
 
         <a
           v-if="item.image"
