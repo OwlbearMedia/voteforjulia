@@ -232,7 +232,7 @@ describe('Page components', () => {
       expect.objectContaining({
         headline: 'Julia Hamann and Jacob Bases on running together in Mankato | Get Election Ready',
         datePublished: '2026-08-06',
-        url: 'https://youtu.be/h-v45bBwLtM?si=gu2ppF80kg-aVN7q',
+        url: 'https://youtu.be/h-v45bBwLtM',
         author: [
           { '@type': 'Person', name: 'Mike Lagerquist' },
           { '@type': 'Person', name: 'Becki True' }

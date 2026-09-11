@@ -79,7 +79,7 @@ const newsItems: NewsItem[] = [
     outlet: 'The Woven Record',
     authors: ['Mike Lagerquist', 'Becki True'],
     published: '2026-08-06',
-    url: 'https://youtu.be/h-v45bBwLtM?si=gu2ppF80kg-aVN7q',
+    url: 'https://youtu.be/h-v45bBwLtM',
     linkLabel: 'Watch the video on YouTube',
     body: [
       'Julia Hamann and Jacob Bases sit down with Mike and Becki, hosts of the Woven Record, to share about their motivations for running and their goals as progressive candidates.'
