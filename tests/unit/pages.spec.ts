@@ -7,6 +7,7 @@ import JuliaHome from '../../src/pages/JuliaHome.vue';
 import JuliaSecretRecipe from '../../src/pages/JuliaSecretRecipe.vue';
 import JuliaEvents from '../../src/pages/JuliaEvents.vue';
 import JuliaEndorsements from '../../src/pages/JuliaEndorsements.vue';
+import JuliaNews from '../../src/pages/JuliaNews.vue';
 import JuliaVolunteer from '../../src/pages/JuliaVolunteer.vue';
 import JuliaYardSign from '../../src/pages/JuliaYardSign.vue';
 
@@ -147,6 +148,112 @@ describe('Page components', () => {
             href: 'https://voteforjulia.com/endorsements'
           })
         ])
+      })
+    );
+  });
+
+  it('JuliaNews renders coverage content and configures page SEO metadata', () => {
+    const wrapper = mount(JuliaNews);
+
+    expect(wrapper.text()).toContain('Julia in the news');
+    expect(wrapper.text()).toContain('Candidate for Mankato Mayor Hosts Campaign Launch Party');
+    expect(wrapper.text()).toContain('Hamann, Bases look to bring new conversations');
+    expect(useHeadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'News | Julia Hamann for Mankato Mayor',
+        link: expect.arrayContaining([
+          expect.objectContaining({
+            rel: 'canonical',
+            href: 'https://voteforjulia.com/news'
+          })
+        ])
+      })
+    );
+  });
+
+  it('JuliaNews renders each item’s publication date as written, without timezone drift', () => {
+    // The dates in the page are bare ISO days, which `Date` reads as UTC
+    // midnight — so a `Date`-based formatter renders the 28th anywhere west of
+    // Greenwich, and prerendering bakes that off-by-one into the static HTML.
+    // CI runs in UTC and would never see it, hence pinning Mankato's zone here.
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'America/Chicago';
+
+    try {
+      const wrapper = mount(JuliaNews);
+
+      expect(wrapper.text()).toContain('June 29, 2026 · KEYC');
+      expect(wrapper.text()).toContain('May 30, 2026 · Mankato Free Press');
+    } finally {
+      // Assigning `undefined` would store the string "undefined", not unset it.
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
+    }
+  });
+
+  it('JuliaNews describes every rendered item as a NewsArticle, linked videos included', () => {
+    const wrapper = mount(JuliaNews);
+
+    const head = useHeadMock.mock.calls.at(-1)?.[0] as {
+      script: { type?: string; textContent?: string }[];
+    };
+    const jsonLd = head.script.find((entry) => entry.type === 'application/ld+json');
+    const graph = JSON.parse(jsonLd?.textContent ?? '{}')['@graph'] as Record<string, unknown>[];
+
+    const coverage = graph.filter(
+      (node) => node['@type'] !== 'WebSite' && node['@type'] !== 'Person'
+    );
+
+    // Derived from what the page rendered rather than a hardcoded count, so
+    // adding an item to the page does not mean editing this test — the property
+    // being pinned is that the two cannot drift apart, and a count assertion
+    // would have to be bumped by hand for every new article.
+    const renderedHeadlines = wrapper.findAll('h3').map((heading) => heading.text());
+
+    expect(renderedHeadlines.length).toBeGreaterThan(0);
+    expect(coverage.map((node) => node.headline).sort()).toEqual([...renderedHeadlines].sort());
+    // Google ignores or flags markup for content readers cannot see, so every
+    // credited author must be named on the page, not only in the JSON-LD.
+    const credited = coverage.flatMap((node) =>
+      ((node.author ?? []) as { name: string }[]).map((person) => person.name)
+    );
+    expect(credited.length).toBeGreaterThan(0);
+    for (const name of credited) {
+      expect(wrapper.text()).toContain(name);
+    }
+    // No player on /news, so nothing may claim to be a VideoObject.
+    expect(coverage.map((node) => node['@type'])).toEqual(
+      renderedHeadlines.map(() => 'NewsArticle')
+    );
+    expect(coverage).toContainEqual(
+      expect.objectContaining({
+        headline: 'Julia Hamann and Jacob Bases on running together in Mankato | Get Election Ready',
+        datePublished: '2026-08-06',
+        url: 'https://youtu.be/h-v45bBwLtM',
+        author: [
+          { '@type': 'Person', name: 'Mike Lagerquist' },
+          { '@type': 'Person', name: 'Becki True' }
+        ]
+      })
+    );
+    expect(coverage).toContainEqual(
+      expect.objectContaining({
+        headline: 'RACE TO WATCH: Julia Hamann',
+        datePublished: '2026-06-25',
+        url: 'https://www.youtube.com/watch?v=UnVrel_BRfs',
+        author: [{ '@type': 'Person', name: 'Ethan Becker' }]
+      })
+    );
+    expect(coverage).toContainEqual(
+      expect.objectContaining({
+        '@type': 'NewsArticle',
+        headline: 'Candidate for Mankato Mayor Hosts Campaign Launch Party',
+        datePublished: '2026-06-29',
+        author: [{ '@type': 'Person', name: 'Kate Jones' }],
+        publisher: { '@type': 'Organization', name: 'KEYC' }
       })
     );
   });
