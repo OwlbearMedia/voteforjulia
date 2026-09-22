@@ -11,6 +11,27 @@ updates:
         dependency-type: development
       frontend-production-dependencies:
         dependency-type: production
+    ignore:
+      # TypeScript 7 (the native port) ships no JS package surface, so vue-tsc
+      # 3.x cannot load it — ERR_PACKAGE_PATH_NOT_EXPORTED on
+      # typescript/lib/tsc — and `pnpm build` dies before typechecking runs.
+      # Lift when a vue-tsc release supports TS 7. Full story: PR #181.
+      - dependency-name: typescript
+        versions: [">=7.0.0"]
+      # vite-ssg (28.3.0, latest) depends on @unhead/vue ^2 directly — not as
+      # a peer — so unhead 3 installs as a second copy beside it and the
+      # prerender's head client never sees the pages' useHead entries: head
+      # tags silently vanish from the built HTML. Lift when vite-ssg supports
+      # unhead 3.
+      - dependency-name: "@unhead/vue"
+        versions: [">=3.0.0"]
+      # jsdom 30.0.x: its new selector engine fails `#id descendant` queries
+      # rooted at the id element, which breaks @vue/test-utils findAll on the
+      # multi-root endorsements page. 30.1.1 fixes it and sits outside this
+      # range, so it can be proposed once it clears pnpm's
+      # minimum-release-age policy.
+      - dependency-name: jsdom
+        versions: [">=30.0.0 <30.1.1"]
 
   # Python API dependencies. requirements.txt pins exact versions, so every
   # upstream release produces a PR — google-api-python-client alone ships about

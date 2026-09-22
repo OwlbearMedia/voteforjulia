@@ -182,7 +182,6 @@ export default defineConfig({
     // Default to the staging site. Override with CYPRESS_BASE_URL for local dev:
     //   CYPRESS_BASE_URL=http://localhost:5173 pnpm test:e2e
     baseUrl: 'https://test.voteforjulia.com',
-    allowCypressEnv: false,
     defaultCommandTimeout: 10000,
     // Chrome's autofill/password-manager heuristics can transiently disable
     // the first field of a fresh form (our fields use autocomplete="given-name"
