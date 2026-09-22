@@ -36,9 +36,9 @@
     "test:e2e:open": "cypress open"
   },
   "dependencies": {
-    "@imagekit/vue": "^4.0.1",
-    "@newrelic/browser-agent": "^1.321.0",
-    "vue": "^3.5.42",
+    "@imagekit/vue": "^4.0.2",
+    "@newrelic/browser-agent": "^1.322.0",
+    "vue": "^3.5.43",
     "vue-gtag": "^3.7.1"
   },
   "devDependencies": {
