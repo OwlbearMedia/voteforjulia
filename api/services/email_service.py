@@ -251,6 +251,10 @@ def _smtp_connection(config: EmailConfig):
     # login() with no upper bound. That is the common failure; a refused
     # connection is the easy one. It applies to every socket operation on the
     # connection, so the send is covered too, not just the handshake.
+    #
+    # One connection per message, on purpose: the host's mail server delivers
+    # only the first message sent on a connection, so a submission's two
+    # emails must not share one. See docs/hosting.md.
     if _should_use_starttls(config):
         server = smtplib.SMTP(config.smtp_server, config.smtp_port, timeout=config.timeout_seconds)
         try:
