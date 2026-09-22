@@ -1192,6 +1192,13 @@ Mail — per request, no restart:
 | `SUPPORTER_REPLY_EMAIL`        | `info@voteforjulia.com` | `Reply-To` on both confirmations, and the `List-Unsubscribe` target on the volunteer one. The only address here that supporters see. A single address; blank or malformed omits both headers rather than sending a broken one. |
 | `PLAIN_TEXT_CONFIRMATION_ONLY` | `false`                 | Drops the HTML part of confirmation emails.                                                                                                                                                                                    |
 
+**The mail server delivers only the first message sent on a connection.** A
+submission sends two emails — notification and confirmation — and each opens
+its own SMTP connection, which looks like an inefficiency and is not: reusing
+one connection for both was tried, and only the first went out. Never
+consolidate the per-message connections in
+[email_service.py](../api/services/email_service.py).
+
 **`SUPPORTER_REPLY_EMAIL` is separate from the recipient vars on purpose.** The
 `RECIPIENT_*` addresses route notifications inward, and in production **both**
 of them carry a coordinator's role mailbox alongside the campaign address. A

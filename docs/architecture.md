@@ -160,7 +160,7 @@ sequenceDiagram
     A->>M: notification email to the campaign
     M-->>A: accepted
     A->>M: confirmation email to the submitter
-    Note over A,M: separate connection — see the SMTP memory note
+    Note over A,M: separate connection — see the mail-server note in hosting.md
     A->>S: append row
     S-->>A: ok
     A-->>B: 200 {"message": "Email sent successfully!"}
