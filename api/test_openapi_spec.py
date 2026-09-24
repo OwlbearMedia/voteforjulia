@@ -28,6 +28,7 @@ from api.app import (
     _missing_required_fields_message,
     _missing_required_yard_sign_fields_message,
 )
+from api.config import EmailConfig, SheetsConfig
 from api.models import (
     MAX_ADDRESS_LENGTH,
     MAX_EMAIL_LENGTH,
@@ -350,6 +351,50 @@ def test_documented_health_fields_match_the_app():
     returned = set(app_module.app.test_client().get("/health").get_json())
 
     assert documented == returned
+
+
+def _documented_request_examples():
+    for path, item in SPEC["paths"].items():
+        content = item.get("post", {}).get("requestBody", {}).get("content", {})
+        for name, example in content.get("application/json", {}).get("examples", {}).items():
+            yield pytest.param(path, example["value"], id=f"{path}:{name}")
+
+
+@pytest.mark.parametrize(("path", "body"), list(_documented_request_examples()))
+def test_documented_request_examples_are_accepted(path, body, monkeypatch):
+    # An example is what a client copies. Since ADR-0025 one without
+    # `referralCode` is refused, and nothing else would notice the spec saying
+    # otherwise.
+    config = EmailConfig(
+        smtp_server="mail.example.com",
+        smtp_port=465,
+        smtp_security="ssl",
+        email_address="info@example.com",
+        email_password="placeholder-value",
+        recipients=["team@example.com"],
+        plain_text_confirmation_only=False,
+    )
+    monkeypatch.setattr(app_module, "load_email_config", lambda *_args: config)
+    monkeypatch.setattr(
+        app_module, "load_sheets_config", lambda *_args: SheetsConfig("", "Sheet1", "", "")
+    )
+    for sender in (
+        "send_submission_email",
+        "send_yard_sign_request_email",
+        "send_confirmation_email",
+        "send_yard_sign_confirmation_email",
+    ):
+        monkeypatch.setattr(app_module, sender, lambda *_args: {})
+
+    response = app_module.app.test_client().post(path, json=body)
+
+    assert response.status_code == 200, response.get_json()
+
+
+def test_the_documented_honeypot_is_the_one_the_app_requires():
+    assert SPEC["components"]["schemas"]["HoneypotField"]["required"] == [
+        app_module._HONEYPOT_FIELD
+    ]
 
 
 def test_documented_deep_health_cache_matches_the_app():

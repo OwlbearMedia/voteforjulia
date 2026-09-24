@@ -18,6 +18,7 @@ fixture replaces the collaborators the handler calls out to, using monkeypatch
 so restoration is automatic rather than hand-rolled in a `tearDown`.
 """
 
+import json
 import logging
 import re
 import smtplib
@@ -49,10 +50,11 @@ VALID_EMAIL_CONFIG = EmailConfig(
 )
 
 CONTACT_PATH = "/send-email"
-CONTACT_PAYLOAD = {"firstName": "Julia", "email": "julia@example.com"}
+CONTACT_PAYLOAD = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
 YARD_SIGN_PATH = "/yard-sign"
 YARD_SIGN_PAYLOAD = {
+    "referralCode": "",
     "firstName": "Julia",
     "email": "julia@example.com",
     "address": "123 Main St, Mankato, MN 56001",
@@ -174,6 +176,7 @@ def test_form_encoded_repeated_help_ways_are_collected(client, pipeline):
     response = client.post(
         CONTACT_PATH,
         data={
+            "referralCode": "",
             "firstName": "Julia",
             "email": "julia@example.com",
             # A list value posts the field once per entry, which is what a set
@@ -190,6 +193,7 @@ def test_form_encoded_repeated_preferred_payment_is_collected(client, pipeline):
     response = client.post(
         YARD_SIGN_PATH,
         data={
+            "referralCode": "",
             "firstName": "Julia",
             "email": "julia@example.com",
             "address": "123 Main St",
@@ -283,11 +287,17 @@ def test_yard_sign_uses_its_own_recipient_env(client, pipeline, caplog):
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
-        pytest.param({"email": "julia@example.com"}, "First name is required.", id="no-first-name"),
-        pytest.param({"firstName": "Julia"}, "Email is required.", id="no-email"),
-        pytest.param({}, "First name and email are required.", id="neither"),
         pytest.param(
-            {"firstName": " \t ", "email": "julia@example.com"},
+            {"referralCode": "", "email": "julia@example.com"},
+            "First name is required.",
+            id="no-first-name",
+        ),
+        pytest.param(
+            {"referralCode": "", "firstName": "Julia"}, "Email is required.", id="no-email"
+        ),
+        pytest.param({"referralCode": ""}, "First name and email are required.", id="neither"),
+        pytest.param(
+            {"referralCode": "", "firstName": " \t ", "email": "julia@example.com"},
             "First name is required.",
             id="whitespace-only-first-name",
         ),
@@ -304,17 +314,17 @@ def test_contact_required_field_messages(client, pipeline, payload, expected):
     ("payload", "expected"),
     [
         pytest.param(
-            {"email": "julia@example.com", "address": "123 Main St"},
+            {"referralCode": "", "email": "julia@example.com", "address": "123 Main St"},
             "First name is required.",
             id="one-missing",
         ),
         pytest.param(
-            {"address": "123 Main St"},
+            {"referralCode": "", "address": "123 Main St"},
             "First name and Email are required.",
             id="two-missing",
         ),
         pytest.param(
-            {},
+            {"referralCode": ""},
             "First name, Email and Address are required.",
             id="all-three-missing",
         ),
@@ -476,6 +486,7 @@ def test_non_string_field_values_are_counted_as_submitted(client, pipeline, capl
         client.post(
             CONTACT_PATH,
             json={
+                "referralCode": "",
                 "firstName": "Julia",
                 "email": "julia@example.com",
                 "subscribe": True,
@@ -751,17 +762,126 @@ def test_a_filled_honeypot_is_refused_before_any_work(client, pipeline, path, pa
 
 
 @BOTH_ENDPOINTS
-def test_an_empty_honeypot_is_indistinguishable_from_an_absent_one(client, pipeline, path, payload):
+def test_an_empty_honeypot_is_accepted(client, pipeline, path, payload):
     """The negative case, without which the test above proves nothing.
 
-    Every real submission carries this field blank, so a check testing presence
-    rather than content would 400 the whole site.
+    Every real submission carries this field blank, so a check that confused
+    present-and-blank with filled would 400 the whole site.
     """
     assert client.post(path, json={**payload, "referralCode": ""}).status_code == 200
     assert client.post(path, json={**payload, "referralCode": "   "}).status_code == 200
-    assert client.post(path, json=payload).status_code == 200
 
-    assert len(pipeline.notifications) == 3
+    assert len(pipeline.notifications) == 2
+
+
+def _without_honeypot(payload: dict) -> dict:
+    return {name: value for name, value in payload.items() if name != "referralCode"}
+
+
+@BOTH_ENDPOINTS
+@pytest.mark.parametrize("encoding", ["json", "form"])
+def test_an_absent_honeypot_is_refused_before_any_work(client, pipeline, path, payload, encoding):
+    """Both forms always send the field, so a body without it was built by hand.
+
+    ADR-0025: the 2026-09-06 submission scraped the form's input names and
+    posted only the ones it had values for, so it never tripped a filled-field
+    check.
+    """
+    body = _without_honeypot(payload)
+    if encoding == "json":
+        response = client.post(path, json=body)
+    else:
+        response = client.post(path, data=body, content_type="application/x-www-form-urlencoded")
+
+    assert response.status_code == 400
+    assert "info@voteforjulia.com" in response.get_json()["error"]
+    assert pipeline.notifications == []
+    assert pipeline.confirmations == []
+    assert pipeline.rows == []
+
+
+def test_the_2026_09_06_submission_is_refused(client, pipeline):
+    """The observed body's shape: raw HTML input names, form-encoded, no honeypot."""
+    response = client.post(
+        CONTACT_PATH,
+        data={
+            "firstName": "Julia",
+            "lastName": "Hamann",
+            "email": "julia@example.com",
+            "helpWays[]": ["Door knocking", "Yard sign"],
+        },
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    assert response.status_code == 400
+    assert pipeline.notifications == []
+
+
+# `tests/unit/honeypot.spec.ts` asserts this file against each rendered form's
+# `FormData`, so these are the names a browser sends, not ones chosen here.
+NO_JS_FORM_FIELDS = json.loads(
+    (Path(__file__).parents[1] / "tests/fixtures/no-js-form-fields.json").read_text()
+)
+NO_JS_VALUES = {
+    "firstName": "Julia",
+    "email": "julia@example.com",
+    "address": "123 Main St, Mankato, MN 56001",
+}
+
+
+@pytest.mark.parametrize("path", sorted(NO_JS_FORM_FIELDS))
+def test_the_no_javascript_form_post_is_still_accepted(client, pipeline, path):
+    """What a browser posts from each rendered form with scripting off."""
+    body = {name: NO_JS_VALUES.get(name, "") for name in NO_JS_FORM_FIELDS[path]}
+
+    response = client.post(path, data=body, content_type="application/x-www-form-urlencoded")
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+
+
+@pytest.mark.parametrize(
+    ("body", "content_type"),
+    [
+        pytest.param(
+            '{"firstName": "Julia", "email": "julia@example.com", "referralCode": null}',
+            "application/json",
+            id="json-null",
+        ),
+        pytest.param(
+            "firstName=Julia&email=julia%40example.com&referralCode=&referralCode=spam",
+            "application/x-www-form-urlencoded",
+            id="form-repeated",
+        ),
+    ],
+)
+def test_a_honeypot_that_only_looks_blank_is_refused(client, pipeline, body, content_type):
+    """No form sends either shape, so neither may pass as the empty field."""
+    response = client.post(CONTACT_PATH, data=body, content_type=content_type)
+
+    assert response.status_code == 400
+    assert pipeline.notifications == []
+
+
+def test_an_absent_honeypot_logs_the_body_so_a_false_positive_is_recoverable(
+    client, pipeline, caplog
+):
+    with caplog.at_level(logging.WARNING):
+        client.post(CONTACT_PATH, json=_without_honeypot(CONTACT_PAYLOAD))
+
+    assert "honeypot field 'referralCode' was absent" in caplog.text
+    assert "julia@example.com" in caplog.text, "the body is logged, so nothing is lost"
+
+
+def test_the_kill_switch_also_covers_an_absent_honeypot(client, pipeline, monkeypatch, caplog):
+    monkeypatch.setattr(app_module, "_HONEYPOT_ENFORCED", False)
+
+    with caplog.at_level(logging.WARNING):
+        response = client.post(CONTACT_PATH, json=_without_honeypot(CONTACT_PAYLOAD))
+
+    assert response.status_code == 200
+    assert len(pipeline.notifications) == 1
+    assert "was absent" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -803,6 +923,32 @@ def test_a_filled_honeypot_is_caught_on_the_form_encoded_path(client, pipeline):
 
     assert response.status_code == 400
     assert pipeline.notifications == []
+
+
+@pytest.mark.parametrize(
+    "content_type",
+    ["application/json", "application/x-www-form-urlencoded", "multipart/form-data"],
+)
+@pytest.mark.parametrize("loss", ["honeypot", "smtp"])
+def test_a_lost_submission_logs_its_body_in_every_encoding(
+    client, pipeline, caplog, content_type, loss
+):
+    """Caught by Copilot on PR #186: form parsing consumed the stream first, so
+    every form-encoded loss -- a no-JS supporter's SMTP failure included --
+    logged an empty body."""
+    body = {**CONTACT_PAYLOAD, "email": "recover-me@example.com"}
+    if loss == "honeypot":
+        body["referralCode"] = "filled"
+    else:
+        pipeline.notify_error = smtplib.SMTPException("down")
+    data = json.dumps(body) if content_type == "application/json" else body
+
+    with caplog.at_level(logging.ERROR):
+        client.post(CONTACT_PATH, data=data, content_type=content_type)
+
+    logged = [r.getMessage() for r in caplog.records if "unrecoverable" in r.getMessage()]
+    assert len(logged) == 1
+    assert "recover-me" in logged[0]
 
 
 def test_a_filled_honeypot_logs_the_body_so_a_false_positive_is_recoverable(

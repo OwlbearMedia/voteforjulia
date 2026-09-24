@@ -25,6 +25,10 @@ vi.mock('../../src/lib/analytics', () => ({
 // idiom throws; resolve from cwd as `scripts/check-bundle-budget.mjs` does.
 const STYLESHEET = readFileSync(resolve(process.cwd(), 'src/style.css'), 'utf-8');
 
+const NO_JS_FORM_FIELDS: Record<string, string[]> = JSON.parse(
+  readFileSync(resolve(process.cwd(), 'tests/fixtures/no-js-form-fields.json'), 'utf-8')
+);
+
 // JuliaYardSignForm renders a RouterLink and the unit suite installs no router.
 // Stubbed for both so the shared `it.each` cases mount identically.
 const mountForm = (component: Parameters<typeof mount>[0]) =>
@@ -108,6 +112,30 @@ describe('honeypot accessibility', () => {
 });
 
 describe('honeypot behaviour', () => {
+  it.each([
+    ['JuliaContactForm', JuliaContactForm],
+    ['JuliaYardSignForm', JuliaYardSignForm]
+  ])('%s includes the empty honeypot in its no-JavaScript form post', (_name, component) => {
+    const wrapper = mountForm(component);
+
+    // `FormData(form)` runs the same entry-list algorithm a native submission
+    // does. The API refuses a body without this field, so dropping it from the
+    // post (a `disabled`, a lost `name`) would refuse every no-JS supporter.
+    const entries = new FormData(wrapper.find('form').element);
+    expect(entries.getAll('referralCode')).toEqual(['']);
+  });
+
+  it.each([
+    ['/send-email', JuliaContactForm],
+    ['/yard-sign', JuliaYardSignForm]
+  ])('keeps the %s fixture the API tests post in step with the real form', (path, component) => {
+    // api/test_app_pipeline.py replays this list as the no-JS post, so it must
+    // be what the form actually sends (unchecked checkboxes send nothing).
+    const entries = new FormData(mountForm(component).find('form').element);
+    const names = [...new Set(entries.keys())].sort();
+    expect(names).toEqual(NO_JS_FORM_FIELDS[path]);
+  });
+
   it('sends an empty honeypot on a normal contact submission', async () => {
     vi.mocked(submitContactForm).mockResolvedValueOnce();
     const wrapper = mountForm(JuliaContactForm);
@@ -116,8 +144,7 @@ describe('honeypot behaviour', () => {
     await wrapper.find('#contact-email').setValue('julia@example.com');
     await wrapper.find('form').trigger('submit');
 
-    // Empty, and present. The API treats blank and absent alike, but sending it
-    // is what extends the check to a headless browser that fills every input.
+    // Empty, and present: the API refuses a body without it (ADR-0025).
     expect(submitContactForm).toHaveBeenCalledWith(expect.objectContaining({ referralCode: '' }));
   });
 

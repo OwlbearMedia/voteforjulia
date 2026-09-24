@@ -330,7 +330,11 @@ conventions and the traps.
   `src/style.css` and asserts the declaration directly, so the invariant fails
   in unit tests rather than in production —
   [ADR-0016](adr/0016-second-tier-rate-limiting-and-honeypot.md) has the
-  reasoning.
+  reasoning. The field must also stay **enabled and named**: the API refuses a
+  submission that leaves it out
+  ([ADR-0025](adr/0025-require-the-honeypot-field.md)), and a `disabled` input
+  is dropped from a no-JavaScript form post. The same spec checks this with
+  `FormData`.
 - **Backend tests are split by what they cover.**
   [api/test_app.py](../api/test_app.py) has the happy paths, CORS, rate limiting,
   and input validation; [api/test_app_pipeline.py](../api/test_app_pipeline.py)
