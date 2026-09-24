@@ -925,6 +925,32 @@ def test_a_filled_honeypot_is_caught_on_the_form_encoded_path(client, pipeline):
     assert pipeline.notifications == []
 
 
+@pytest.mark.parametrize(
+    "content_type",
+    ["application/json", "application/x-www-form-urlencoded", "multipart/form-data"],
+)
+@pytest.mark.parametrize("loss", ["honeypot", "smtp"])
+def test_a_lost_submission_logs_its_body_in_every_encoding(
+    client, pipeline, caplog, content_type, loss
+):
+    """Caught by Copilot on PR #186: form parsing consumed the stream first, so
+    every form-encoded loss -- a no-JS supporter's SMTP failure included --
+    logged an empty body."""
+    body = {**CONTACT_PAYLOAD, "email": "recover-me@example.com"}
+    if loss == "honeypot":
+        body["referralCode"] = "filled"
+    else:
+        pipeline.notify_error = smtplib.SMTPException("down")
+    data = json.dumps(body) if content_type == "application/json" else body
+
+    with caplog.at_level(logging.ERROR):
+        client.post(CONTACT_PATH, data=data, content_type=content_type)
+
+    logged = [r.getMessage() for r in caplog.records if "unrecoverable" in r.getMessage()]
+    assert len(logged) == 1
+    assert "recover-me" in logged[0]
+
+
 def test_a_filled_honeypot_logs_the_body_so_a_false_positive_is_recoverable(
     client, pipeline, caplog
 ):

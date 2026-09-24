@@ -1028,6 +1028,9 @@ def _handle_form_submission(
     endpoint_name,
     recipient_env="RECIPIENT_EMAIL",
 ):
+    # Must precede the first `request.form`: form parsing consumes the stream,
+    # and `_log_request_body` would then recover an empty body.
+    request.get_data(cache=True, parse_form_data=False)
     _log_request_fields(endpoint_name)
 
     # Before the email config is even read, so a trip costs a log line and
