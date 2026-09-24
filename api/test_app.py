@@ -260,7 +260,12 @@ class AppRequestSizeTests(unittest.TestCase):
         response = self.client.post(
             "/send-email",
             data=json.dumps(
-                {"firstName": "A", "email": "a@example.com", "message": self.oversized}
+                {
+                    "referralCode": "",
+                    "firstName": "A",
+                    "email": "a@example.com",
+                    "message": self.oversized,
+                }
             ),
             content_type="application/json",
         )
@@ -272,7 +277,12 @@ class AppRequestSizeTests(unittest.TestCase):
     def test_oversized_form_body_is_rejected(self) -> None:
         response = self.client.post(
             "/send-email",
-            data={"firstName": "A", "email": "a@example.com", "message": self.oversized},
+            data={
+                "referralCode": "",
+                "firstName": "A",
+                "email": "a@example.com",
+                "message": self.oversized,
+            },
             content_type="application/x-www-form-urlencoded",
         )
 
@@ -285,6 +295,7 @@ class AppRequestSizeTests(unittest.TestCase):
         # Every field at its documented maximum, plus JSON overhead.
         largest_legitimate = json.dumps(
             {
+                "referralCode": "",
                 "firstName": "x" * MAX_FIRST_NAME_LENGTH,
                 "lastName": "x" * MAX_LAST_NAME_LENGTH,
                 "email": "x" * MAX_EMAIL_LENGTH,
@@ -381,6 +392,7 @@ class AppRateLimitTests(unittest.TestCase):
 
     def test_send_email_returns_429_after_rate_limit_is_exceeded(self) -> None:
         payload = {
+            "referralCode": "",
             "firstName": "Julia",
             "email": "julia@example.com",
             "message": "Count me in",
@@ -417,7 +429,7 @@ class AppRateLimitTests(unittest.TestCase):
         every request below is inside it.
         """
         app_module._RATE_LIMIT_MAX_REQUESTS = 5
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         statuses = []
         for _ in range(7):
@@ -431,7 +443,7 @@ class AppRateLimitTests(unittest.TestCase):
         # The invariant that keeps this from drifting back into a per-worker
         # counter: memory holds refusals the store issued, and nothing else.
         app_module._RATE_LIMIT_MAX_REQUESTS = 5
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         for _ in range(3):
             self.assertEqual(self.client.post("/send-email", json=payload).status_code, 200)
@@ -447,7 +459,7 @@ class AppRateLimitTests(unittest.TestCase):
         but only by being a counter, which is exactly what made the limit
         `5 x N`. This shields the same path while holding no limit of its own.
         """
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
         asked = []
         real_consume = app_module.consume_rate_limit
 
@@ -476,7 +488,7 @@ class AppRateLimitTests(unittest.TestCase):
         the store is ready to serve, which is the one thing this cache is not
         allowed to do, and the thing its whole justification rests on.
         """
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
         refusal = rate_limit_store.Refusal(app_module._BURST_TIER, 0.25)
 
         with mock.patch.object(
@@ -501,7 +513,7 @@ class AppRateLimitTests(unittest.TestCase):
         # or the attribute the alert conditions run on turns into "burst"
         # whenever a patient caller is refused twice. See ADR-0021.
         app_module._RATE_LIMIT_MAX_REQUESTS = 50
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
         agent = types.SimpleNamespace(
             attributes=[],
             add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
@@ -546,7 +558,7 @@ class AppRateLimitTests(unittest.TestCase):
         because `5 x N` beats no limit at all.
         """
         app_module._RATE_LIMIT_MAX_REQUESTS = 5
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         with self._unreachable_store():
             statuses = [self.client.post("/send-email", json=payload).status_code for _ in range(7)]
@@ -554,7 +566,7 @@ class AppRateLimitTests(unittest.TestCase):
         self.assertEqual(statuses, [200, 200, 200, 200, 200, 429, 429])
 
     def test_a_degraded_refusal_reports_the_burst_tier_and_a_usable_retry_after(self) -> None:
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
         agent = types.SimpleNamespace(
             attributes=[],
             add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
@@ -573,7 +585,7 @@ class AppRateLimitTests(unittest.TestCase):
         # The cache may only hold what the shared store decided -- that is the
         # whole argument for it being allowed to refuse anyone. A guess made by
         # one worker while the store was down does not qualify.
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         with self._unreachable_store():
             self.client.post("/send-email", json=payload)
@@ -586,7 +598,7 @@ class AppRateLimitTests(unittest.TestCase):
         # It must not become a second limit running in parallel. Nothing writes
         # to it unless the store has failed, so an allowed request and a refused
         # one both leave it empty.
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         allowed = self.client.post("/send-email", json=payload)
         refused = self.client.post("/send-email", json=payload)
@@ -603,7 +615,7 @@ class AppRateLimitTests(unittest.TestCase):
         fallback let through and never recorded -- so a caller the fallback had
         just refused is served, because the store has never seen them.
         """
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         with self._unreachable_store():
             self.client.post("/send-email", json=payload)
@@ -631,7 +643,10 @@ class AppRateLimitTests(unittest.TestCase):
             [monotonic() - app_module._RATE_LIMIT_WINDOW_SECONDS - 1]
         )
 
-        self.client.post("/send-email", json={"firstName": "Julia", "email": "julia@example.com"})
+        self.client.post(
+            "/send-email",
+            json={"referralCode": "", "firstName": "Julia", "email": "julia@example.com"},
+        )
 
         self.assertNotIn(stale_key, app_module._DEGRADED_BURST_COUNTS)
 
@@ -644,7 +659,10 @@ class AppRateLimitTests(unittest.TestCase):
         for index in range(50):
             app_module._DEGRADED_BURST_COUNTS[f"send-email:198.51.100.{index}"] = deque([now])
 
-        self.client.post("/send-email", json={"firstName": "Julia", "email": "julia@example.com"})
+        self.client.post(
+            "/send-email",
+            json={"referralCode": "", "firstName": "Julia", "email": "julia@example.com"},
+        )
 
         self.assertEqual(app_module._DEGRADED_BURST_COUNTS, {})
 
@@ -661,7 +679,7 @@ class AppRateLimitTests(unittest.TestCase):
         app_module._TRUSTED_CLIENT_IP_HEADER = "X-Forwarded-For"
         # Far in the future, so nothing here is the scheduled sweep running.
         app_module._next_refusal_sweep_at = monotonic() + 3600
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         with self._unreachable_store():
             for index in range(60):
@@ -683,7 +701,7 @@ class AppRateLimitTests(unittest.TestCase):
         """
         app_module._RATE_LIMIT_MAX_TRACKED_KEYS = 1
         app_module._TRUSTED_CLIENT_IP_HEADER = "X-Forwarded-For"
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         for index in range(6):
             # Two requests per address: the first is allowed, the second refused
@@ -705,6 +723,7 @@ class AppRateLimitTests(unittest.TestCase):
             add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
         )
         payload = {
+            "referralCode": "",
             "firstName": "Julia",
             "email": "julia@example.com",
             "message": "Count me in",
@@ -724,6 +743,7 @@ class AppRateLimitTests(unittest.TestCase):
             add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
         )
         payload = {
+            "referralCode": "",
             "firstName": "Julia",
             "email": "julia@example.com",
             "message": "Count me in",
@@ -744,6 +764,7 @@ class AppRateLimitTests(unittest.TestCase):
             add_custom_attribute=lambda k, v: agent.attributes.append((k, v)),
         )
         payload = {
+            "referralCode": "",
             "firstName": "Julia",
             "email": "julia@example.com",
             "message": "Count me in",
@@ -764,6 +785,7 @@ class AppRateLimitTests(unittest.TestCase):
 
         agent = types.SimpleNamespace(add_custom_attribute=explode)
         payload = {
+            "referralCode": "",
             "firstName": "Julia",
             "email": "julia@example.com",
             "message": "Count me in",
@@ -785,7 +807,7 @@ class AppRateLimitTests(unittest.TestCase):
         # trusted unconditionally, a different value per request minted a fresh
         # bucket every time and the limiter did nothing at all -- twelve
         # requests against a limit of five, zero refused.
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         first = self.client.post(
             "/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.1"}
@@ -814,7 +836,7 @@ class AppRateLimitTests(unittest.TestCase):
         # request is what proves the first two were counted apart rather than
         # both being let through by something that never counted at all.
         app_module._TRUSTED_CLIENT_IP_HEADER = "CF-Connecting-IP"
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         first = self.client.post(
             "/send-email", json=payload, headers={"CF-Connecting-IP": "203.0.113.1"}
@@ -835,7 +857,7 @@ class AppRateLimitTests(unittest.TestCase):
         # configured, X-Forwarded-For is still caller input and must not split
         # the bucket.
         app_module._TRUSTED_CLIENT_IP_HEADER = "CF-Connecting-IP"
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         first_response = self.client.post(
             "/send-email",
@@ -855,7 +877,7 @@ class AppRateLimitTests(unittest.TestCase):
         # A proxy appends the connecting address to whatever the client sent,
         # so earlier entries stay caller-controlled even on a trusted header.
         app_module._TRUSTED_CLIENT_IP_HEADER = "X-Forwarded-For"
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
 
         first_response = self.client.post(
             "/send-email",
@@ -875,7 +897,7 @@ class AppRateLimitTests(unittest.TestCase):
         # Truncating this advertised a wait still inside the window, so a client
         # honouring Retry-After exactly earned a second 429 for doing the right
         # thing. Rounding up is what makes the header safe to obey literally.
-        payload = {"firstName": "Julia", "email": "julia@example.com"}
+        payload = {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"}
         self.client.post("/send-email", json=payload)
 
         blocked = self.client.post("/send-email", json=payload)
@@ -892,7 +914,7 @@ class AppRateLimitTests(unittest.TestCase):
 
         response = self.client.post(
             "/send-email",
-            json={"firstName": "Julia", "email": "julia@example.com"},
+            json={"referralCode": "", "firstName": "Julia", "email": "julia@example.com"},
             headers={"X-Forwarded-For": "198.51.100.40"},
         )
 
@@ -908,7 +930,10 @@ class AppRateLimitTests(unittest.TestCase):
         stale_key = "send-email:198.51.100.99"
         app_module._RATE_LIMIT_REFUSALS[stale_key] = (monotonic() - 10_000, "burst")
 
-        self.client.post("/send-email", json={"firstName": "Julia", "email": "julia@example.com"})
+        self.client.post(
+            "/send-email",
+            json={"referralCode": "", "firstName": "Julia", "email": "julia@example.com"},
+        )
 
         self.assertIn(stale_key, app_module._RATE_LIMIT_REFUSALS)
 
@@ -920,7 +945,8 @@ class AppRateLimitTests(unittest.TestCase):
         app_module._RATE_LIMIT_REFUSALS["send-email:127.0.0.1"] = (monotonic() - 1, "burst")
 
         response = self.client.post(
-            "/send-email", json={"firstName": "Julia", "email": "julia@example.com"}
+            "/send-email",
+            json={"referralCode": "", "firstName": "Julia", "email": "julia@example.com"},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -940,7 +966,10 @@ class AppRateLimitTests(unittest.TestCase):
                 "burst",
             )
 
-        self.client.post("/send-email", json={"firstName": "Julia", "email": "julia@example.com"})
+        self.client.post(
+            "/send-email",
+            json={"referralCode": "", "firstName": "Julia", "email": "julia@example.com"},
+        )
 
         self.assertLessEqual(len(app_module._RATE_LIMIT_REFUSALS), 20)
         # Soonest to expire go first: they have the least shielding left.
@@ -976,7 +1005,8 @@ class AppRateLimitTests(unittest.TestCase):
         try:
             for _ in range(5):
                 self.client.post(
-                    "/send-email", json={"firstName": "Julia", "email": "j@example.com"}
+                    "/send-email",
+                    json={"referralCode": "", "firstName": "Julia", "email": "j@example.com"},
                 )
         finally:
             app_module._sweep_expired_refusals = real_sweep
@@ -1007,7 +1037,8 @@ class AppRateLimitTests(unittest.TestCase):
         try:
             for _ in range(5):
                 self.client.post(
-                    "/send-email", json={"firstName": "Julia", "email": "j@example.com"}
+                    "/send-email",
+                    json={"referralCode": "", "firstName": "Julia", "email": "j@example.com"},
                 )
         finally:
             app_module._sweep_expired_refusals = real_sweep
@@ -1022,7 +1053,7 @@ class AppRateLimitTests(unittest.TestCase):
 
         response = self.client.post(
             "/send-email",
-            json={"firstName": "Julia", "email": "julia@example.com"},
+            json={"referralCode": "", "firstName": "Julia", "email": "julia@example.com"},
             headers={"X-Forwarded-For": "198.51.100.41"},
         )
 
@@ -1034,6 +1065,7 @@ class AppRateLimitTests(unittest.TestCase):
 
     def test_send_email_rejects_control_characters_in_header_bound_fields(self) -> None:
         payload = {
+            "referralCode": "",
             "firstName": "Julia\r",
             "email": "julia@example.com",
         }
@@ -1053,6 +1085,7 @@ class AppRateLimitTests(unittest.TestCase):
 
     def test_send_email_rejects_oversized_message(self) -> None:
         payload = {
+            "referralCode": "",
             "firstName": "Julia",
             "email": "julia@example.com",
             "message": "x" * (MAX_MESSAGE_LENGTH + 1),
@@ -1073,6 +1106,7 @@ class AppRateLimitTests(unittest.TestCase):
 
     def test_send_email_logs_field_names_without_values(self) -> None:
         payload = {
+            "referralCode": "",
             "firstName": "Julia",
             "email": "julia@example.com",
             "phone": "507-555-0100",
@@ -1099,6 +1133,7 @@ class AppRateLimitTests(unittest.TestCase):
 
     def test_send_email_does_not_log_values_for_validation_errors(self) -> None:
         payload = {
+            "referralCode": "",
             "firstName": "Julia",
             "email": "not-an-email",
         }
@@ -1124,7 +1159,7 @@ class AppRateLimitTests(unittest.TestCase):
         with self.assertLogs(app_module.logger, level="INFO") as captured:
             response = self.client.post(
                 "/send-email",
-                json={"firstName": "Julia", "email": "julia@example.com"},
+                json={"referralCode": "", "firstName": "Julia", "email": "julia@example.com"},
                 headers={"X-Forwarded-For": "198.51.100.14"},
             )
 
@@ -1146,7 +1181,12 @@ class AppRateLimitTests(unittest.TestCase):
         with self.assertLogs(app_module.logger, level="INFO") as captured:
             self.client.post(
                 "/send-email",
-                json={"firstName": "Julia", "email": "julia@example.com", "padding": oversized},
+                json={
+                    "referralCode": "",
+                    "firstName": "Julia",
+                    "email": "julia@example.com",
+                    "padding": oversized,
+                },
                 headers={"X-Forwarded-For": "198.51.100.15"},
             )
 
@@ -1235,6 +1275,7 @@ class AppYardSignTests(unittest.TestCase):
 
     def test_yard_sign_sends_emails_and_appends_sheet_row(self) -> None:
         payload = {
+            "referralCode": "",
             "firstName": "Julia",
             "lastName": "Hamann",
             "email": "julia@example.com",
@@ -1262,6 +1303,7 @@ class AppYardSignTests(unittest.TestCase):
 
     def test_yard_sign_requires_address(self) -> None:
         payload = {
+            "referralCode": "",
             "firstName": "Julia",
             "email": "julia@example.com",
         }
@@ -1278,6 +1320,7 @@ class AppYardSignTests(unittest.TestCase):
 
     def test_yard_sign_rejects_control_characters_in_header_bound_fields(self) -> None:
         payload = {
+            "referralCode": "",
             "firstName": "Julia\r",
             "email": "julia@example.com",
             "address": "123 Main St, Mankato, MN 56001",
@@ -1826,8 +1869,9 @@ class EdgeTokenTests(unittest.TestCase):
         )
 
         payloads = {
-            "/send-email": {"firstName": "Julia", "email": "julia@example.com"},
+            "/send-email": {"referralCode": "", "firstName": "Julia", "email": "julia@example.com"},
             "/yard-sign": {
+                "referralCode": "",
                 "firstName": "Sam",
                 "email": "sam@example.com",
                 "address": "123 Riverfront Dr, Mankato, MN 56001",

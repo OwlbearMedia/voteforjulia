@@ -673,7 +673,8 @@ def _consume_rate_limit(scope: str) -> tuple[int, str] | None:
 # The honeypot (ADR-0016). Both forms render this as a `display: none` input no
 # person can see, focus or tab into. The name is chosen to look worth filling to
 # something enumerating inputs while matching no autofill heuristic -- an
-# autofilled honeypot would reject a real volunteer.
+# autofilled honeypot would reject a real volunteer. Required as well as empty
+# (ADR-0025), so the input must stay enabled and named or no-JS posts fail.
 _HONEYPOT_FIELD = "referralCode"
 
 # Kill switch, so a honeypot that rejects someone real is a cPanel restart to
@@ -831,33 +832,49 @@ def _reject_unproxied_request():
     return jsonify({"error": _UNPROXIED_MESSAGE}), 403
 
 
-def _honeypot_value() -> str:
-    """The honeypot field as submitted, over either encoding.
+def _honeypot_value() -> str | None:
+    """The honeypot field as submitted, over either encoding; `None` if absent.
 
     Mirrors `_submission_from_request`'s JSON-then-form order rather than reading
-    `request.values`, so the two cannot disagree about which body was read.
+    `request.values`, so the two cannot disagree about which body was read. An
+    unparseable body reads as blank, not absent, so it still gets the parser's
+    400 rather than the honeypot's. See ADR-0025.
     """
     payload = request.get_json(silent=True)
     if isinstance(payload, dict):
-        return normalize_text(payload.get(_HONEYPOT_FIELD))
+        # A JSON null is no value at all: the forms only ever send a string.
+        if payload.get(_HONEYPOT_FIELD) is None:
+            return None
+        return normalize_text(payload[_HONEYPOT_FIELD])
 
     if request.form:
-        return normalize_text(request.form.get(_HONEYPOT_FIELD))
+        # Every value, not `.get`'s first: `x=&x=spam` must not read as blank.
+        values = request.form.getlist(_HONEYPOT_FIELD)
+        if not values:
+            return None
+        return normalize_text("".join(values))
 
     return ""
 
 
 def _honeypot_tripped(endpoint_name: str) -> bool:
-    """Whether this request filled in the hidden field.
+    """Whether this request filled in the hidden field, or left it out entirely.
 
-    Blankness is `_is_blank`, not merely falsiness. `normalize_text` strips only
-    spaces and tabs, so a lone "\\n" or a non-breaking space survives it and
-    would otherwise read as a filled honeypot and reject a real submission.
+    Both forms always send the field, blank, so only something that built its
+    own body omits it (ADR-0025). Blankness is `_is_blank`, not merely
+    falsiness. `normalize_text` strips only spaces and tabs, so a lone "\\n" or
+    a non-breaking space survives it and would otherwise read as a filled
+    honeypot and reject a real submission.
 
     Logged even when unenforced, so the kill switch can be flipped on evidence
     rather than on a hunch.
     """
-    if _is_blank(_honeypot_value()):
+    value = _honeypot_value()
+    if value is None:
+        logger.warning("%s honeypot field %r was absent", endpoint_name, _HONEYPOT_FIELD)
+        return _HONEYPOT_ENFORCED
+
+    if _is_blank(value):
         return False
 
     logger.warning("%s honeypot field %r was filled", endpoint_name, _HONEYPOT_FIELD)
@@ -907,8 +924,9 @@ def _log_request_fields(endpoint_name: str) -> None:
 def _log_request_body(endpoint_name: str) -> None:
     # Values are only logged on the failure paths where the submission is lost
     # for good and this log line is the sole way to recover it. Never called
-    # for successful requests or client-side validation errors (4xx), where
-    # the submitter still has their data and can retry.
+    # for successful requests or validation errors, where the submitter still
+    # has their data and can retry. The honeypot's 400 is the exception: nobody
+    # can correct a field they cannot see.
     raw_body = request.get_data(as_text=True)
     if len(raw_body) > _MAX_LOGGED_BODY_CHARS:
         raw_body = raw_body[:_MAX_LOGGED_BODY_CHARS] + "…[truncated]"
