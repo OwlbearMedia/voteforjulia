@@ -543,10 +543,18 @@ jobs:
             echo
           done
 
+      # The binary lives in ~/.cache/Cypress, outside the pnpm store `cache: pnpm`
+      # restores, and a restored store skips the postinstall that downloads it.
+      # `cypress install` is a no-op when the binary is already present.
+      - name: Install dependencies and the Cypress binary
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec cypress install
+
       - name: Run Cypress e2e tests
         uses: cypress-io/github-action@v7
         with:
-          install-command: pnpm install --frozen-lockfile
+          install: false
           browser: chrome
           headed: false
         env:
