@@ -166,7 +166,7 @@ function annotateInterception(apiBaseUrl: string, source: string): void {
       `A request to ${apiBaseUrl} was answered by something other than Flask, and the reply carried no CORS headers. ` +
       `Every form post therefore fails in the browser as "Failed to fetch" with nothing reaching the app, so the API logs ` +
       `will be empty. This is not the site or the tests. Likely source: ${source}. ` +
-      `Two things can do this now: the host's Imunify360 WebShield (disabled site-wide 2026-08-01, so its return means the ` +
+      `Two things can do this now: the host's Imunify360 WebShield (disabled for every hostname since 2026-08-15, so its return means the ` +
       `disable no longer covers this hostname — docs/hosting.md#imunify360-waf-disabled) and Cloudflare, which has fronted ` +
       `these hostnames since 2026-08-14 (docs/hosting.md#migrating-dns-to-cloudflare). ` +
       `Attribute it before acting: Cloudflare rewrites "server" to cloudflare on every response, so that header no longer ` +
