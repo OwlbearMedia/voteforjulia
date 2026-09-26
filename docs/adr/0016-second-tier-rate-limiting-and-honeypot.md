@@ -99,6 +99,10 @@ volunteer is the worse failure.
 `display: none`; a submission that arrives with it non-empty is refused with
 `400` before any mail is sent. This is the part that survives an IP change.
 
+> **Amended 2026-09-23 by [0025](0025-require-the-honeypot-field.md):** a
+> submission without the field is refused too. Both forms always send it, and
+> both recorded abuse cases, the one below and 2026-09-06, left it out.
+
 > **Tested 2026-08-14 against the actual spammer, and it does not catch it.**
 > The block was lifted deliberately and six submissions were allowed through.
 > Each one fetched the homepage — which by then carried the field — and posted

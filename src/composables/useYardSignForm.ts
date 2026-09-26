@@ -46,8 +46,8 @@ export function useYardSignForm() {
 
   const preferredPayment = ref<string[]>([]);
 
-  // Spam honeypot (ADR-0016) — see useContactForm. Both forms must carry it or
-  // one endpoint is unprotected.
+  // Spam honeypot (ADR-0016) — see useContactForm. Required by the API
+  // (ADR-0025), so dropping it here refuses every scripted submission.
   const referralCode = ref('');
 
   const fullName = computed(() =>

@@ -46,8 +46,8 @@ export function useContactForm() {
 
   const helpWays = ref<string[]>([]);
 
-  // Spam honeypot (ADR-0016). Sent on the scripted path too, not just the no-JS
-  // form post, so a headless browser that fills every field is caught as well.
+  // Spam honeypot (ADR-0016). Always sent, empty: the API refuses a body
+  // without it (ADR-0025), and a headless browser that fills it is caught.
   const referralCode = ref('');
 
   const fullName = computed(() =>

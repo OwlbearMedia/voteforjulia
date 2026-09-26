@@ -1,0 +1,4 @@
+{
+  "/send-email": ["email", "firstName", "lastName", "message", "name", "phone", "referralCode"],
+  "/yard-sign": ["address", "email", "firstName", "lastName", "name", "phone", "referralCode"]
+}
