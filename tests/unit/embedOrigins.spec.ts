@@ -29,24 +29,27 @@ const SOURCES = vueFiles(resolve(ROOT, 'src')).map((path) => ({
   source: readFileSync(path, 'utf8')
 }));
 
+/** Opening `<iframe …>` tags, read past any `>` inside a quoted value. */
+function openingTags(source: string): string[] {
+  return [...source.matchAll(/<iframe\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)].map((match) => match[0]);
+}
+
 /** Every `<iframe …>` tag in the site source, opening tag only. */
 function iframeTags(): { path: string; tag: string }[] {
   return SOURCES.flatMap(({ path, source }) =>
-    [...source.matchAll(/<iframe\b[^>]*>/gi)].map((match) => ({
-      path: relative(ROOT, path),
-      tag: match[0]
-    }))
+    openingTags(source).map((tag) => ({ path: relative(ROOT, path), tag }))
   );
 }
 
 /**
  * The `src` a tag carries as a literal, or undefined when anything may bind it:
  * a binding wins over a literal at runtime, so a tag with both is not static,
- * and a dynamic argument (`:[name]`) may name `src`.
+ * and a dynamic argument (`:[name]`) may name `src`. Case-insensitive, because
+ * `:SRC` sets the same attribute on a native element.
  */
 function staticSrc(tag: string): string | undefined {
-  if (/\s(?::|v-bind:|\.)(?:src(?![\w-])|\[)|\sv-bind=/.test(tag)) return undefined;
-  return tag.match(/\ssrc="([^"]+)"/)?.[1];
+  if (/\s(?::|v-bind:|\.)(?:src(?![\w-])|\[)|\sv-bind=/i.test(tag)) return undefined;
+  return tag.match(/\ssrc="([^"]+)"/i)?.[1];
 }
 
 /**
@@ -75,6 +78,16 @@ function frameSrcAllowlist(): string[] {
 
 describe('iframe origins are covered by the CSP', () => {
   it.each([
+    ['<iframe src="a">', '<iframe src="a">'],
+    ['<iframe src="a" :title="n > 1" :src="b">', '<iframe src="a" :title="n > 1" :src="b">'],
+    ['<iframe src="a" :title=\'n > 1\' :src="b">', '<iframe src="a" :title=\'n > 1\' :src="b">'],
+    ['<IFRAME src="a">', '<IFRAME src="a">'],
+    ['<iframes src="a">', undefined]
+  ])('scans %j as the tag %j', (source, expected) => {
+    expect(openingTags(`<p>${source}</p>`)).toEqual(expected ? [expected] : []);
+  });
+
+  it.each([
     ['<iframe src="https://a.example">', 'https://a.example'],
     ['<iframe\n  class="x"\n  src="https://a.example"\n>', 'https://a.example'],
     ['<iframe :srcdoc="x" src="https://a.example">', 'https://a.example'],
@@ -90,6 +103,10 @@ describe('iframe origins are covered by the CSP', () => {
     ['<iframe src="https://a.example" v-bind:[name]="x">', undefined],
     ['<iframe src="https://a.example" @[event]="x">', 'https://a.example'],
     ['<iframe src="https://a.example" :class="x">', 'https://a.example'],
+    ['<iframe SRC="https://a.example">', 'https://a.example'],
+    ['<iframe src="https://a.example" :SRC="x">', undefined],
+    ['<iframe src="https://a.example" :Src="x">', undefined],
+    ['<iframe src="https://a.example" V-BIND:src="x">', undefined],
     ['<iframe data-src="https://a.example">', undefined],
     ["<iframe src='https://a.example'>", undefined]
   ])('reads %j as static src %s', (tag, expected) => {
@@ -127,12 +144,18 @@ describe('iframe origins are covered by the CSP', () => {
 
       for (const probe of props) {
         const wrapper = mount(component, { props: probe });
-        const src = wrapper.find('iframe').attributes('src');
+        const srcs = wrapper.findAll('iframe').map((frame) => frame.attributes('src'));
         wrapper.unmount();
-        if (!src) throw new Error(`${path} rendered no <iframe> src for ${JSON.stringify(probe)}`);
-        expect(allowed, `${path} with ${JSON.stringify(probe)} embeds ${src}`).toContain(
-          new URL(src).origin
-        );
+        if (srcs.length === 0 || srcs.includes(undefined)) {
+          throw new Error(
+            `${path} rendered an <iframe> without a src for ${JSON.stringify(probe)}`
+          );
+        }
+        for (const src of srcs as string[]) {
+          expect(allowed, `${path} with ${JSON.stringify(probe)} embeds ${src}`).toContain(
+            new URL(src).origin
+          );
+        }
       }
     }
   );
