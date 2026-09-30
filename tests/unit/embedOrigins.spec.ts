@@ -29,19 +29,28 @@ const SOURCES = vueFiles(resolve(ROOT, 'src')).map((path) => ({
   source: readFileSync(path, 'utf8')
 }));
 
-const BOUND_SRC = /\s(?::|v-bind:)src=/;
-
 /** Every `<iframe …>` tag in the site source, opening tag only. */
 function iframeTags(): { path: string; tag: string }[] {
   return SOURCES.flatMap(({ path, source }) =>
-    [...source.matchAll(/<iframe\b[^>]*>/g)].map((match) => ({ path, tag: match[0] }))
+    [...source.matchAll(/<iframe\b[^>]*>/gi)].map((match) => ({
+      path: relative(ROOT, path),
+      tag: match[0]
+    }))
   );
 }
 
 /**
- * Every component whose `<iframe>` binds its `src`, with the props to render it.
- * A bound source is resolved by rendering, so the props must include inputs that
- * try to move the frame to another origin, not only the ones the pages pass.
+ * The `src` a tag carries as a literal, or undefined when anything binds it: a
+ * binding wins over a literal at runtime, so a tag with both is not static.
+ */
+function staticSrc(tag: string): string | undefined {
+  if (/\s(?::|v-bind:)src(?![\w-])|\sv-bind=/.test(tag)) return undefined;
+  return tag.match(/\ssrc="([^"]+)"/)?.[1];
+}
+
+/**
+ * Every component with an iframe `staticSrc` cannot read, and the props to
+ * render it with. See docs/conventions.md, "Embedded iframes".
  */
 const BOUND_FRAMES: Record<string, { component: Component; props: Record<string, unknown>[] }> = {
   'src/components/JuliaVideo.vue': {
@@ -64,34 +73,45 @@ function frameSrcAllowlist(): string[] {
 }
 
 describe('iframe origins are covered by the CSP', () => {
-  it('finds the embeds it claims to check', () => {
-    // Without this the whole file passes vacuously if the scan ever breaks.
-    expect(iframeTags().length).toBeGreaterThanOrEqual(1);
+  it.each([
+    ['<iframe src="https://a.example">', 'https://a.example'],
+    ['<iframe\n  class="x"\n  src="https://a.example"\n>', 'https://a.example'],
+    ['<iframe :srcdoc="x" src="https://a.example">', 'https://a.example'],
+    ['<iframe :src="x">', undefined],
+    ['<iframe\n  class="x"\n  :src="x"\n>', undefined],
+    ['<iframe :src>', undefined],
+    ['<iframe :src.attr="x">', undefined],
+    ['<iframe v-bind:src="x">', undefined],
+    ['<iframe v-bind="{ src }">', undefined],
+    ['<iframe src="https://a.example" :src="x">', undefined],
+    ['<iframe data-src="https://a.example">', undefined],
+    ["<iframe src='https://a.example'>", undefined]
+  ])('reads %j as static src %s', (tag, expected) => {
+    expect(staticSrc(tag)).toBe(expected);
   });
 
-  it('allows every embedded origin in frame-src', () => {
+  it('allows every static origin in frame-src', () => {
     const allowed = frameSrcAllowlist();
 
-    const origins = iframeTags()
-      .filter(({ tag }) => !BOUND_SRC.test(tag))
-      .map(({ path, tag }) => {
-        const src = tag.match(/\ssrc="([^"]+)"/);
-        if (!src) throw new Error(`${path}: <iframe> has no static src`);
-        return { path, origin: new URL(src[1]).origin };
-      });
-
-    for (const { path, origin } of origins) {
+    for (const { path, tag } of iframeTags()) {
+      const src = staticSrc(tag);
+      if (src === undefined) continue;
+      const origin = new URL(src).origin;
       expect(allowed, `${path} embeds ${origin}, which frame-src does not allow`).toContain(origin);
     }
   });
 
-  it('registers every iframe whose src is bound, and nothing else', () => {
-    // A `:src` or `v-bind:src` resolves at runtime, so the static check above
-    // cannot see where it points; an unregistered one is unchecked, not exempt.
-    const bound = iframeTags()
-      .filter(({ tag }) => BOUND_SRC.test(tag))
-      .map(({ path }) => relative(ROOT, path));
-    expect(bound.sort()).toEqual(Object.keys(BOUND_FRAMES).sort());
+  it('registers every iframe without a static src, and nothing else', () => {
+    // This is also the guard against a broken scan: it would find no frames.
+    const unread = new Set(
+      iframeTags()
+        .filter(({ tag }) => staticSrc(tag) === undefined)
+        .map(({ path }) => path)
+    );
+    expect(
+      [...unread].sort(),
+      'an iframe whose src is not a literal must be rendered, via BOUND_FRAMES'
+    ).toEqual(Object.keys(BOUND_FRAMES).sort());
   });
 
   it.each(Object.entries(BOUND_FRAMES))(
@@ -100,7 +120,9 @@ describe('iframe origins are covered by the CSP', () => {
       const allowed = frameSrcAllowlist();
 
       for (const probe of props) {
-        const src = mount(component, { props: probe }).find('iframe').attributes('src');
+        const wrapper = mount(component, { props: probe });
+        const src = wrapper.find('iframe').attributes('src');
+        wrapper.unmount();
         if (!src) throw new Error(`${path} rendered no <iframe> src for ${JSON.stringify(probe)}`);
         expect(allowed, `${path} with ${JSON.stringify(probe)} embeds ${src}`).toContain(
           new URL(src).origin

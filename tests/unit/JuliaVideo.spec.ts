@@ -16,4 +16,24 @@ describe('JuliaVideo', () => {
   it('stays out of the initial page load', () => {
     expect(player.attributes('loading')).toBe('lazy');
   });
+
+  it('delegates the features YouTube’s own embed snippet asks for', () => {
+    // Pinned as a set: dropping `encrypted-media` breaks licensed playback and
+    // dropping `allowfullscreen` removes the fullscreen button, on every player.
+    const features = (player.attributes('allow') ?? '')
+      .split(';')
+      .map((feature) => feature.trim())
+      .filter(Boolean);
+    expect(features.sort()).toEqual([
+      'accelerometer',
+      'autoplay',
+      'clipboard-write',
+      'encrypted-media',
+      'gyroscope',
+      'picture-in-picture',
+      'web-share'
+    ]);
+    expect(player.attributes()).toHaveProperty('allowfullscreen');
+    expect(player.attributes('referrerpolicy')).toBe('strict-origin-when-cross-origin');
+  });
 });
