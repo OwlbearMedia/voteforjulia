@@ -41,11 +41,11 @@ describe('Page components', () => {
     expect(wrapper.text()).toContain('Meet Julia');
     expect(wrapper.text()).toContain('Environmental Justice and Sustainability');
 
-    // The players are third-party frames on the busiest page: lazy so they stay
-    // out of the initial load, and titled per video because that is what a
-    // screen reader announces for a frame. Title and id are pinned as a pair
-    // rather than by shape — the first draft of this section had the same video
-    // under both headings, which any check of the URL's form would have passed.
+    // Titled per video because that is what a screen reader announces for a
+    // frame; JuliaVideo.spec.ts covers the attributes every player shares.
+    // Title and id are pinned as a pair rather than by shape — the first draft
+    // of this section had the same video under both headings, which any check
+    // of the URL's form would have passed.
     const players = wrapper.findAll('iframe');
     expect(players.map((player) => [player.attributes('title'), player.attributes('src')])).toEqual(
       [
@@ -56,12 +56,17 @@ describe('Page components', () => {
         [
           'Julia Hamann on affordability and tenants rights',
           'https://www.youtube-nocookie.com/embed/4CE6IQ4mVNQ'
+        ],
+        [
+          'Julia Hamann on reimagining public safety',
+          'https://www.youtube-nocookie.com/embed/bc4dvZpAa-A'
+        ],
+        [
+          'Julia Hamann on environmental justice and sustainability',
+          'https://www.youtube-nocookie.com/embed/grMO38qe9S0'
         ]
       ]
     );
-    for (const player of players) {
-      expect(player.attributes('loading')).toBe('lazy');
-    }
     expect(useHeadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Home | Julia Hamann for Mankato Mayor',
