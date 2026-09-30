@@ -184,13 +184,32 @@ useHead(
       Julia believes that safety for citizens goes far beyond law enforcement and emergency
       services.
     </p>
-    <p>
-      Community safety is achieved through a strong social safety network where citizens have access
-      to resources beyond police intervention. When people have access to safe housing, financial
-      stability, and community support systems that help prevent crises before they happen,
-      communities thrive. Julia supports strengthening partnerships with local social service
-      organizations and reviewing the city’s ordinances that criminalize homelessness.
-    </p>
+    <div class="grid grid-cols-1 items-center gap-6 md:grid-cols-2">
+      <p class="mb-0">
+        Community safety is achieved through a strong social safety network where citizens have
+        access to resources beyond police intervention. When people have access to safe housing,
+        financial stability, and community support systems that help prevent crises before they
+        happen, communities thrive. Julia supports strengthening partnerships with local social
+        service organizations and reviewing the city’s ordinances that criminalize homelessness.
+      </p>
+      <iframe
+        class="aspect-video w-full rounded-lg shadow-soft"
+        src="https://www.youtube-nocookie.com/embed/bc4dvZpAa-A"
+        title="Julia Hamann on reimagining public safety"
+        loading="lazy"
+        allow="
+          accelerometer;
+          autoplay;
+          clipboard-write;
+          encrypted-media;
+          gyroscope;
+          picture-in-picture;
+          web-share;
+        "
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen
+      ></iframe>
+    </div>
 
     <hr />
 
@@ -200,14 +219,33 @@ useHead(
       future for Mankato by examining how proposed developments, like data centers, might impact our
       environment.
     </p>
-    <p>
-      Julia understands it is our responsibility as humans to care for our environment and to be
-      proactive about safeguarding our climate for future generations. She is supportive of the
-      city's climate action plan and wants to ensure that we continue to take steps locally to be
-      resilient in the face of climate change. Julia is inspired by cities who prioritize the
-      environment through policies that support green infrastructure development and de-incentivize
-      harmful practices, such as a plastic bag fee.
-    </p>
+    <div class="grid grid-cols-1 items-center gap-6 md:grid-cols-2">
+      <p class="mb-0">
+        Julia understands it is our responsibility as humans to care for our environment and to be
+        proactive about safeguarding our climate for future generations. She is supportive of the
+        city's climate action plan and wants to ensure that we continue to take steps locally to be
+        resilient in the face of climate change. Julia is inspired by cities who prioritize the
+        environment through policies that support green infrastructure development and
+        de-incentivize harmful practices, such as a plastic bag fee.
+      </p>
+      <iframe
+        class="aspect-video w-full rounded-lg shadow-soft"
+        src="https://www.youtube-nocookie.com/embed/grMO38qe9S0"
+        title="Julia Hamann on environmental justice and sustainability"
+        loading="lazy"
+        allow="
+          accelerometer;
+          autoplay;
+          clipboard-write;
+          encrypted-media;
+          gyroscope;
+          picture-in-picture;
+          web-share;
+        "
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen
+      ></iframe>
+    </div>
   </section>
 
   <hr />
