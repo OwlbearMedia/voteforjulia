@@ -39,8 +39,10 @@ every visitor.
 One directive is covered:
 [tests/unit/embedOrigins.spec.ts](../../../tests/unit/embedOrigins.spec.ts)
 fails if a static `<iframe>` anywhere under `src/` has an origin the
-`frame-src` allowlist does not name, and fails on an iframe whose `src` is
-bound, because it cannot resolve one. `script-src`, `style-src`, `font-src`,
+`frame-src` allowlist does not name. An iframe whose `src` is bound is checked
+by rendering its component from a registered list, and an unregistered one
+fails. A new bound iframe needs an entry there, with props that try to move it
+off its origin. `script-src`, `style-src`, `font-src`,
 `img-src` and `connect-src` have no such test — check those by hand.
 
 The header is applied at the edge, so it can only be confirmed with `curl -sI`

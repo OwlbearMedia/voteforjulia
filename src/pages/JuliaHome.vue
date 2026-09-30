@@ -3,6 +3,7 @@ import { useHead } from '@unhead/vue';
 import { Image } from '@imagekit/vue';
 import JuliaButton from '../components/JuliaButton.vue';
 import JuliaContactForm from '../components/JuliaContactForm.vue';
+import JuliaVideo from '../components/JuliaVideo.vue';
 import { buildPageHead } from '../lib/pageHead';
 
 defineOptions({
@@ -125,23 +126,7 @@ useHead(
         increase transparency in the council’s decision-making processes and ensure that the council
         is responsive and respectful to feedback and ideas from their constituents.
       </p>
-      <iframe
-        class="aspect-video w-full rounded-lg shadow-soft"
-        src="https://www.youtube-nocookie.com/embed/CaBHPV8mm2k"
-        title="Julia Hamann on community input and transparency"
-        loading="lazy"
-        allow="
-          accelerometer;
-          autoplay;
-          clipboard-write;
-          encrypted-media;
-          gyroscope;
-          picture-in-picture;
-          web-share;
-        "
-        referrerpolicy="strict-origin-when-cross-origin"
-        allowfullscreen
-      ></iframe>
+      <JuliaVideo video-id="CaBHPV8mm2k" title="Julia Hamann on community input and transparency" />
     </div>
 
     <hr />
@@ -158,23 +143,7 @@ useHead(
         practices. She’s interested in exploring ways city policy can support businesses in paying
         living wage.
       </p>
-      <iframe
-        class="aspect-video w-full rounded-lg shadow-soft"
-        src="https://www.youtube-nocookie.com/embed/4CE6IQ4mVNQ"
-        title="Julia Hamann on affordability and tenants rights"
-        loading="lazy"
-        allow="
-          accelerometer;
-          autoplay;
-          clipboard-write;
-          encrypted-media;
-          gyroscope;
-          picture-in-picture;
-          web-share;
-        "
-        referrerpolicy="strict-origin-when-cross-origin"
-        allowfullscreen
-      ></iframe>
+      <JuliaVideo video-id="4CE6IQ4mVNQ" title="Julia Hamann on affordability and tenants rights" />
     </div>
 
     <hr />
@@ -192,23 +161,7 @@ useHead(
         happen, communities thrive. Julia supports strengthening partnerships with local social
         service organizations and reviewing the city’s ordinances that criminalize homelessness.
       </p>
-      <iframe
-        class="aspect-video w-full rounded-lg shadow-soft"
-        src="https://www.youtube-nocookie.com/embed/bc4dvZpAa-A"
-        title="Julia Hamann on reimagining public safety"
-        loading="lazy"
-        allow="
-          accelerometer;
-          autoplay;
-          clipboard-write;
-          encrypted-media;
-          gyroscope;
-          picture-in-picture;
-          web-share;
-        "
-        referrerpolicy="strict-origin-when-cross-origin"
-        allowfullscreen
-      ></iframe>
+      <JuliaVideo video-id="bc4dvZpAa-A" title="Julia Hamann on reimagining public safety" />
     </div>
 
     <hr />
@@ -228,23 +181,10 @@ useHead(
         environment through policies that support green infrastructure development and
         de-incentivize harmful practices, such as a plastic bag fee.
       </p>
-      <iframe
-        class="aspect-video w-full rounded-lg shadow-soft"
-        src="https://www.youtube-nocookie.com/embed/grMO38qe9S0"
+      <JuliaVideo
+        video-id="grMO38qe9S0"
         title="Julia Hamann on environmental justice and sustainability"
-        loading="lazy"
-        allow="
-          accelerometer;
-          autoplay;
-          clipboard-write;
-          encrypted-media;
-          gyroscope;
-          picture-in-picture;
-          web-share;
-        "
-        referrerpolicy="strict-origin-when-cross-origin"
-        allowfullscreen
-      ></iframe>
+      />
     </div>
   </section>
 

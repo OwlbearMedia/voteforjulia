@@ -242,13 +242,21 @@ iframe, and what that implies for the security headers are all in
 
 ## Embedded iframes
 
-Third-party video (the YouTube embeds on the home page) goes in as a plain
-`<iframe>`: `aspect-video w-full` for the responsive box, `loading="lazy"`, and
-a `title` naming the specific video rather than the `YouTube video player` the
-share dialog hands you — the title is what a screen reader announces for the
-frame, so two identical ones are indistinguishable.
+A YouTube video goes in through
+[JuliaVideo](../src/components/JuliaVideo.vue), with the id from the share link
+and a `title` naming the specific video rather than the `YouTube video player`
+the share dialog hands you — the title is what a screen reader announces for the
+frame, so two identical ones are indistinguishable:
 
-Two things that are not obvious:
+```vue
+<JuliaVideo video-id="bc4dvZpAa-A" title="Julia Hamann on reimagining public safety" />
+```
+
+The component owns everything else the share dialog's snippet carries: the
+`youtube-nocookie.com` origin, `loading="lazy"`, the responsive `aspect-video`
+box, and the `allow` list as YouTube issues it.
+
+Three things that are not obvious:
 
 - **Prettier explodes the `allow` attribute across several lines**, trailing
   `;` included. That is deliberate: its HTML printer has a dedicated case for
@@ -260,6 +268,12 @@ Two things that are not obvious:
   right up to the deploy. The header ships with the frontend build, so it lands
   in the same commit as the markup — see
   [ADR-0010](adr/0010-edge-policy-in-htaccess.md).
+- **An iframe with a bound `src` must be registered in
+  [embedOrigins.spec.ts](../tests/unit/embedOrigins.spec.ts).** The spec reads a
+  static `src` straight from the source, but a bound one exists only at runtime,
+  so it renders each registered component instead — with props that try to move
+  the frame to another origin, not only the ones the pages pass. That is why
+  `JuliaVideo` takes an id rather than a URL: the origin is not an input.
 
 ## Diagrams in docs
 
