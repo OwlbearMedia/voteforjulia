@@ -40,11 +40,12 @@ function iframeTags(): { path: string; tag: string }[] {
 }
 
 /**
- * The `src` a tag carries as a literal, or undefined when anything binds it: a
- * binding wins over a literal at runtime, so a tag with both is not static.
+ * The `src` a tag carries as a literal, or undefined when anything may bind it:
+ * a binding wins over a literal at runtime, so a tag with both is not static,
+ * and a dynamic argument (`:[name]`) may name `src`.
  */
 function staticSrc(tag: string): string | undefined {
-  if (/\s(?::|v-bind:)src(?![\w-])|\sv-bind=/.test(tag)) return undefined;
+  if (/\s(?::|v-bind:|\.)(?:src(?![\w-])|\[)|\sv-bind=/.test(tag)) return undefined;
   return tag.match(/\ssrc="([^"]+)"/)?.[1];
 }
 
@@ -84,6 +85,11 @@ describe('iframe origins are covered by the CSP', () => {
     ['<iframe v-bind:src="x">', undefined],
     ['<iframe v-bind="{ src }">', undefined],
     ['<iframe src="https://a.example" :src="x">', undefined],
+    ['<iframe src="https://a.example" .src="x">', undefined],
+    ['<iframe src="https://a.example" :[name]="x">', undefined],
+    ['<iframe src="https://a.example" v-bind:[name]="x">', undefined],
+    ['<iframe src="https://a.example" @[event]="x">', 'https://a.example'],
+    ['<iframe src="https://a.example" :class="x">', 'https://a.example'],
     ['<iframe data-src="https://a.example">', undefined],
     ["<iframe src='https://a.example'>", undefined]
   ])('reads %j as static src %s', (tag, expected) => {
