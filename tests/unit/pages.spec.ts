@@ -56,6 +56,14 @@ describe('Page components', () => {
         [
           'Julia Hamann on affordability and tenants rights',
           'https://www.youtube-nocookie.com/embed/4CE6IQ4mVNQ'
+        ],
+        [
+          'Julia Hamann on reimagining public safety',
+          'https://www.youtube-nocookie.com/embed/bc4dvZpAa-A'
+        ],
+        [
+          'Julia Hamann on environmental justice and sustainability',
+          'https://www.youtube-nocookie.com/embed/grMO38qe9S0'
         ]
       ]
     );
