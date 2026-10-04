@@ -1118,6 +1118,11 @@ Consequences worth knowing:
   root.
 - **The test files are uploaded and then deleted.** One mechanism decides what
   production contains, which is simpler than teaching scp-action to filter.
+- **`stderr.log` and cPanel's own files are spared** — the `protected=` pattern
+  in both workflows, since
+  [#124](https://github.com/OwlbearMedia/voteforjulia/pull/124). So
+  `stderr.log` accumulates across deploys and restarts; it is the API's whole
+  history on the host, which is what makes it worth reading after the fact.
 - **The prune refuses to run** against a manifest that is missing or under ten
   lines. Without that guard a truncated upload reads as "nothing here belongs"
   and would delete the whole application.
@@ -1369,10 +1374,9 @@ A `python-requests` transaction means the app answered and the fault is
 something else — read the status code and stop assuming the install. No
 transaction at all means the probe never arrived, and a re-run is the move.
 
-One consolation when this does happen: because the job aborts before the prune
-step, `stderr.log` is still on the host. The prune deletes it on every
-successful deploy, so a failure of this kind is the one case where Passenger's
-own account of a bad spawn survives long enough to read.
+Passenger's own account of a bad spawn is in `stderr.log` on the host, which the
+prune never deletes (see [The Python API](#the-python-api)). It is appended to
+across restarts, so match timestamps rather than reading the tail.
 
 This is what happened on 2026-08-19 to the deploy of
 [#153](https://github.com/OwlbearMedia/voteforjulia/pull/153). The same commit
