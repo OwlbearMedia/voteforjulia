@@ -456,9 +456,9 @@ jobs:
             # Production is currently spared because its document root
             # (~/api-sub) is a different directory from this app root (~/api).
             # That is cPanel configuration and could be changed from a web UI
-            # without anyone touching this repo, so the guard belongs here too:
-            # `stderr.log` is already being deleted on every deploy, which is
-            # why a crash here leaves no trace to read afterwards.
+            # without anyone touching this repo, so the guard belongs here too.
+            # `stderr.log` was deleted on every deploy until it was listed here
+            # (#124), which is why a crash before then left no trace to read.
             protected='^(deploy-manifest\.txt|\.htaccess|\.user\.ini|stderr\.log)$|^(\.well-known|cgi-bin)/'
 
             # `sed` rather than find's `-printf '%P\n'`, which is GNU-only —
