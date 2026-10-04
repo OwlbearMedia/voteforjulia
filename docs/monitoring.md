@@ -652,22 +652,23 @@ changes, 2026-10-25 to 2026-11-01.
    through Cloudflare, is not rate-limited and is under the size cap leaves at
    least one of these lines:
 
-   | Line                                                  | Means                                                             |
-   | ----------------------------------------------------- | ----------------------------------------------------------------- |
-   | `<endpoint> submission fields: …`                     | reached the handler; lists only the fields that had content       |
-   | `<endpoint> unrecoverable request body: …`            | the submission was lost; **carries the values** — recover from it |
-   | `<endpoint> rejected a submission from origin …`      | refused as cross-site, `403`                                      |
-   | `<endpoint> refused: N submissions already in flight` | refused at the capacity cap, `503`                                |
-   | `Confirmation email refused for …`                    | the server refused the supporter's address                        |
-   | `Failed to send confirmation email to …`              | the confirmation raised; the submission itself was kept           |
+   | Line                                                  | Means                                                                                       |
+   | ----------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+   | `<endpoint> submission fields: …`                     | reached the handler; lists only the fields that had content                                 |
+   | `<endpoint> unrecoverable request body: …`            | the submission was lost; **carries the values** — recover from it                           |
+   | `<endpoint> rejected a submission from origin …`      | refused as cross-site, `403`                                                                |
+   | `<endpoint> refused: N submissions already in flight` | refused at the capacity cap, `503`                                                          |
+   | `Exception on <endpoint> [POST]`                      | crashed before the handler — e.g. an unparseable `SHEETS_TIMEOUT_SECONDS`; no values logged |
+   | `Confirmation email refused for …`                    | the server refused the supporter's address                                                  |
+   | `Failed to send confirmation email to …`              | the confirmation raised; the submission itself was kept                                     |
 
    The fields line gives a time, not a person. The unrecoverable-body line is
    the one that names someone, and it is written on every path that drops a
    submission **inside the handler**: the honeypot, an SMTP refusal or failure,
-   a Sheets append failure, a configuration error. It is cut at 4,096
+   a Sheets append failure, an email configuration error. It is cut at 4,096
    characters and marked `…[truncated]`, so a long message may not survive
-   whole. The origin and capacity refusals log no values at all; those
-   submissions are gone. **Two refusals leave no line here whatsoever**: a
+   whole. The origin and capacity refusals and a crash before the handler log
+   no values at all; those submissions are gone. **Two refusals leave no line here whatsoever**: a
    rate-limited request (`429`) and one over the request size cap (`413`, which
    the real form can reach). Look for those status codes in the access log, and
    for the rate limiter's sampled attribute in
