@@ -633,6 +633,90 @@ routed to any other worker still meets that worker's own idle socket. And
 the window in which a submission can be the first caller to touch a dead socket
 is three times what it was at 5.
 
+### A supporter says they submitted a form
+
+No alert fires for this one: it arrives as a text from Julia, usually with a
+forwarded confirmation email and a question about something that seems missing.
+The first job is to establish **whether and when** the submission reached the
+API, and the sources that look authoritative are the two that cannot answer it.
+
+Times in this section are Mankato time unless marked. The host's logs and file
+times are **UK time**, six hours ahead — five between the UK and US clock
+changes, 2026-10-25 to 2026-11-01.
+
+**Ask the host, in this order:**
+
+1. **`~/api/stderr.log`.** It survives deploys (the prune protects it — see
+   [hosting.md](hosting.md#the-python-api)), so it is a history, not just the
+   current worker's output. Every request to a form endpoint that arrives
+   through Cloudflare and is not rate-limited leaves at least one of these
+   lines:
+
+   | Line                                                  | Means                                                                  |
+   | ----------------------------------------------------- | ---------------------------------------------------------------------- |
+   | `<endpoint> submission fields: …`                     | reached the handler; lists only the fields that had content            |
+   | `<endpoint> unrecoverable request body: …`            | the submission was lost; **carries the full values** — recover from it |
+   | `<endpoint> rejected a submission from origin …`      | refused as cross-site, `403`                                           |
+   | `<endpoint> refused: N submissions already in flight` | refused at the capacity cap, `503`                                     |
+   | `Confirmation email refused for …`                    | the server refused the supporter's address                             |
+   | `Failed to send confirmation email to …`              | the confirmation raised; the submission itself was kept                |
+
+   The fields line gives a time, not a person. The unrecoverable-body line is
+   the one that names someone, and it is written on every path that drops a
+   submission: the honeypot, an SMTP refusal or failure, a Sheets append
+   failure, a configuration error. **A rate-limited request leaves no line
+   here at all**; look for a `429` in the access log, and the sampled attribute
+   in [A rate limiter tripping](#a-rate-limiter-tripping).
+
+2. **The notification copies in the campaign mailboxes.** Each submission emails
+   the team, and the recipients are mailboxes on this same host, so a copy lands
+   under `~/mail/voteforjulia.com/`. Read the `To:` of the newest notification
+   for which boxes; the routing is cPanel configuration and changes. Search by
+   subject — the yard sign form sends `New yard sign request from <name>`, and
+   the volunteer form (the `/send-email` endpoint) sends
+   `New message from <name>` — **across every folder**, since volunteers file
+   them away. A folder name records what someone meant to do, not what
+   happened; to know whether anyone followed up, search for correspondence with
+   the supporter's address instead. Bodies are base64, so `grep` finds headers
+   but not the values; decode with the `email` module under
+   `~/virtualenv/api/3.11/bin/python`, as there is no `python3` on the PATH.
+
+3. **The Google Sheet**, which has the UTC timestamp and the values.
+
+**The supporter's own confirmation is not stored anywhere.** The app submits it
+over SMTP with no BCC, so there is no Sent copy; Exim's log is not readable from
+the account; and cPanel's Track Delivery is not installed
+(`uapi EmailTrack search` fails to load the module). The notification is sent in
+the same request immediately before it, so its existence is the closest evidence
+available, together with the absence of either confirmation line above.
+
+**Do not use these two to answer the question:**
+
+- **New Relic.** See
+  [APM data here is a sample](#apm-data-here-is-a-sample-not-a-census): of
+  roughly a dozen production form posts from 2026-09-20 to 2026-10-03, APM
+  recorded one. A dashboard showing zero submissions for a day is consistent
+  with several having happened.
+- **The live access log** (`~/access-logs/*-ssl_log`). It is written in
+  batches, all vhosts in the same second, so its tail lags by minutes. On
+  2026-10-03 at 21:27 its newest line was from 21:12, and a test submission made
+  at 21:20 — already in `stderr.log`, the mailboxes and the sheet — was not in
+  it. The monthly archives in `~/logs/` are complete and timed to the second, so
+  "absent from the archive" means something and "absent from the live tail" does
+  not.
+
+**Donations are not on this host at all.** `/donate` is Donorbox and Stripe
+([ADR-0005](adr/0005-outsource-donations.md)); a missing donation is a question
+for the Donorbox dashboard. Nothing in this repo writes a donation spreadsheet.
+
+**Worked example, 2026-10-03.** Julia reported a supporter who had requested a
+yard sign and donated "today", held both confirmation emails, and yet was not in
+the donations spreadsheet, with New Relic showing no submissions and no errors.
+`stderr.log` had not been written since 2026-10-01, which settled "today", and
+the notification copies narrowed the request to a handful from weeks earlier,
+which Julia matched to the supporter. The API had done its whole job at the
+time, and the donation was never this system's to record.
+
 ### Turning it off
 
 Clearing `NEW_RELIC_LICENSE_KEY` on an app and restarting disables the agent
