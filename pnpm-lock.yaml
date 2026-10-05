@@ -113,8 +113,8 @@ importers:
         specifier: ^4.0.2
         version: 4.0.2(vue@3.5.43(typescript@6.0.3))
       '@newrelic/browser-agent':
-        specifier: ^1.322.0
-        version: 1.322.0
+        specifier: ^1.323.0
+        version: 1.323.0
       vue:
         specifier: ^3.5.43
         version: 3.5.43(typescript@6.0.3)
@@ -433,8 +433,8 @@ packages:
   '@lhci/utils@0.15.1':
     resolution: {integrity: sha512-WclJnUQJeOMY271JSuaOjCv/aA0pgvuHZS29NFNdIeI14id8eiFsjith85EGKYhljgoQhJ2SiW4PsVfFiakNNw==}
 
-  '@newrelic/browser-agent@1.322.0':
-    resolution: {integrity: sha512-rL26XxGglL/2SbvmLkLkAoNXt2sFoBigO+zGihuhRKEUQkgdSD8beGNTKrUHnwMhZ2BfWW3pR6Wz3ZENflPeJA==}
+  '@newrelic/browser-agent@1.323.0':
+    resolution: {integrity: sha512-geevV3bzUXvSPTZT1GadH/6Lv0Sa7NJgQtrBEDI9+IFpbODVJIe9vOeVzAm2GJLnhxCAsQ0pvymVHk+EeccfYg==}
     engines: {node: '>=12.17.0 < 13.0.0 || >=13.7.0'}
 
   '@newrelic/publish-sourcemap@5.1.4':
@@ -4028,7 +4028,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@newrelic/browser-agent@1.322.0':
+  '@newrelic/browser-agent@1.323.0':
     dependencies:
       '@newrelic/rrweb': 1.1.2
       fflate: 0.8.2
