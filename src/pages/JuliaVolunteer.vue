@@ -3,6 +3,7 @@ import { useHead } from '@unhead/vue';
 import { Image } from '@imagekit/vue';
 import JuliaContactForm from '../components/JuliaContactForm.vue';
 import { buildPageHead } from '../lib/pageHead';
+import { IMAGEKIT_URL_ENDPOINT } from '../lib/imagekit';
 
 defineOptions({
   name: 'JuliaVolunteer'
@@ -31,7 +32,7 @@ useHead(
         <JuliaContactForm />
       </div>
       <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
+        :url-endpoint="IMAGEKIT_URL_ENDPOINT"
         src="/julia.avif"
         alt="Julia Hamann for Mankato Mayor"
         class="h-auto w-full rounded-lg"

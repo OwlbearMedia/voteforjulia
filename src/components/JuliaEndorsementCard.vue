@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { Image } from '@imagekit/vue';
 import { type Endorsement, logoBreakpoints } from '../lib/endorsements';
+import { IMAGEKIT_URL_ENDPOINT } from '../lib/imagekit';
 
 defineOptions({
   name: 'JuliaEndorsementCard'
@@ -21,7 +22,7 @@ const breakpoints = computed(() => logoBreakpoints(props.endorsement.logoWidth))
       class="block md:col-span-1"
     >
       <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
+        :url-endpoint="IMAGEKIT_URL_ENDPOINT"
         :src="endorsement.logo"
         :alt="`${endorsement.name} logo`"
         class="h-auto w-full"

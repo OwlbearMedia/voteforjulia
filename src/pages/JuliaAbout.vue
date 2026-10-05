@@ -2,6 +2,7 @@
 import { useHead } from '@unhead/vue';
 import { Image } from '@imagekit/vue';
 import { buildPageHead } from '../lib/pageHead';
+import { IMAGEKIT_URL_ENDPOINT } from '../lib/imagekit';
 
 defineOptions({
   name: 'JuliaAbout'
@@ -63,7 +64,7 @@ useHead(
         </p>
       </div>
       <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
+        :url-endpoint="IMAGEKIT_URL_ENDPOINT"
         src="/julia-maybe-idk.webp"
         alt="Julia Hamann"
         class="h-auto w-full rounded-lg"
@@ -113,7 +114,7 @@ useHead(
       class="mb-4 flex items-start gap-6 *:flex-1 *:basis-1/2 max-md:flex-col max-md:*:basis-auto"
     >
       <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
+        :url-endpoint="IMAGEKIT_URL_ENDPOINT"
         src="/julia.avif"
         alt="Julia Hamann"
         class="h-auto w-full rounded-lg"
