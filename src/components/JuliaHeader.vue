@@ -6,6 +6,7 @@ import JuliaButton from './JuliaButton.vue';
 import IconInstagram from './icons/IconInstagram.vue';
 import IconFacebook from './icons/IconFacebook.vue';
 import { trackDonateClick } from '../lib/analytics';
+import { IMAGEKIT_URL_ENDPOINT } from '../lib/imagekit';
 
 defineOptions({
   name: 'JuliaHeader'
@@ -49,7 +50,7 @@ function handleDonateClick() {
       <div class="logo-container">
         <RouterLink to="/" aria-label="Vote for Julia Home" @click="closeMenu">
           <Image
-            url-endpoint="https://ik.imagekit.io/voteforjulia"
+            :url-endpoint="IMAGEKIT_URL_ENDPOINT"
             src="/julia-hamann-for-mankato-mayor.avif"
             alt="Julia Hamann for Mankato Mayor"
             class="h-auto w-[200px]"

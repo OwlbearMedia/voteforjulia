@@ -2,6 +2,7 @@
 import { useHead } from '@unhead/vue';
 import { Image } from '@imagekit/vue';
 import { buildPageHead } from '../lib/pageHead';
+import { IMAGEKIT_URL_ENDPOINT } from '../lib/imagekit';
 
 defineOptions({
   name: 'JuliaSecretRecipe'
@@ -47,7 +48,7 @@ useHead(
         <li>1 tsp. salt</li>
       </ul>
       <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
+        :url-endpoint="IMAGEKIT_URL_ENDPOINT"
         src="/shrimp-salad-supreme.jpg"
         alt="Shrimp Salad Supreme - a secret recipe for Mankato's future"
         class="h-auto w-full rounded-lg"

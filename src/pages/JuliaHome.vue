@@ -5,6 +5,7 @@ import JuliaButton from '../components/JuliaButton.vue';
 import JuliaContactForm from '../components/JuliaContactForm.vue';
 import JuliaVideo from '../components/JuliaVideo.vue';
 import { buildPageHead } from '../lib/pageHead';
+import { IMAGEKIT_URL_ENDPOINT } from '../lib/imagekit';
 
 defineOptions({
   name: 'JuliaHome'
@@ -28,7 +29,7 @@ useHead(
   <section id="home">
     <div class="my-4 text-center">
       <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
+        :url-endpoint="IMAGEKIT_URL_ENDPOINT"
         src="/julia-hero.webp"
         class="h-auto w-full rounded-lg shadow-soft"
         sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc(100vw - 4rem), 896px"
@@ -95,7 +96,7 @@ useHead(
       </div>
       <div>
         <Image
-          url-endpoint="https://ik.imagekit.io/voteforjulia"
+          :url-endpoint="IMAGEKIT_URL_ENDPOINT"
           src="/julia-blue-sky.webp"
           class="h-auto rounded-lg max-md:w-full max-md:max-w-full max-md:justify-self-center md:w-[250px] md:max-w-[250px]"
           sizes="(max-width: 767px) calc(100vw - 2.5rem), 250px"
@@ -202,7 +203,7 @@ useHead(
       </div>
       <div>
         <Image
-          url-endpoint="https://ik.imagekit.io/voteforjulia"
+          :url-endpoint="IMAGEKIT_URL_ENDPOINT"
           src="/julia.avif"
           alt="Julia Hamann for Mankato Mayor"
           class="h-auto w-full rounded-lg"

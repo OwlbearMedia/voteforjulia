@@ -3,6 +3,7 @@ import { onMounted } from 'vue';
 import { useHead } from '@unhead/vue';
 import { Image } from '@imagekit/vue';
 import { buildPageHead, campaignPersonNode, campaignWebSiteNode } from '../lib/pageHead';
+import { IMAGEKIT_URL_ENDPOINT } from '../lib/imagekit';
 
 defineOptions({
   name: 'JuliaDonate'
@@ -123,7 +124,7 @@ useHead(
         </p>
 
         <Image
-          url-endpoint="https://ik.imagekit.io/voteforjulia"
+          :url-endpoint="IMAGEKIT_URL_ENDPOINT"
           src="/julia-rect.webp"
           alt="Julia Hamann, starting a new conversation as Mayor of Mankato"
           class="h-auto w-full rounded-lg shadow-soft"
