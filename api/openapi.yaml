@@ -229,7 +229,7 @@ paths:
                   lastName: Rivera
                   email: alex@example.com
                   phone: '507-555-0142'
-                  helpWays: [Canvassing, Events]
+                  helpWays: [Canvassing, Postcard writing]
                   message: Happy to help on weekends.
                   referralCode: ''
               minimal:
@@ -487,7 +487,7 @@ components:
                 repeated `helpWays[]` fields. `helpWays[]` is also accepted as a
                 JSON key. Max 10 entries, 100 characters each.
 
-                The site's checkboxes submit: `Canvassing`, `Events`,
+                The site's checkboxes submit: `Canvassing`, `Postcard writing`,
                 `Letter to the editor`, `Fundraiser`, `Campaign team` — but the
                 API accepts any strings within the limits.
               oneOf:
@@ -498,7 +498,7 @@ components:
                     maxLength: 100
                 - type: string
               examples:
-                - [Canvassing, Events]
+                - [Canvassing, Postcard writing]
 
     YardSignRequest:
       allOf:
