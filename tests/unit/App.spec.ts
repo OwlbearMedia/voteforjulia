@@ -27,7 +27,7 @@ async function mountAtPath(path: string) {
         },
         JuliaFooter: true,
         RouterView: true,
-        JuliaPrimaryModal: true
+        JuliaElectionModal: true
       }
     }
   });
