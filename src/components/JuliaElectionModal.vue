@@ -107,7 +107,7 @@ function dismissElectionModal() {
     </p>
 
     <p>
-      Please help us spread the word and encourage others to vote for Julia on
+      Please help us spread the word and encourage others to vote for Julia on or before
       {{ ELECTION_DAY_LABEL }}!
     </p>
 
