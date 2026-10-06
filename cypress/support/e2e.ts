@@ -1,13 +1,12 @@
 // Cypress support file — runs before every spec file.
 // Add global before/after hooks or custom commands here.
 
-// The "Action Needed" primary-election modal fires on the first load of every
-// page (mounted by App.vue, gated by a sessionStorage flag) and its
-// full-viewport backdrop intercepts clicks on the forms under test. Seed the
-// dismissed flag before the app mounts on every cy.visit so the modal never
-// opens during e2e runs.
-// Key mirrors PRIMARY_MODAL_KEY in src/components/JuliaPrimaryModal.vue.
-const PRIMARY_MODAL_KEY = 'primaryModalDismissed';
+// The election reminder modal fires on the first load of every page (mounted
+// by App.vue, gated by a sessionStorage flag) and its full-viewport backdrop
+// intercepts clicks on the forms under test. Seed the dismissed flag before the
+// app mounts on every cy.visit so the modal never opens during e2e runs.
+// Key mirrors ELECTION_MODAL_KEY in src/components/JuliaElectionModal.vue.
+const ELECTION_MODAL_KEY = 'electionModalDismissed';
 
 Cypress.Commands.overwrite('visit', (originalFn, url, options) => {
   const usingOptionsObject = typeof url === 'object' && url !== null;
@@ -17,7 +16,7 @@ Cypress.Commands.overwrite('visit', (originalFn, url, options) => {
   const userOnBeforeLoad = visitOptions.onBeforeLoad;
 
   visitOptions.onBeforeLoad = (win) => {
-    win.sessionStorage.setItem(PRIMARY_MODAL_KEY, 'true');
+    win.sessionStorage.setItem(ELECTION_MODAL_KEY, 'true');
     userOnBeforeLoad?.(win);
   };
 

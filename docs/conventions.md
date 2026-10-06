@@ -390,8 +390,8 @@ conventions and the traps.
   every time; it is how the sitemap dating tests, the modal-cleanup test and
   this one were each shown to be worth keeping or worth deleting.
 - **Cypress `cy.visit` is overridden** in [cypress/support/e2e.ts](../cypress/support/e2e.ts)
-  to seed `sessionStorage` before the app mounts — it dismisses the primary-election
-  modal (`JuliaPrimaryModal`, mounted by `App.vue`) whose full-viewport backdrop
+  to seed `sessionStorage` before the app mounts — it dismisses the election reminder
+  modal (`JuliaElectionModal`, mounted by `App.vue`) whose full-viewport backdrop
   would otherwise intercept the form specs' clicks. Any new full-viewport overlay
   that opens on load needs the same seeding here, or e2e clicks silently fail.
 - **A failed e2e test prints `[diagnostics]` lines** — the same support file

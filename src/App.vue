@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { RouterView, useRoute } from 'vue-router';
 import JuliaHeader from './components/JuliaHeader.vue';
 import JuliaFooter from './components/JuliaFooter.vue';
-import JuliaPrimaryModal from './components/JuliaPrimaryModal.vue';
+import JuliaElectionModal from './components/JuliaElectionModal.vue';
 
 const route = useRoute();
 
@@ -30,5 +30,5 @@ const pageHeaderTitle = computed(() => {
   </main>
   <JuliaFooter />
 
-  <JuliaPrimaryModal />
+  <JuliaElectionModal />
 </template>
