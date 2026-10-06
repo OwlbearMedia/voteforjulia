@@ -216,16 +216,16 @@ useScrollToSuccess(successMessageRef, isSubmitted);
           />
           Canvassing
         </label>
-        <label class="mr-2 inline-flex items-center gap-2 font-normal" for="help-events">
+        <label class="mr-2 inline-flex items-center gap-2 font-normal" for="help-postcard-writing">
           <input
-            id="help-events"
+            id="help-postcard-writing"
             v-model="helpWays"
             name="helpWays[]"
             class="m-0 w-auto"
             type="checkbox"
-            value="Events"
+            value="Postcard writing"
           />
-          Host a Meet &amp; Greet
+          Postcard writing
         </label>
         <label class="mr-2 inline-flex items-center gap-2 font-normal" for="help-letter-to-editor">
           <input
