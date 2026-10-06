@@ -3,6 +3,7 @@ import { useHead } from '@unhead/vue';
 import { Image } from '@imagekit/vue';
 import JuliaYardSignForm from '../components/JuliaYardSignForm.vue';
 import { buildPageHead } from '../lib/pageHead';
+import { IMAGEKIT_URL_ENDPOINT } from '../lib/imagekit';
 
 defineOptions({
   name: 'JuliaYardSign'
@@ -39,7 +40,7 @@ useHead(
         <JuliaYardSignForm />
       </div>
       <Image
-        url-endpoint="https://ik.imagekit.io/voteforjulia"
+        :url-endpoint="IMAGEKIT_URL_ENDPOINT"
         src="/yard-sign.webp"
         alt="Yard sign for Julia Hamann for Mankato Mayor"
         class="h-auto w-full rounded-lg"

@@ -3,6 +3,7 @@ import { Image } from '@imagekit/vue';
 import { useHead } from '@unhead/vue';
 import IconCalendar from '../components/icons/IconCalendar.vue';
 import { buildPageHead } from '../lib/pageHead';
+import { IMAGEKIT_URL_ENDPOINT } from '../lib/imagekit';
 
 defineOptions({
   name: 'JuliaNews'
@@ -240,7 +241,7 @@ useHead(
         >
           <!-- `sizes` is main's width minus the grid gap and card padding; it moves with either. -->
           <Image
-            url-endpoint="https://ik.imagekit.io/voteforjulia"
+            :url-endpoint="IMAGEKIT_URL_ENDPOINT"
             :src="item.image.src"
             :alt="item.image.alt"
             class="h-auto w-full rounded-lg"
