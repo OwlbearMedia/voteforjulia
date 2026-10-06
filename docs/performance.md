@@ -168,9 +168,9 @@ there are worth recording because two of them are properties of the palette
 rather than of any one component.
 
 Every flagged node was inside [JuliaModal.vue](../src/components/JuliaModal.vue)
-— the primary-election modal opens on first visit to any route and is dismissed
-via `sessionStorage`, so Lighthouse, arriving with empty storage every time,
-always audits it.
+— the election reminder modal opens on first visit to any route while an
+election is upcoming, and is dismissed via `sessionStorage`, so Lighthouse,
+arriving with empty storage every time, audits it on every run in that window.
 
 - **Contrast.** `--color-link` was `#0070f3`, which is **4.55:1 on white** — it
   cleared AA by 0.05. On the modal body's `bg-mint/60` (`#eff9eb`) that fell to
