@@ -92,7 +92,7 @@ const juliaEndorses: Endorsement[] = [
     name: 'Jacob Bases for Mankato City Council',
     logo: '/bases-ward-3.png',
     logoWidth: 1580,
-    logoHeight: 1580,
+    logoHeight: 1558,
     url: 'https://basesward3.com/',
     body: [
       'Jacob Bases is a candidate for Mankato City Council Ward 3. He and Julia are running alongside each other and endorsing each other’s campaigns as they understand that it will take a coalition of support amongst council members to turn progressive ideas into action.',
