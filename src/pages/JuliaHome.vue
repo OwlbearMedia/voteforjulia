@@ -37,7 +37,7 @@ useHead(
         :device-breakpoints="[]"
         width="960"
         height="672"
-        alt="Julia Hamann smiling by the river in Mankato, with the painted grain silos behind her"
+        alt="Julia Hamann smiling beside the Minnesota River in Mankato, with the painted Ardent Mills silos behind her"
         crossorigin="anonymous"
         fetchpriority="high"
         loading="eager"
