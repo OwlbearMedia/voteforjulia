@@ -47,7 +47,7 @@ const newsItems: NewsItem[] = [
     ],
     image: {
       src: '/hamann-calls-for-more-collaborative-city-council.jpg',
-      alt: 'Julia Hamann calls for more collaborative city council',
+      alt: 'Portrait of Julia Hamann smiling, in a black top, against dark green foliage',
       width: 3200,
       height: 4228,
       imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1664]
@@ -65,7 +65,7 @@ const newsItems: NewsItem[] = [
     ],
     image: {
       src: '/primary-win.jpg',
-      alt: 'Julia Hamann wins primary for Mankato Mayor',
+      alt: 'Julia Hamann smiling with her arms crossed, standing in a grassy field with trees behind her',
       width: 1009,
       height: 1412,
       imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1009]
@@ -83,7 +83,7 @@ const newsItems: NewsItem[] = [
     ],
     image: {
       src: '/questions.jpg',
-      alt: 'Julia Hamann addresses questions ahead of primary election',
+      alt: 'Julia Hamann standing and speaking to residents seated around a table',
       width: 2048,
       height: 1536,
       imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1664]
@@ -101,7 +101,7 @@ const newsItems: NewsItem[] = [
     ],
     image: {
       src: '/woven-record.jpg',
-      alt: 'Julia and Jacob on the Woven Record',
+      alt: 'Jacob Bases and Julia Hamann seated in armchairs for an interview, captioned “Two Candidates, One Campaign”',
       width: 1000,
       height: 522,
       imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1000]
@@ -119,7 +119,7 @@ const newsItems: NewsItem[] = [
     ],
     image: {
       src: '/launch-party-crowd.jpg',
-      alt: 'Julia Hamann for Mankato Mayor launch party',
+      alt: 'Supporters wearing campaign buttons applaud at the launch party, inside Mankato Makerspace',
       width: 2048,
       height: 1360,
       imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1664]
@@ -137,7 +137,7 @@ const newsItems: NewsItem[] = [
     ],
     image: {
       src: '/race-to-watch.jpeg',
-      alt: 'Julia Hamann interviewed by the Mankato Free Press',
+      alt: 'Julia Hamann smiling in an art gallery, beside a banner reading “Race to Watch: Mankato Mayor, Julia Hamann, Candidate”',
       width: 1000,
       height: 522,
       imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1000]
@@ -155,7 +155,7 @@ const newsItems: NewsItem[] = [
     ],
     image: {
       src: '/new-conversation.jpg',
-      alt: 'Julia Hamann files her affidavit of candidacy for Mayor of Mankato',
+      alt: 'Julia Hamann reading a Free Press story headlined “Running for Office”, seated among houseplants',
       width: 1101,
       height: 1442,
       imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1101]

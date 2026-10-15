@@ -34,7 +34,7 @@ useHead(
       <Image
         :url-endpoint="IMAGEKIT_URL_ENDPOINT"
         src="/julia.avif"
-        alt="Julia Hamann for Mankato Mayor"
+        alt="Julia Hamann for Mankato Mayor campaign logo"
         class="h-auto w-full rounded-lg"
         sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 5.5rem) / 2), 436px"
         :image-breakpoints="[240, 320, 420, 560, 727, 872, 1454]"

@@ -42,7 +42,7 @@ useHead(
       <Image
         :url-endpoint="IMAGEKIT_URL_ENDPOINT"
         src="/yard-sign.webp"
-        alt="Yard sign for Julia Hamann for Mankato Mayor"
+        alt="A Julia Hamann yard sign in a front-yard garden, reading “Starting a new conversation as Mayor of Mankato” and voteforjulia.com"
         class="h-auto w-full rounded-lg"
         sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 5.5rem) / 2), 436px"
         :image-breakpoints="[240, 320, 420, 560, 767, 872, 1200]"
