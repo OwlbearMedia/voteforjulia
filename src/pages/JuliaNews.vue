@@ -16,9 +16,6 @@ interface NewsImage {
   width: number;
   height: number;
   imageBreakpoints: number[];
-  /** First card only: it is above the fold at every width. Its md+ row-mate stays
-   *  lazy so it does not compete with the header logo, the LCP (docs/performance.md). */
-  eager?: boolean;
 }
 
 interface NewsItem {
@@ -39,6 +36,24 @@ interface NewsItem {
 /** Newest first — the page renders them in this order. */
 const newsItems: NewsItem[] = [
   {
+    headline: 'Hamann calls for more collaborative city council',
+    outlet: 'Mankato Free Press',
+    authors: ['Mark Fischenich'],
+    published: '2026-10-12',
+    url: 'https://www.mankatofreepress.com/news/local_news/hamann-calls-for-more-collaborative-city-council/article_46e06c47-8348-4e7e-a4cb-65fa3e737153.html',
+    linkLabel: 'Read the full article at Mankato Free Press',
+    body: [
+      'Julia shares answers to the Mankato Free Press questionnaire about her background, motivations for running, perspectives and priorities ahead of the election. “Hamann wants the city’s leaders, working in conjunction with residents, to start talking about foundational changes to how government addresses everything homelessness to tenants’ rights to affordable housing to crime prevention.”'
+    ],
+    image: {
+      src: '/hamann-calls-for-more-collaborative-city-council.jpg',
+      alt: 'Julia Hamann calls for more collaborative city council',
+      width: 3200,
+      height: 4228,
+      imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1664]
+    }
+  },
+  {
     headline: 'Mankato precinct results mirror primary results',
     outlet: 'Mankato Free Press',
     authors: ['Ethan Becker'],
@@ -53,8 +68,7 @@ const newsItems: NewsItem[] = [
       alt: 'Julia Hamann wins primary for Mankato Mayor',
       width: 1009,
       height: 1412,
-      imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1009],
-      eager: true
+      imageBreakpoints: [320, 390, 430, 520, 640, 780, 832, 1009]
     }
   },
   {
@@ -215,7 +229,7 @@ useHead(
 
     <div class="grid gap-8 md:grid-cols-2">
       <article
-        v-for="item in newsItems"
+        v-for="(item, itemIndex) in newsItems"
         :key="item.url"
         class="rounded-4xl bg-forest px-8 py-4 text-white shadow-strong"
       >
@@ -239,7 +253,10 @@ useHead(
           target="_blank"
           rel="noopener noreferrer"
         >
-          <!-- `sizes` is main's width minus the grid gap and card padding; it moves with either. -->
+          <!-- `sizes` is main's width minus the grid gap and card padding; it moves with either.
+               Only the first card loads eagerly: it is above the fold at every width, and its
+               md+ row-mate stays lazy so it does not compete with the header logo, the LCP
+               (docs/performance.md). -->
           <Image
             :url-endpoint="IMAGEKIT_URL_ENDPOINT"
             :src="item.image.src"
@@ -251,9 +268,9 @@ useHead(
             :width="item.image.width"
             :height="item.image.height"
             crossorigin="anonymous"
-            :fetchpriority="item.image.eager ? 'high' : undefined"
-            :loading="item.image.eager ? 'eager' : 'lazy'"
-            :decoding="item.image.eager ? undefined : 'async'"
+            :fetchpriority="itemIndex === 0 ? 'high' : undefined"
+            :loading="itemIndex === 0 ? 'eager' : 'lazy'"
+            :decoding="itemIndex === 0 ? undefined : 'async'"
           />
         </a>
 
