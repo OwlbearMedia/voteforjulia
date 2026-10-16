@@ -87,6 +87,30 @@ const supports: Endorsement[] = [
   }
 ];
 
+const juliaEndorses: Endorsement[] = [
+  {
+    name: 'Jacob Bases for Mankato City Council',
+    logo: '/bases-ward-3.png',
+    logoWidth: 1580,
+    logoHeight: 1558,
+    url: 'https://basesward3.com/',
+    body: [
+      'Jacob Bases is a candidate for Mankato City Council Ward 3. He and Julia are running alongside each other and endorsing each other’s campaigns as they understand that it will take a coalition of support amongst council members to turn progressive ideas into action.',
+      '“I’ve known Jacob for over a decade and in that time I’ve known him to be someone that consistently shows up and speaks out regarding issues that our community cares about. He has also been part of supporting the community by uplifting important conversations into the public sphere. I know him to be someone that lives his values and I trust in his commitment to Mankato.”'
+    ],
+    links: [
+      {
+        label: 'Jacob Bases endorses Julia for Mankato Mayor',
+        url: 'https://basesward3.com/#endorsements'
+      },
+      {
+        label: 'Jacob Bases for Mankato City Council Ward 3',
+        url: 'https://basesward3.com/'
+      }
+    ]
+  }
+];
+
 useHead(
   buildPageHead({
     path: '/endorsements',
@@ -120,6 +144,18 @@ useHead(
     <ul class="my-8 flex list-none flex-col gap-12 p-0">
       <li v-for="support in supports" :key="support.name">
         <JuliaEndorsementCard :endorsement="support" />
+      </li>
+    </ul>
+  </section>
+
+  <hr />
+
+  <section id="julia-endorses">
+    <h2>Julia Endorses</h2>
+
+    <ul class="my-8 flex list-none flex-col gap-12 p-0">
+      <li v-for="endorsement in juliaEndorses" :key="endorsement.name">
+        <JuliaEndorsementCard :endorsement="endorsement" />
       </li>
     </ul>
   </section>

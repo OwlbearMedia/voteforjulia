@@ -50,7 +50,7 @@ useHead(
       <Image
         :url-endpoint="IMAGEKIT_URL_ENDPOINT"
         src="/shrimp-salad-supreme.jpg"
-        alt="Shrimp Salad Supreme - a secret recipe for Mankato's future"
+        alt="Shrimp Salad Supreme: a molded ring of shrimp and diced celery in gelatin, on a bed of lettuce on a floral china plate"
         class="h-auto w-full rounded-lg"
         sizes="(max-width: 767px) calc(100vw - 2.5rem), (max-width: 960px) calc((100vw - 5.5rem) / 2), 436px"
         :image-breakpoints="[240, 320, 420, 540]"
